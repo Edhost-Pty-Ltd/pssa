@@ -1,0 +1,45 @@
+import express from "express";
+import cookieParser from "cookie-parser";
+import helmet from "helmet";
+import { prisma } from "./lib/prisma.js";
+import { loadUser } from "./middleware/auth.js";
+import { errorHandler, notFoundHandler } from "./middleware/error.js";
+import { authRouter } from "./routes/auth.js";
+import { membersRouter } from "./routes/members.js";
+import { memberRouter } from "./routes/member.js";
+import { adminRouter } from "./routes/admin.js";
+import { tutorialsRouter } from "./routes/tutorials.js";
+import { examRouter } from "./routes/exam.js";
+import { publicMembersRouter } from "./routes/publicMembers.js";
+
+export function createApp() {
+  const app = express();
+  app.set("trust proxy", 1);
+  app.disable("x-powered-by");
+  app.use(helmet());
+  app.use(express.json({ limit: "100kb" }));
+  app.use(cookieParser());
+  app.use(loadUser);
+
+  const api = express.Router();
+  api.get("/health", async (_req, res) => {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      res.json({ ok: true, database: "connected" });
+    } catch {
+      res.status(503).json({ ok: false, database: "unreachable", error: "Database unreachable", errors: ["Database unreachable"] });
+    }
+  });
+  api.use("/search", publicMembersRouter);
+  api.use("/auth", authRouter);
+  api.use("/members", membersRouter);
+  api.use("/member", memberRouter);
+  api.use("/admin", adminRouter);
+  api.use("/tutorials", tutorialsRouter);
+  api.use("/exam", examRouter);
+  api.use(notFoundHandler);
+  app.use("/api", api);
+
+  app.use(errorHandler);
+  return app;
+}
