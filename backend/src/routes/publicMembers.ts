@@ -1,74 +1,76 @@
 import { Router } from "express";
 import { z } from "zod";
-import { prisma } from "../lib/prisma.js";
 import { notFound } from "../lib/http.js";
+import { prisma } from "../lib/prisma.js";
 
-/** Customers have no account. These routes never return private member data. */
-const publicWhere = {
-  verificationStatus: "verified" as const,
-  isActive: true,
-};
-
-const publicSelect = {
-  id: true,
-  businessName: true,
-  category: true,
-  verificationStatus: true,
-  isActive: true,
-  user: { select: { firstName: true, lastName: true } },
-  socialAccounts: { select: { platform: true, url: true }, orderBy: { platform: "asc" as const } },
-} as const;
-
-function toPublicMember(member: {
-  id: string;
-  businessName: string | null;
-  category: string;
-  verificationStatus: string;
-  isActive: boolean;
-  user: { firstName: string; lastName: string };
-  socialAccounts: { platform: string; url: string }[];
-}) {
-  return {
-    id: member.id,
-    firstName: member.user.firstName,
-    lastName: member.user.lastName,
-    businessName: member.businessName,
-    category: member.category,
-    verificationStatus: member.verificationStatus,
-    isActive: member.isActive,
-    socialAccounts: member.socialAccounts,
-  };
-}
-
+/** Public member register — only Active members are listed. */
 export const publicMembersRouter = Router();
 
+const searchSchema = z.object({
+  q: z.string().trim().optional(),
+  page: z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce.number().int().positive().max(50).default(20),
+});
+
 publicMembersRouter.get("/members", async (req, res) => {
-  const { q } = z.object({ q: z.string().trim().max(100).optional() }).parse(req.query);
-  const members = await prisma.memberProfile.findMany({
-    where: {
-      ...publicWhere,
-      ...(q
-        ? {
-            OR: [
-              { businessName: { contains: q, mode: "insensitive" } },
-              { user: { firstName: { contains: q, mode: "insensitive" } } },
-              { user: { lastName: { contains: q, mode: "insensitive" } } },
-            ],
-          }
-        : {}),
-    },
-    select: publicSelect,
-    orderBy: { businessName: "asc" },
-    take: 50,
-  });
-  res.json(members.map(toPublicMember));
+  const { q, page, pageSize } = searchSchema.parse(req.query);
+  const where = {
+    memberStatus: "active" as const,
+    ...(q
+      ? {
+          OR: [
+            { tradingName: { contains: q, mode: "insensitive" as const } },
+            { firstName: { contains: q, mode: "insensitive" as const } },
+            { lastName: { contains: q, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+  };
+
+  const [total, items] = await Promise.all([
+    prisma.memberProfile.count({ where }),
+    prisma.memberProfile.findMany({
+      where,
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        tradingName: true,
+        scope: true,
+        memberStatus: true,
+        validUntil: true,
+        channels: {
+          where: { status: "confirmed" },
+          select: { kind: true, value: true, status: true },
+        },
+      },
+    }),
+  ]);
+
+  res.json({ items, page, pageSize, total });
 });
 
 publicMembersRouter.get("/members/:id", async (req, res) => {
   const member = await prisma.memberProfile.findFirst({
-    where: { id: req.params.id, ...publicWhere },
-    select: publicSelect,
+    where: { id: String(req.params.id), memberStatus: "active" },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      tradingName: true,
+      scope: true,
+      memberStatus: true,
+      validFrom: true,
+      validUntil: true,
+      channels: {
+        where: { status: "confirmed" },
+        select: { kind: true, value: true, status: true },
+      },
+    },
   });
-  if (!member) throw notFound("Member not found");
-  res.json(toPublicMember(member));
+  if (!member) throw notFound("Member not found.");
+  res.json({ member });
 });

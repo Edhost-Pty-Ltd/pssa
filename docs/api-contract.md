@@ -116,7 +116,7 @@ These are the records the API hangs off. KG designs a new Prisma schema from scr
 | Model | Key fields and rules |
 | --- | --- |
 | User | `id`, `email`, `passwordHash?` (required for ADMIN, not required for passwordless members), `role`, `tokenVersion`, `emailVerifiedAt`, `phoneVerifiedAt`, `lastLoginAt`, `createdAt`. A password hash is never returned. |
-| MemberProfile | Names, phone, trading name, scope, idNumber, physicalAddress, city, channels, member status, `validFrom`, `validUntil`. Private fields never go on public endpoints. |
+| MemberProfile | Names, phone, trading name, scope, idNumber, physicalAddress, city, channels, member status, `validFrom`, `validUntil`. Private fields never go on public endpoints. Identity today is treated as a South African ID number in the API; the Verification Standard also allows an overseas passport route — KG should make identity type/number support that (nullable SA ID vs passport) so “profile complete” does not force an SA ID forever. |
 | Application | `id`, `userId`, `number` (`APP-YYYY-XXXX`), `status`, `submittedAt`, `agreementAcceptedAt`, `agreementVersion`, reviews. Created by the submit endpoint. |
 | Document | `id`, `userId`, `type`, storage path, `status`, `reviewerNote`, `reviewedAt`, `reviewedBy`. Types: `id_document`, `proof_of_residence`, `bank_evidence`, `business_registration`, `channel_evidence`. Stored privately. |
 | TutorialVideo and VideoProgress | Progress must not treat a skip-ahead as completion. Official lesson files come from the senior (four tutorial videos). |
@@ -137,8 +137,8 @@ Member sign-in is passwordless: send a code, then verify the code. Phase 1 build
 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
-| POST | `/api/auth/otp/send` | Public | **In:** `{ email }`. Phone: `{ email, channel: "phone" }` returns 400 until an SMS service exists. **Out:** `200 { sent, destination (masked), expiresAt }`. Do not reveal whether the email is already registered. Rate-limited. Do not return a `devCode` in production. | To build |
-| POST | `/api/auth/otp/verify` | Public | **In:** `{ email, code }` (six digits). **Out:** `200 { user }` and `Set-Cookie: ec_session`. Creates or resumes a `MEMBER` session, with no password, and sets `emailVerifiedAt`. Wrong, expired or over-attempted codes return 400 with a field error on `code`. | To build |
+| POST | `/api/auth/otp/send` | Public | **In:** `{ email }`. Phone: `{ email, channel: "phone" }` returns 400 until an SMS service exists. **Out:** `200 { sent, destination (masked), expiresAt }`. Stores the OTP against the email only — it does **not** create a user yet (avoids bots/typos filling `users`). Do not reveal whether the email is already registered. Rate-limited. Do not return a `devCode` in production. | Exists |
+| POST | `/api/auth/otp/verify` | Public | **In:** `{ email, code }` (six digits). **Out:** `200 { user }` and `Set-Cookie: ec_session`. On a correct code, **creates** a passwordless `MEMBER` if needed (or resumes an existing one), sets `emailVerifiedAt`, and issues the session. Wrong, expired or over-attempted codes return 400 with a field error on `code`. | Exists |
 | POST | `/api/auth/login` | Public | **In:** `{ email, password }`. **Out:** `200 { user }` and `Set-Cookie: ec_session`. Updates `lastLoginAt`. This is the admin sign-in. Members who use OTP may have no password and must not be required to use this endpoint. Rate-limited. | To build |
 | POST | `/api/auth/logout` | Signed in | **In:** none. **Out:** `200 { ok: true }`. Clears the cookie and increments `tokenVersion`. Safe to call when signed out. | To build |
 | GET | `/api/auth/me` | Public | **In:** cookie only. **Out:** `200 { user }` or `200 { user: null }` if there is no valid session. The frontend calls this on load to restore a session. | To build |
@@ -151,11 +151,59 @@ The signed-in member API lives under `/api/member` (not `/api/seller` or `/api/a
 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
-| GET | `/api/member/profile` | Member | **In:** cookie. **Out:** `200 { profile }` including status, masked ID number, address, channels and a documents summary. Never a password hash. | To build |
-| PATCH | `/api/member/profile` | Member | **In:** partial body: name, phone, trading name, scope, idNumber, physicalAddress, city, channel URLs (`null` deletes a channel). **Out:** `200 { profile }`. `409` if the ID number belongs to someone else. | To build |
-| GET | `/api/member/application` | Member | **In:** cookie. **Out:** `200 { application, progress }` with the six tracker steps (Profile, Verification documents, Conduct tutorials, Entrance assessment, Review, Certified) and the current application status. | To build |
-| POST | `/api/member/application/submit` | Member | **In:** empty body, or `{ confirm: true }`. **Out:** `200` or `201 { application }` with status `submitted` and an `APP-YYYY-XXXX` number. `409` if required profile fields, documents or agreement acceptance are missing. | To build |
-| POST | `/api/member/application/agreement` | Member | **In:** `{ accepted: true, version }` (the published Policy 01 version). **Out:** `200 { application }` with `agreementAcceptedAt` and version stored. This step is blocked until the senior provides the membership agreement. | To build |
+| GET | `/api/member/profile` | Member | **In:** cookie. **Out:** `200 { profile }` including status, masked ID number, address, channels and a documents summary. Never a password hash. | Exists |
+| PATCH | `/api/member/profile` | Member | **In:** partial body: name, phone, trading name, scope, idNumber, physicalAddress, city, channel URLs (`null` deletes a channel). **Out:** `200 { profile }`. `409` if the ID number belongs to someone else. | Exists |
+| GET | `/api/member/application` | Member | **In:** cookie. **Out:** `200 { application, progress }` — see **Application progress shape** below. Until the member accepts the agreement or submits, `application` may be a null draft (`id` / `number` null, `status: "draft"`). Status stays `draft` until submit. | Exists |
+| POST | `/api/member/application/submit` | Member | **In:** empty body, or `{ confirm: true }`. **Out:** `200` or `201 { application }` with status `submitted` and an `APP-YYYY-XXXX` number. `409` if required profile fields, documents or agreement acceptance are missing. | Exists |
+| POST | `/api/member/application/agreement` | Member | **In:** `{ accepted: true, version }` (the published Policy 01 version). **Out:** `200 { application }` with `agreementAcceptedAt` and version stored. Creates the draft application row (and number) if it does not exist yet. Agreement text content is blocked until the senior provides Policy 01; the API already stores acceptance + version. | Exists |
+
+#### Application progress shape
+
+`GET /api/member/application` returns this shape for the member dashboard:
+
+```json
+{
+  "application": {
+    "id": null,
+    "number": null,
+    "status": "draft",
+    "submittedAt": null,
+    "agreementAcceptedAt": null,
+    "agreementVersion": null
+  },
+  "progress": {
+    "percent": 17,
+    "steps": [
+      { "key": "profile", "label": "Profile", "state": "complete", "detail": "Complete" },
+      { "key": "documents", "label": "Verification documents", "state": "action_needed", "detail": "1 needs resubmission" },
+      { "key": "tutorials", "label": "Conduct tutorials", "state": "not_started", "detail": "0 of 4 complete" },
+      { "key": "assessment", "label": "Entrance assessment", "state": "locked", "detail": "Locked" },
+      { "key": "review", "label": "Review", "state": "locked", "detail": "Locked" },
+      { "key": "certified", "label": "Certified", "state": "locked", "detail": "Locked" }
+    ],
+    "actions": [
+      {
+        "step": "documents",
+        "title": "Bank account evidence",
+        "detail": "The account holder name is not visible.",
+        "status": "needs_resubmission"
+      }
+    ],
+    "canSubmit": false
+  }
+}
+```
+
+Rules for the member portal:
+
+- `application.status` is `draft` until the member submits.
+- Before agreement/submit, `application.id` and `application.number` may be `null`.
+- Each step `state` is one of: `complete`, `in_progress`, `action_needed`, `not_started`, `locked`.
+- Step keys are: `profile`, `documents`, `tutorials`, `assessment`, `review`, `certified`.
+- `percent` is `round(100 * completeSteps / 6)`.
+- `actions` lists document resubmission work (and later other action-needed items) for the dashboard cards.
+- `canSubmit` is true only when profile + required documents/channels + agreement are done and the application is still `draft` or `needs_info`.
+- Tutorials/assessment stay locked or not started until those models and official content land.
 
 ### 6.3 Documents
 
@@ -163,14 +211,14 @@ Uploads accept the types below, including bank and channel evidence, and allow r
 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
-| POST | `/api/member/documents` | Member | **In:** `multipart/form-data`: `file`, plus `type`: `id_document` \| `proof_of_residence` \| `bank_evidence` \| `business_registration` \| `channel_evidence`. **Out:** `201 { document }` with status `uploaded`. | To build |
-| GET | `/api/member/documents` | Member | **In:** cookie. **Out:** `200 { documents[] }` with type, status, reviewer note and dates. Never a public URL. | To build |
-| GET | `/api/member/documents/:id/file` | Member (owner) or admin | **In:** cookie. **Out:** the private file. `403` if the caller is not the owner or an authorised admin. Log access. | To build |
-| DELETE | `/api/member/documents/:id` | Member | **In:** path id. **Out:** `200 { ok: true }` if the document is not yet `accepted`. Replacing a file that needs resubmission is also required, as in the Figma “Replace” action. | To build |
-| POST | `/api/member/channels` | Member | **In:** `{ platform, handle or url }`. **Out:** `201 { channel }` with status `code_sent` or `uploaded`. | To build |
-| POST | `/api/member/channels/:id/confirm` | Member | **In:** `{ code }`. **Out:** `200 { channel }` with status `confirmed`. | To build |
-| PATCH | `/api/admin/documents/:id` | Admin | **In:** `{ reviewStatus: "accepted" \| "needs_resubmission" \| "under_review", reviewerNote? }`. A `needs_resubmission` decision requires a note of at least 10 characters. **Out:** `200 { document }`. | To build |
-| GET | `/api/admin/documents/:id/file` | Admin | **In:** cookie. **Out:** the private file. Log access. | To build |
+| POST | `/api/member/documents` | Member | **In:** `multipart/form-data`: `file`, plus `type`: `id_document` \| `proof_of_residence` \| `bank_evidence` \| `business_registration` \| `channel_evidence`. **Out:** `201 { document }` with status `uploaded`. | Exists |
+| GET | `/api/member/documents` | Member | **In:** cookie. **Out:** `200 { documents[] }` with type, status, reviewer note and dates. Never a public URL. | Exists |
+| GET | `/api/member/documents/:id/file` | Member (owner) or admin | **In:** cookie. **Out:** the private file. `403` if the caller is not the owner or an authorised admin. Log access. | Exists |
+| DELETE | `/api/member/documents/:id` | Member | **In:** path id. **Out:** `200 { ok: true }` if the document is not yet `accepted`. Replacing a file that needs resubmission is also required, as in the Figma “Replace” action. | Exists |
+| POST | `/api/member/channels` | Member | **In:** `{ platform, handle or url }`. **Out:** `201 { channel }` with status `code_sent` or `uploaded`. | Exists |
+| POST | `/api/member/channels/:id/confirm` | Member | **In:** `{ code }`. **Out:** `200 { channel }` with status `confirmed`. | Exists |
+| PATCH | `/api/admin/documents/:id` | Admin | **In:** `{ reviewStatus: "accepted" \| "needs_resubmission" \| "under_review", reviewerNote? }`. A `needs_resubmission` decision requires a note of at least 10 characters. **Out:** `200 { document }`. | Exists |
+| GET | `/api/admin/documents/:id/file` | Admin | **In:** cookie. **Out:** the private file. Log access. | Exists |
 
 ### 6.4 Tutorials and exam
 
@@ -294,5 +342,6 @@ These are still for the team to write down, alongside the branch rule (feature b
 - Is the customer order template a static frontend file, or served from `GET /api/order-template`?
 - The session cookie is named `ec_session` in this contract. Do we keep that name, or rename it now, before launch?
 - When will fees, if any, be introduced, and how do we make sure a payment record can never set a member to Active by itself?
+- Should `MemberProfile` store identity as SA ID and/or passport (overseas route in the Verification Standard), and how does “profile complete” treat each?
 
 This contract is for internal team planning. It is not a legal policy and does not replace the official PSSA documents.
