@@ -1,4 +1,5 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
+import ComponentsPreview from "./pages/dev/ComponentsPreview";
 import ScreensReference from "./screens-reference";
 
 // Routes
@@ -8,6 +9,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {import.meta.env.DEV && <Route path="/dev/components" element={<ComponentsPreview />} />}
         <Route path="/*" element={<ScreensReference />} />
       </Routes>
     </BrowserRouter>

@@ -1,0 +1,132 @@
+/* Shared UI: styles the Figma design didn't define as reusable classes.
+   Buttons, status badges, cards, notices and empty states reuse the design's classes in index.css. */
+
+.ui-field {
+  display: block;
+}
+.ui-field + .ui-field {
+  margin-top: 18px;
+}
+.ui-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--navy);
+  margin-bottom: 8px;
+}
+.ui-label .ui-required {
+  color: #b43e39;
+  margin-left: 3px;
+}
+.ui-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #cfd7dd;
+  background: white;
+  border-radius: 8px;
+  padding: 0 12px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.ui-control:focus-within {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px var(--green-soft);
+}
+.ui-control > .icon {
+  color: #7c8994;
+}
+.ui-control input,
+.ui-control select,
+.ui-control textarea {
+  border: 0;
+  outline: 0;
+  background: transparent;
+  padding: 12px 0;
+  width: 100%;
+  min-width: 0;
+  color: var(--ink);
+}
+.ui-control textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+.ui-field.has-error .ui-control {
+  border-color: #b43e39;
+}
+.ui-field.has-error .ui-control:focus-within {
+  box-shadow: 0 0 0 3px var(--red-soft);
+}
+.ui-control.is-disabled {
+  background: var(--soft);
+  opacity: 0.7;
+}
+.ui-help {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.ui-error {
+  color: #b43e39;
+  font-weight: 600;
+}
+
+.ui-card {
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.ui-card.pad {
+  padding: 22px;
+}
+.ui-card .panel-head + .ui-card-body {
+  padding-top: 18px;
+}
+
+.notice.red {
+  background: var(--red-soft);
+  color: #b43e39;
+}
+.notice > div {
+  flex: 1;
+}
+
+.ui-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px 22px;
+}
+.ui-skeleton-row + .ui-skeleton-row {
+  margin-top: 12px;
+}
+.ui-skeleton-row .sk-avatar {
+  width: 44px;
+  height: 44px;
+}
+.ui-spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: ui-spin 0.7s linear infinite;
+}
+@keyframes ui-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
