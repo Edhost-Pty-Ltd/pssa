@@ -1,378 +1,257 @@
-import { randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
 import { Router } from "express";
+import { existsSync } from "node:fs";
 import { z } from "zod";
-import type { ApplicationStatus, DocumentReviewStatus } from "@prisma/client";
+import { conflict, notFound } from "../lib/http.js";
 import { prisma } from "../lib/prisma.js";
-import { badRequest, conflict, notFound } from "../lib/http.js";
 import { privateFilePath } from "../lib/uploads.js";
 import { requireRole } from "../middleware/auth.js";
 
-const APPLICATION_STATUSES = ["submitted", "under_review", "info_required", "approved", "rejected"] as const;
-
-const listQuerySchema = z.object({
-  status: z.enum(APPLICATION_STATUSES).optional(),
-});
-
-const documentReviewSchema = z.object({
-  reviewStatus: z.enum(["submitted", "accepted", "rejected"]),
-  reviewerNote: z.string().max(2000).optional(),
-});
-
-const applicationInclude = {
-  member: {
-    include: {
-      user: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
-      documents: { select: { id: true } },
-      videoProgress: { include: { tutorialVideo: { select: { isActive: true } } } },
-      examAttempts: {
-        where: { submittedAt: { not: null } },
-        orderBy: { submittedAt: "desc" as const },
-        take: 1,
-      },
-    },
-  },
-} as const;
-
-type ApplicationRow = Awaited<ReturnType<typeof loadApplication>>;
-
-async function loadApplication(id: string) {
-  return prisma.application.findUnique({ where: { id }, include: applicationInclude });
-}
-
-function toSummary(application: NonNullable<ApplicationRow>) {
-  const exam = application.member.examAttempts[0];
-  const tutorialCompleted = application.member.videoProgress.some((progress) => progress.tutorialVideo.isActive && progress.completed);
-  return {
-    id: application.id,
-    status: application.status,
-    submittedAt: application.submittedAt,
-    updatedAt: application.updatedAt,
-    member: {
-      profileId: application.member.id,
-      userId: application.member.user.id,
-      firstName: application.member.user.firstName,
-      lastName: application.member.user.lastName,
-      email: application.member.user.email,
-      phone: application.member.user.phone,
-      businessName: application.member.businessName,
-      category: application.member.category,
-      verificationStatus: application.member.verificationStatus,
-      isActive: application.member.isActive,
-    },
-    documentCount: application.member.documents.length,
-    tutorialCompleted,
-    examScore: exam?.score ?? null,
-    examPassed: exam?.passed ?? null,
-  };
-}
-
-async function tutorialForMember(memberProfileId: string) {
-  const video = await prisma.tutorialVideo.findFirst({ where: { isActive: true } });
-  if (!video) {
-    return { video: null, tutorialCompleted: false, progressPercent: 0, watchedSeconds: 0, completedAt: null };
-  }
-  const progress = await prisma.videoProgress.findUnique({
-    where: { memberProfileId_tutorialVideoId: { memberProfileId, tutorialVideoId: video.id } },
-  });
-  return {
-    video: { id: video.id, title: video.title, durationSeconds: video.durationSeconds },
-    tutorialCompleted: progress?.completed === true,
-    progressPercent: progress?.progressPercent ?? 0,
-    watchedSeconds: progress?.watchedSeconds ?? 0,
-    maxPositionSeconds: progress?.maxPositionSeconds ?? 0,
-    completedAt: progress?.completedAt ?? null,
-  };
-}
-
-async function examForMember(memberProfileId: string) {
-  const attempts = await prisma.examAttempt.findMany({
-    where: { memberProfileId },
-    orderBy: { startedAt: "desc" },
-  });
-  const submitted = attempts.find((attempt) => attempt.submittedAt);
-  return {
-    examPassed: submitted ? submitted.passed : null,
-    latest: submitted
-      ? {
-          id: submitted.id,
-          totalQuestions: submitted.totalQuestions,
-          score: submitted.score,
-          passed: submitted.passed,
-          startedAt: submitted.startedAt,
-          submittedAt: submitted.submittedAt,
-        }
-      : null,
-    attemptCount: attempts.length,
-  };
-}
-
+/**
+ * Admin application review against the Phase 1 schema.
+ * Certificate issuance and Active gates are extended in a later PR.
+ */
 export const adminRouter = Router();
 adminRouter.use(requireRole("ADMIN"));
 
+const listSchema = z.object({
+  status: z.enum(["draft", "submitted", "under_review", "needs_info", "approved", "rejected"]).optional(),
+  q: z.string().trim().optional(),
+  page: z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce.number().int().positive().max(50).default(20),
+});
+
 adminRouter.get("/summary", async (_req, res) => {
-  const [applications, members, documentsAwaitingReview] = await Promise.all([
-    prisma.application.groupBy({ by: ["status"], _count: { _all: true } }),
-    prisma.memberProfile.groupBy({ by: ["verificationStatus"], _count: { _all: true } }),
-    prisma.memberDocument.count({ where: { reviewStatus: "submitted" } }),
-  ]);
-
-  const applicationCounts = Object.fromEntries(APPLICATION_STATUSES.map((status) => [status, 0])) as Record<ApplicationStatus, number>;
-  for (const row of applications) applicationCounts[row.status] = row._count._all;
-
-  const memberCounts: Record<string, number> = {};
-  for (const row of members) memberCounts[row.verificationStatus] = row._count._all;
-
-  res.json({ applications: applicationCounts, members: memberCounts, documentsAwaitingReview });
+  const grouped = await prisma.application.groupBy({ by: ["status"], _count: { _all: true } });
+  const byStatus = Object.fromEntries(grouped.map((row) => [row.status, row._count._all]));
+  res.json({
+    awaitingReview: (byStatus.submitted ?? 0) + (byStatus.under_review ?? 0),
+    needsInformation: byStatus.needs_info ?? 0,
+    approved: byStatus.approved ?? 0,
+    rejected: byStatus.rejected ?? 0,
+  });
 });
 
 adminRouter.get("/applications", async (req, res) => {
-  const { status } = listQuerySchema.parse(req.query);
-  const applications = await prisma.application.findMany({
-    where: status ? { status } : {},
-    include: applicationInclude,
-    orderBy: { submittedAt: "asc" },
-  });
-  res.json(applications.map(toSummary));
+  const { status, q, page, pageSize } = listSchema.parse(req.query);
+  const where = {
+    ...(status ? { status } : {}),
+    ...(q
+      ? {
+          OR: [
+            { number: { contains: q, mode: "insensitive" as const } },
+            { user: { email: { contains: q, mode: "insensitive" as const } } },
+            { user: { memberProfile: { tradingName: { contains: q, mode: "insensitive" as const } } } },
+            { user: { memberProfile: { firstName: { contains: q, mode: "insensitive" as const } } } },
+            { user: { memberProfile: { lastName: { contains: q, mode: "insensitive" as const } } } },
+          ],
+        }
+      : {}),
+  };
+
+  const [total, items] = await Promise.all([
+    prisma.application.count({ where }),
+    prisma.application.findMany({
+      where,
+      orderBy: [{ submittedAt: "desc" }, { createdAt: "desc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      select: {
+        id: true,
+        number: true,
+        status: true,
+        submittedAt: true,
+        createdAt: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            memberProfile: {
+              select: { firstName: true, lastName: true, tradingName: true, memberStatus: true },
+            },
+          },
+        },
+      },
+    }),
+  ]);
+
+  res.json({ items, page, pageSize, total });
 });
 
 adminRouter.get("/applications/:id", async (req, res) => {
-  const application = await loadApplication(req.params.id);
-  if (!application) throw notFound("Application not found");
-
-  const [documents, socials, tutorial, exam, reviews, certificate] = await Promise.all([
-    prisma.memberDocument.findMany({ where: { memberProfileId: application.member.id }, orderBy: { uploadedAt: "asc" } }),
-    prisma.socialAccount.findMany({
-      where: { memberProfileId: application.member.id },
-      orderBy: { platform: "asc" },
-      select: { platform: true, url: true },
-    }),
-    tutorialForMember(application.member.id),
-    examForMember(application.member.id),
-    prisma.adminReview.findMany({ where: { applicationId: application.id }, orderBy: { createdAt: "desc" } }),
-    prisma.certificate.findUnique({ where: { applicationId: application.id } }),
-  ]);
-
-  res.json({
-    ...toSummary(application),
-    member: {
-      ...toSummary(application).member,
-      idNumber: application.member.idNumber,
-      physicalAddress: application.member.physicalAddress,
-      socialAccounts: socials,
+  const application = await prisma.application.findUnique({
+    where: { id: String(req.params.id) },
+    select: {
+      id: true,
+      number: true,
+      status: true,
+      submittedAt: true,
+      agreementAcceptedAt: true,
+      agreementVersion: true,
+      createdAt: true,
+      updatedAt: true,
+      user: {
+        select: {
+          id: true,
+          email: true,
+          memberProfile: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              phone: true,
+              tradingName: true,
+              scope: true,
+              physicalAddress: true,
+              city: true,
+              memberStatus: true,
+              channels: true,
+            },
+          },
+          documents: {
+            select: {
+              id: true,
+              type: true,
+              originalName: true,
+              status: true,
+              reviewerNote: true,
+              reviewedAt: true,
+              createdAt: true,
+            },
+            orderBy: { createdAt: "asc" },
+          },
+        },
+      },
+      reviews: {
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          decision: true,
+          reason: true,
+          conflictDeclared: true,
+          createdAt: true,
+          reviewer: { select: { id: true, email: true, firstName: true, lastName: true } },
+        },
+      },
     },
-    documents: documents.map(toDocument),
-    tutorial,
-    exam,
-    certificate: certificate
-      ? { id: certificate.id, number: certificate.certificateNumber, issuedAt: certificate.issuedAt, expiresAt: certificate.expiresAt }
-      : null,
-    reviews: reviews.map((review) => ({
-      id: review.id,
-      decision: review.decision,
-      reason: review.reason,
-      documentsChecked: review.documentsChecked,
-      tutorialCompleted: review.tutorialCompleted,
-      examPassed: review.examPassed,
-      createdAt: review.createdAt,
-    })),
   });
+  if (!application) throw notFound("Application not found.");
+  res.json({ application });
 });
 
-adminRouter.get("/applications/:id/tutorial", async (req, res) => {
-  const application = await prisma.application.findUnique({ where: { id: req.params.id }, select: { memberProfileId: true } });
-  if (!application) throw notFound("Application not found");
-  res.json(await tutorialForMember(application.memberProfileId));
+const decisionSchema = z.object({
+  decision: z.enum(["approved", "rejected", "needs_info"]),
+  reason: z.string().trim().min(10, "must be at least 10 characters"),
+  conflictDeclared: z.literal(true, { error: "conflict declaration is required" }),
 });
 
-adminRouter.get("/applications/:id/exam", async (req, res) => {
-  const application = await prisma.application.findUnique({ where: { id: req.params.id }, select: { memberProfileId: true } });
-  if (!application) throw notFound("Application not found");
-  res.json(await examForMember(application.memberProfileId));
+adminRouter.post("/applications/:id/decision", async (req, res) => {
+  const body = decisionSchema.parse(req.body ?? {});
+  const application = await prisma.application.findUnique({
+    where: { id: String(req.params.id) },
+    select: { id: true, status: true, userId: true },
+  });
+  if (!application) throw notFound("Application not found.");
+  if (application.status === "approved" || application.status === "rejected") {
+    throw conflict("A final decision has already been recorded for this application.");
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const next = await tx.application.update({
+      where: { id: application.id },
+      data: { status: body.decision },
+      select: {
+        id: true,
+        number: true,
+        status: true,
+        submittedAt: true,
+        agreementAcceptedAt: true,
+        agreementVersion: true,
+      },
+    });
+    await tx.adminReview.create({
+      data: {
+        applicationId: application.id,
+        reviewerId: req.user!.id,
+        decision: body.decision,
+        reason: body.reason,
+        conflictDeclared: true,
+      },
+    });
+    await tx.auditLog.create({
+      data: {
+        actorId: req.user!.id,
+        action: "application.decision",
+        entityType: "application",
+        entityId: application.id,
+        reason: body.reason,
+        conflictDeclared: true,
+      },
+    });
+    return next;
+  });
+
+  res.json({ application: updated });
 });
 
-/** The file itself. Only an admin can read it; it is never served from a public folder. */
+const documentReviewSchema = z
+  .object({
+    reviewStatus: z.enum(["accepted", "needs_resubmission", "under_review"]),
+    reviewerNote: z.string().trim().optional(),
+  })
+  .superRefine((body, ctx) => {
+    if (body.reviewStatus === "needs_resubmission" && (!body.reviewerNote || body.reviewerNote.length < 10)) {
+      ctx.addIssue({ code: "custom", path: ["reviewerNote"], message: "must be at least 10 characters" });
+    }
+  });
+
+adminRouter.patch("/documents/:id", async (req, res) => {
+  const body = documentReviewSchema.parse(req.body ?? {});
+  const existing = await prisma.document.findUnique({ where: { id: String(req.params.id) }, select: { id: true } });
+  if (!existing) throw notFound("Document not found.");
+
+  const document = await prisma.document.update({
+    where: { id: existing.id },
+    data: {
+      status: body.reviewStatus,
+      reviewerNote: body.reviewerNote ?? null,
+      reviewedAt: new Date(),
+      reviewedById: req.user!.id,
+    },
+    select: {
+      id: true,
+      type: true,
+      originalName: true,
+      status: true,
+      reviewerNote: true,
+      reviewedAt: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+  res.json({ document });
+});
+
 adminRouter.get("/documents/:id/file", async (req, res) => {
-  const document = await prisma.memberDocument.findUnique({ where: { id: String(req.params.id) } });
-  if (!document) throw notFound("Document not found");
-  const filePath = privateFilePath(document.storedName);
+  const document = await prisma.document.findUnique({ where: { id: String(req.params.id) } });
+  if (!document) throw notFound("Document not found.");
+  await prisma.auditLog.create({
+    data: {
+      actorId: req.user!.id,
+      action: "admin.document.file_access",
+      entityType: "document",
+      entityId: document.id,
+    },
+  });
+  const filePath = privateFilePath(document.storagePath);
   if (!existsSync(filePath)) throw notFound("That file is no longer available.");
-  res.type(document.mimeType);
   res.setHeader("Content-Disposition", `inline; filename="${document.originalName.replace(/["\r\n]/g, "")}"`);
   res.sendFile(filePath);
 });
 
-adminRouter.patch("/documents/:id", async (req, res) => {
-  const { reviewStatus, reviewerNote } = documentReviewSchema.parse(req.body);
-  const note = reviewerNote?.trim() ?? "";
-  if (reviewStatus === "rejected" && note.length < 10) {
-    throw badRequest("A rejection needs a note of at least 10 characters.", { fields: { reviewerNote: "must explain the rejection in at least 10 characters" } });
-  }
-
-  const existing = await prisma.memberDocument.findUnique({
-    where: { id: req.params.id },
-    include: { member: { select: { userId: true } } },
-  });
-  if (!existing) throw notFound("Document not found");
-  if (existing.member.userId === req.user!.id) throw conflict("You cannot review your own documents.");
-
-  const document = await prisma.memberDocument.update({
-    where: { id: existing.id },
-    data: {
-      reviewStatus: reviewStatus as DocumentReviewStatus,
-      reviewerNote: note || null,
-      reviewedAt: reviewStatus === "submitted" ? null : new Date(),
-    },
-  });
-  res.json(toDocument(document));
+adminRouter.get("/applications/:id/tutorial", async (_req, res) => {
+  res.json({ tutorial: null, reason: "Tutorial models are not in the Phase 1 schema yet." });
 });
 
-const decisionSchema = z.object({
-  decision: z.enum(["approved", "rejected", "info_required"]),
-  reason: z.string().max(2000).optional(),
+adminRouter.get("/applications/:id/exam", async (_req, res) => {
+  res.json({ exam: null, reason: "Exam models are not in the Phase 1 schema yet." });
 });
-
-const OPEN_FOR_DECISION = ["submitted", "under_review", "info_required"] as const;
-const CERTIFICATE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
-function newCertificateNumber() {
-  const bytes = randomBytes(6);
-  let code = "";
-  for (let i = 0; i < bytes.length; i++) code += CERTIFICATE_ALPHABET[bytes[i] % CERTIFICATE_ALPHABET.length];
-  return `EC-${new Date().getUTCFullYear()}-${code}`;
-}
-
-adminRouter.post("/applications/:id/decision", async (req, res) => {
-  const { decision, reason } = decisionSchema.parse(req.body);
-  const note = reason?.trim() ?? "";
-  if (decision !== "approved" && note.length < 10) {
-    throw badRequest("A rejection or request for information needs a reason of at least 10 characters.", {
-      fields: { reason: "must be at least 10 characters" },
-    });
-  }
-
-  const result = await prisma.$transaction(async (tx) => {
-    const application = await tx.application.findUnique({
-      where: { id: req.params.id },
-      include: {
-        member: {
-          include: {
-            documents: true,
-            videoProgress: { include: { tutorialVideo: { select: { isActive: true } } } },
-            examAttempts: { where: { submittedAt: { not: null } }, orderBy: { submittedAt: "desc" }, take: 1 },
-          },
-        },
-        certificate: true,
-      },
-    });
-    if (!application) throw notFound("Application not found");
-    if (application.member.userId === req.user!.id) throw conflict("You cannot review your own application.");
-    if (!OPEN_FOR_DECISION.includes(application.status as (typeof OPEN_FOR_DECISION)[number])) {
-      throw conflict("This application has already been decided.");
-    }
-
-    const documentsChecked =
-      application.member.documents.some((document) => document.documentType === "id_document" && document.reviewStatus === "accepted") &&
-      application.member.documents.some((document) => document.documentType === "proof_of_residence" && document.reviewStatus === "accepted");
-    const tutorialCompleted = application.member.videoProgress.some((progress) => progress.tutorialVideo.isActive && progress.completed);
-    const examPassed = application.member.examAttempts[0]?.passed === true;
-
-    if (decision === "approved" && (!documentsChecked || !tutorialCompleted || !examPassed)) {
-      throw badRequest("Approve only after the documents are accepted, the tutorial is complete, and the exam is passed.");
-    }
-
-    const now = new Date();
-    const expiresAt = new Date(now);
-    expiresAt.setUTCMonth(expiresAt.getUTCMonth() + 12);
-
-    await tx.application.update({ where: { id: application.id }, data: { status: decision } });
-    await tx.memberProfile.update({
-      where: { id: application.memberProfileId },
-      data:
-        decision === "approved"
-          ? { verificationStatus: "verified", isActive: true, verifiedAt: now, verificationExpiresAt: expiresAt }
-          : { verificationStatus: decision === "rejected" ? "rejected" : "info_required", isActive: decision !== "rejected" },
-    });
-
-    let certificate = application.certificate;
-    if (decision === "approved") {
-      let created = false;
-      for (let attempt = 0; attempt < 5 && !created; attempt++) {
-        try {
-          certificate = await tx.certificate.create({
-            data: {
-              memberProfileId: application.memberProfileId,
-              applicationId: application.id,
-              certificateNumber: newCertificateNumber(),
-              issuedById: req.user!.id,
-              issuedAt: now,
-              expiresAt,
-            },
-          });
-          created = true;
-        } catch (error) {
-          if (attempt === 4) throw error;
-        }
-      }
-    }
-
-    const review = await tx.adminReview.create({
-      data: {
-        applicationId: application.id,
-        adminId: req.user!.id,
-        decision,
-        reason: note || null,
-        documentsChecked,
-        tutorialCompleted,
-        examPassed,
-      },
-    });
-
-    return { review, certificate: decision === "approved" ? certificate : null };
-  });
-
-  res.json({
-    decision: result.review.decision,
-    reason: result.review.reason,
-    documentsChecked: result.review.documentsChecked,
-    tutorialCompleted: result.review.tutorialCompleted,
-    examPassed: result.review.examPassed,
-    createdAt: result.review.createdAt,
-    certificate: result.certificate
-      ? {
-          id: result.certificate.id,
-          number: result.certificate.certificateNumber,
-          issuedAt: result.certificate.issuedAt,
-          expiresAt: result.certificate.expiresAt,
-        }
-      : null,
-  });
-});
-
-function toDocument(document: {
-  id: string;
-  applicationId: string | null;
-  documentType: string;
-  originalName: string;
-  storedName: string;
-  mimeType: string;
-  sizeBytes: number;
-  reviewStatus: string;
-  reviewerNote: string | null;
-  reviewedAt: Date | null;
-  uploadedAt: Date;
-}) {
-  return {
-    id: document.id,
-    applicationId: document.applicationId,
-    documentType: document.documentType,
-    originalName: document.originalName,
-    storedName: document.storedName,
-    mimeType: document.mimeType,
-    sizeBytes: document.sizeBytes,
-    reviewStatus: document.reviewStatus,
-    reviewerNote: document.reviewerNote,
-    reviewedAt: document.reviewedAt,
-    uploadedAt: document.uploadedAt,
-  };
-}

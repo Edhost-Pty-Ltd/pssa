@@ -77,6 +77,7 @@ model User {
 
   memberProfile MemberProfile?
   applications  Application[]
+  documents     Document[]
   reviewedDocs  Document[]      @relation("DocumentReviewer")
   adminReviews  AdminReview[]
   statusChanges StatusHistory[] @relation("StatusActor")
