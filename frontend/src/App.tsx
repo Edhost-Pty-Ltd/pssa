@@ -2,21 +2,25 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { MemberLayout } from "./components/member/MemberLayout";
 import { RequireMember } from "./components/member/RequireMember";
 import { AuthProvider } from "./context/AuthProvider";
+import ComingSoon from "./pages/ComingSoon";
 import ComponentsPreview from "./pages/dev/ComponentsPreview";
 import NotBuiltYet from "./pages/member/NotBuiltYet";
 import Overview from "./pages/member/Overview";
 import SignIn from "./pages/member/SignIn";
+import Landing from "./pages/public/Landing";
 import ScreensReference from "./screens-reference";
 
 // Routes
 // Public pages go in src/pages/public, member portal pages in src/pages/member.
 // Everything under /member needs a signed-in MEMBER (RequireMember).
-// Until a page is built, the Figma reference is shown so the whole design can be clicked through.
+// /design shows the full Figma reference; pages that aren't built yet show "Coming soon".
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <Routes>
+          <Route path="/" element={<Landing />} />
+
           <Route path="/member/sign-in" element={<SignIn />} />
           <Route path="/member" element={<RequireMember />}>
             <Route element={<MemberLayout />}>
@@ -28,8 +32,10 @@ export default function App() {
               <Route path="*" element={<Navigate to="/member" replace />} />
             </Route>
           </Route>
+
+          <Route path="/design/*" element={<ScreensReference />} />
           {import.meta.env.DEV && <Route path="/dev/components" element={<ComponentsPreview />} />}
-          <Route path="/*" element={<ScreensReference />} />
+          <Route path="*" element={<ComingSoon />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>
