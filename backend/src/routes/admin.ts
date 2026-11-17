@@ -1,18 +1,45 @@
 import { Router } from "express";
 import { existsSync } from "node:fs";
 import { z } from "zod";
+import { evaluateActivationGates } from "../lib/activationGates.js";
+import { applicationSummary, listApplications } from "../lib/adminApplicationQueries.js";
 import { conflict, notFound } from "../lib/http.js";
 import { prisma } from "../lib/prisma.js";
 import { privateFilePath } from "../lib/uploads.js";
 import { requireRole } from "../middleware/auth.js";
-import { applicationSummary, listApplications } from "../lib/adminApplicationQueries.js";
 
 /**
  * Admin application review against the Phase 1 schema.
- * Certificate issuance and Active gates are extended in a later PR.
+ * Approve records a decision; Active is only set when every activation gate passes.
  */
 export const adminRouter = Router();
 adminRouter.use(requireRole("ADMIN"));
+
+const MEMBERSHIP_MONTHS = 12;
+
+async function loadDecisionContext(applicationId: string) {
+  return prisma.application.findUnique({
+    where: { id: applicationId },
+    select: {
+      id: true,
+      number: true,
+      status: true,
+      userId: true,
+      agreementAcceptedAt: true,
+      agreementVersion: true,
+      submittedAt: true,
+      user: {
+        select: {
+          id: true,
+          memberProfile: {
+            select: { id: true, memberStatus: true },
+          },
+          documents: { select: { type: true, status: true }, orderBy: { createdAt: "desc" } },
+        },
+      },
+    },
+  });
+}
 
 const listSchema = z.object({
   status: z.enum(["draft", "submitted", "under_review", "needs_info", "approved", "rejected"]).optional(),
@@ -88,7 +115,23 @@ adminRouter.get("/applications/:id", async (req, res) => {
     },
   });
   if (!application) throw notFound("Application not found.");
-  res.json({ application });
+
+  const channels = application.user.memberProfile
+    ? await prisma.channel.findMany({
+        where: { memberProfileId: application.user.memberProfile.id },
+        select: { status: true },
+      })
+    : [];
+  const activation = evaluateActivationGates({
+    application,
+    profile: application.user.memberProfile,
+    documents: application.user.documents,
+    channels,
+    examPassed: null,
+    recordingApproval: false,
+  });
+
+  res.json({ application, activation });
 });
 
 const decisionSchema = z.object({
@@ -99,16 +142,39 @@ const decisionSchema = z.object({
 
 adminRouter.post("/applications/:id/decision", async (req, res) => {
   const body = decisionSchema.parse(req.body ?? {});
-  const application = await prisma.application.findUnique({
-    where: { id: String(req.params.id) },
-    select: { id: true, status: true, userId: true },
-  });
+  const application = await loadDecisionContext(String(req.params.id));
   if (!application) throw notFound("Application not found.");
   if (application.status === "approved" || application.status === "rejected") {
     throw conflict("A final decision has already been recorded for this application.");
   }
+  if (!application.user.memberProfile) throw conflict("This application has no member profile.");
 
-  const updated = await prisma.$transaction(async (tx) => {
+  const channels = await prisma.channel.findMany({
+    where: { memberProfileId: application.user.memberProfile.id },
+    select: { status: true },
+  });
+
+  const activation = evaluateActivationGates({
+    application,
+    profile: application.user.memberProfile,
+    documents: application.user.documents,
+    channels,
+    examPassed: null,
+    recordingApproval: body.decision === "approved",
+  });
+
+  if (body.decision === "approved" && !activation.canRecordApproval) {
+    throw conflict("Cannot approve until verification documents are accepted and the membership agreement is on file.", {
+      fields: { gates: activation.missing.filter((key) => key === "verification" || key === "agreement").join(",") || "incomplete" },
+      activation,
+    });
+  }
+
+  const now = new Date();
+  const validUntil = new Date(now);
+  validUntil.setMonth(validUntil.getMonth() + MEMBERSHIP_MONTHS);
+
+  const result = await prisma.$transaction(async (tx) => {
     const next = await tx.application.update({
       where: { id: application.id },
       data: { status: body.decision },
@@ -121,6 +187,7 @@ adminRouter.post("/applications/:id/decision", async (req, res) => {
         agreementVersion: true,
       },
     });
+
     await tx.adminReview.create({
       data: {
         applicationId: application.id,
@@ -130,6 +197,7 @@ adminRouter.post("/applications/:id/decision", async (req, res) => {
         conflictDeclared: true,
       },
     });
+
     await tx.auditLog.create({
       data: {
         actorId: req.user!.id,
@@ -140,10 +208,54 @@ adminRouter.post("/applications/:id/decision", async (req, res) => {
         conflictDeclared: true,
       },
     });
-    return next;
+
+    let activated = false;
+    // Never set Active from approve alone — every gate must pass (exam included).
+    if (body.decision === "approved" && activation.canActivate) {
+      const fromStatus = application.user.memberProfile!.memberStatus;
+      await tx.memberProfile.update({
+        where: { id: application.user.memberProfile!.id },
+        data: {
+          memberStatus: "active",
+          validFrom: now,
+          validUntil,
+        },
+      });
+      await tx.statusHistory.create({
+        data: {
+          memberProfileId: application.user.memberProfile!.id,
+          fromStatus,
+          toStatus: "active",
+          reason: body.reason,
+          actorId: req.user!.id,
+          conflictDeclared: true,
+        },
+      });
+      activated = true;
+    } else if (body.decision === "approved") {
+      await tx.auditLog.create({
+        data: {
+          actorId: req.user!.id,
+          action: "application.approval_without_activation",
+          entityType: "application",
+          entityId: application.id,
+          reason: `Approved without Active. Missing gates: ${activation.missing.join(", ")}`,
+          conflictDeclared: true,
+        },
+      });
+    }
+
+    return { application: next, activated };
   });
 
-  res.json({ application: updated });
+  const activationOut = {
+    ...activation,
+    activated: result.activated,
+    // Certificate issuance waits on Active + PSSA number format with KG.
+    certificate: null as null,
+  };
+
+  res.json({ application: result.application, activation: activationOut, certificate: null });
 });
 
 const documentReviewSchema = z
