@@ -251,3 +251,13 @@
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 760px) {
+  /* Phones: the code box and Confirm button get a full row under the channel. */
+  .channel-table > div > .channel-confirm-cell {
+    grid-column: 1 / -1;
+  }
+  .channel-confirm input {
+    flex: 1;
+  }
+}

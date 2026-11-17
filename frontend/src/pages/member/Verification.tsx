@@ -232,7 +232,8 @@ export default function Verification() {
                     <span>
                       <Icon name={slot.icon} />
                     </span>
-                    {latest ? <Status of={DOCUMENT_STATUS} value={latest.status} /> : <StatusBadge tone="grey">Not uploaded</StatusBadge>}
+                    {/* Wrapped in a div: the design's ".doc-card-top > span" rule is meant for the icon square only. */}
+                    <div>{latest ? <Status of={DOCUMENT_STATUS} value={latest.status} /> : <StatusBadge tone="grey">Not uploaded</StatusBadge>}</div>
                   </div>
                   <h3>
                     {slot.title}
@@ -375,7 +376,7 @@ function Channels({ channels, onChanged }: { channels: Channel[]; onChanged: () 
                   <span>{platformLabel(channel.kind)}</span>
                   <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
                   {channel.status === "code_sent" ? (
-                    <div>
+                    <div className="channel-confirm-cell">
                       <div className="channel-confirm">
                         <input
                           aria-label={`Confirmation code for ${channel.value}`}
