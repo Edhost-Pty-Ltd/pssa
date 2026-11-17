@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../../context/auth-context";
 import { Icon, type IconName } from "../Icon";
 import { Logo } from "../Logo";
@@ -21,7 +21,6 @@ function initials(first: string | null, last: string | null, email: string) {
 
 export function MemberLayout() {
   const { user, signOut } = useAuth();
-  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
@@ -30,8 +29,7 @@ export function MemberLayout() {
 
   async function handleSignOut() {
     setSigningOut(true);
-    await signOut();
-    navigate("/member/sign-in?signedOut=1", { replace: true });
+    await signOut(); // RequireMember then shows sign-in with "You're signed out."
   }
 
   return (

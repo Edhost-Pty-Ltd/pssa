@@ -8,6 +8,8 @@ export interface AuthState {
   loading: boolean;
   /** Set when the session check failed (for example, the backend isn't running). */
   error: string | null;
+  /** True right after the member pressed Sign out, so the sign-in page can say so. */
+  signedOut: boolean;
   refresh: () => Promise<void>;
   setUser: (user: User | null) => void;
   signOut: () => Promise<void>;

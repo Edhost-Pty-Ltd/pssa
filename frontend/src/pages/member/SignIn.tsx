@@ -21,12 +21,19 @@ function friendlyError(err: unknown) {
   return errorMessage(err);
 }
 
+// The backend sends some field errors as the end of a sentence ("is incorrect").
+// Turn those into a full sentence: "That code is incorrect."
+function fieldMessage(subject: string, message: string) {
+  const text = /^[a-z]/.test(message) ? `${subject} ${message}` : message;
+  return text.endsWith(".") ? text : `${text}.`;
+}
+
 function expiryTime(iso: string) {
   return new Date(iso).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Johannesburg" });
 }
 
 export default function SignIn() {
-  const { user, setUser } = useAuth();
+  const { user, setUser, signedOut } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const next = safeNext(params.get("next"));
@@ -66,7 +73,7 @@ export default function SignIn() {
       setCode("");
       setCooldown(RESEND_SECONDS);
     } catch (err) {
-      if (err instanceof ApiError && err.fields.email) setFieldError({ email: err.fields.email });
+      if (err instanceof ApiError && err.fields.email) setFieldError({ email: fieldMessage("That email address", err.fields.email) });
       else setError(friendlyError(err));
     } finally {
       setBusy(false);
@@ -87,7 +94,7 @@ export default function SignIn() {
       setUser(user);
       navigate(next, { replace: true });
     } catch (err) {
-      if (err instanceof ApiError && err.fields.code) setFieldError({ code: err.fields.code });
+      if (err instanceof ApiError && err.fields.code) setFieldError({ code: fieldMessage("That code", err.fields.code) });
       else setError(friendlyError(err));
     } finally {
       setBusy(false);
@@ -107,7 +114,7 @@ export default function SignIn() {
         <Logo />
         <p className="kicker">Member portal</p>
 
-        {params.get("signedOut") && !sent && (
+        {(signedOut || params.get("signedOut")) && !sent && (
           <Notice tone="green" title="You're signed out." />
         )}
 

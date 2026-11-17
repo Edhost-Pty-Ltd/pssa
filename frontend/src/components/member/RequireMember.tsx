@@ -5,7 +5,7 @@ import { Button, ErrorState, LoadingState } from "../ui";
 // Wraps every member page: only a signed-in MEMBER gets through.
 // Anyone else is sent to sign-in, and comes back to the page they wanted afterwards.
 export function RequireMember() {
-  const { user, loading, error, refresh, signOut } = useAuth();
+  const { user, loading, error, signedOut, refresh, signOut } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -29,6 +29,7 @@ export function RequireMember() {
   }
 
   if (!user) {
+    if (signedOut) return <Navigate to="/member/sign-in?signedOut=1" replace />;
     const next = encodeURIComponent(location.pathname + location.search);
     return <Navigate to={`/member/sign-in?next=${next}`} replace />;
   }
