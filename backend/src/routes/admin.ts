@@ -5,6 +5,7 @@ import { conflict, notFound } from "../lib/http.js";
 import { prisma } from "../lib/prisma.js";
 import { privateFilePath } from "../lib/uploads.js";
 import { requireRole } from "../middleware/auth.js";
+import { applicationSummary, listApplications } from "../lib/adminApplicationQueries.js";
 
 /**
  * Admin application review against the Phase 1 schema.
@@ -21,60 +22,12 @@ const listSchema = z.object({
 });
 
 adminRouter.get("/summary", async (_req, res) => {
-  const grouped = await prisma.application.groupBy({ by: ["status"], _count: { _all: true } });
-  const byStatus = Object.fromEntries(grouped.map((row) => [row.status, row._count._all]));
-  res.json({
-    awaitingReview: (byStatus.submitted ?? 0) + (byStatus.under_review ?? 0),
-    needsInformation: byStatus.needs_info ?? 0,
-    approved: byStatus.approved ?? 0,
-    rejected: byStatus.rejected ?? 0,
-  });
+  res.json(await applicationSummary());
 });
 
 adminRouter.get("/applications", async (req, res) => {
   const { status, q, page, pageSize } = listSchema.parse(req.query);
-  const where = {
-    ...(status ? { status } : {}),
-    ...(q
-      ? {
-          OR: [
-            { number: { contains: q, mode: "insensitive" as const } },
-            { user: { email: { contains: q, mode: "insensitive" as const } } },
-            { user: { memberProfile: { tradingName: { contains: q, mode: "insensitive" as const } } } },
-            { user: { memberProfile: { firstName: { contains: q, mode: "insensitive" as const } } } },
-            { user: { memberProfile: { lastName: { contains: q, mode: "insensitive" as const } } } },
-          ],
-        }
-      : {}),
-  };
-
-  const [total, items] = await Promise.all([
-    prisma.application.count({ where }),
-    prisma.application.findMany({
-      where,
-      orderBy: [{ submittedAt: "desc" }, { createdAt: "desc" }],
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-      select: {
-        id: true,
-        number: true,
-        status: true,
-        submittedAt: true,
-        createdAt: true,
-        user: {
-          select: {
-            id: true,
-            email: true,
-            memberProfile: {
-              select: { firstName: true, lastName: true, tradingName: true, memberStatus: true },
-            },
-          },
-        },
-      },
-    }),
-  ]);
-
-  res.json({ items, page, pageSize, total });
+  res.json(await listApplications({ status, q, page, pageSize }));
 });
 
 adminRouter.get("/applications/:id", async (req, res) => {
