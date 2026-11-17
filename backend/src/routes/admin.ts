@@ -7,6 +7,7 @@ import { prisma } from "../lib/prisma.js";
 import { badRequest, conflict, notFound } from "../lib/http.js";
 import { privateFilePath } from "../lib/uploads.js";
 import { requireRole } from "../middleware/auth.js";
+import { applicationSummary, listApplications } from "../lib/adminApplicationQueries.js";
 
 const APPLICATION_STATUSES = ["submitted", "under_review", "info_required", "approved", "rejected"] as const;
 
@@ -111,29 +112,25 @@ export const adminRouter = Router();
 adminRouter.use(requireRole("ADMIN"));
 
 adminRouter.get("/summary", async (_req, res) => {
-  const [applications, members, documentsAwaitingReview] = await Promise.all([
-    prisma.application.groupBy({ by: ["status"], _count: { _all: true } }),
-    prisma.memberProfile.groupBy({ by: ["verificationStatus"], _count: { _all: true } }),
-    prisma.memberDocument.count({ where: { reviewStatus: "submitted" } }),
-  ]);
-
-  const applicationCounts = Object.fromEntries(APPLICATION_STATUSES.map((status) => [status, 0])) as Record<ApplicationStatus, number>;
-  for (const row of applications) applicationCounts[row.status] = row._count._all;
-
-  const memberCounts: Record<string, number> = {};
-  for (const row of members) memberCounts[row.verificationStatus] = row._count._all;
-
-  res.json({ applications: applicationCounts, members: memberCounts, documentsAwaitingReview });
+  res.json(await applicationSummary());
 });
 
 adminRouter.get("/applications", async (req, res) => {
-  const { status } = listQuerySchema.parse(req.query);
-  const applications = await prisma.application.findMany({
-    where: status ? { status } : {},
-    include: applicationInclude,
-    orderBy: { submittedAt: "asc" },
-  });
-  res.json(applications.map(toSummary));
+  const status = typeof req.query.status === "string" && req.query.status ? req.query.status : undefined;
+  const allowed = ["draft", "submitted", "under_review", "needs_info", "approved", "rejected"] as const;
+  if (status && !allowed.includes(status as (typeof allowed)[number])) {
+    throw badRequest("Unknown application status.", { fields: { status: "is not a valid status" } });
+  }
+  const page = Number(req.query.page);
+  const pageSize = Number(req.query.pageSize);
+  res.json(
+    await listApplications({
+      status: status as (typeof allowed)[number] | undefined,
+      q: typeof req.query.q === "string" ? req.query.q : undefined,
+      page: Number.isInteger(page) && page > 0 ? page : 1,
+      pageSize: Number.isInteger(pageSize) && pageSize > 0 ? Math.min(pageSize, 100) : 20,
+    }),
+  );
 });
 
 adminRouter.get("/applications/:id", async (req, res) => {
