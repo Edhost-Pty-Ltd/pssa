@@ -8,6 +8,7 @@ import NotBuiltYet from "./pages/member/NotBuiltYet";
 import Dashboard from "./pages/member/Dashboard";
 import Profile from "./pages/member/Profile";
 import SignIn from "./pages/member/SignIn";
+import Verification from "./pages/member/Verification";
 import Landing from "./pages/public/Landing";
 import ScreensReference from "./screens-reference";
 
@@ -27,7 +28,7 @@ export default function App() {
             <Route element={<MemberLayout />}>
               <Route index element={<Dashboard />} />
               <Route path="profile" element={<Profile />} />
-              <Route path="verification" element={<NotBuiltYet title="Verification" when="Phase 1 (verification documents)" />} />
+              <Route path="verification" element={<Verification />} />
               <Route path="tutorials" element={<NotBuiltYet title="Tutorials" when="Phase 2" />} />
               <Route path="assessment" element={<NotBuiltYet title="Assessment" when="Phase 2" />} />
               <Route path="certificate" element={<NotBuiltYet title="Certificate & badge" when="Phase 2" />} />

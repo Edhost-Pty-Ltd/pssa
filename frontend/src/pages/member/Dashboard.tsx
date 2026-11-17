@@ -171,13 +171,30 @@ function Progress({ data }: { data: ApplicationOverview }) {
 }
 
 function ActionNeeded({ data }: { data: ApplicationOverview }) {
-  const { actions } = data.progress;
+  const { actions, steps } = data.progress;
+
+  // Nothing to fix: point to the next step that's open, if there is one.
+  if (actions.length === 0) {
+    const next = steps.find((s) => s.state === "in_progress" || s.state === "not_started" || s.state === "action_needed");
+    const link = next && STEP_LINK[next.key];
+    return (
+      <Panel
+        icon={next ? "arrow" : "check"}
+        title={next ? "Your next step" : "You're up to date"}
+        subtitle={next ? `${next.label}: ${next.detail}` : "Nothing is waiting on you right now."}
+      >
+        {next && link && (
+          <ButtonLink to={link} variant="green" iconRight="arrow">
+            {next.state === "not_started" ? `Start: ${next.label}` : `Continue: ${next.label}`}
+          </ButtonLink>
+        )}
+        {next && !link && <p className="muted">There's nothing for you to do on this step yet.</p>}
+      </Panel>
+    );
+  }
+
   return (
-    <Panel
-      icon={actions.length ? "warning" : "check"}
-      title={actions.length ? "Action needed" : "You're up to date"}
-      subtitle={actions.length ? "These items are holding up your application." : "Nothing is waiting on you right now."}
-    >
+    <Panel icon="warning" title="Action needed" subtitle="These items are holding up your application.">
       {actions.map((item) => {
         const link = STEP_LINK[item.step];
         return (
