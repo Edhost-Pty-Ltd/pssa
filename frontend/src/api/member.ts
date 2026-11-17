@@ -2,41 +2,46 @@ import { api } from "../lib/api";
 
 // The signed-in member's profile and application (docs/api-contract.md section 6.2).
 
-/** Must match MEMBER_CATEGORIES in backend/src/lib/members.ts. */
-export const MEMBER_CATEGORIES = ["Home & Errands", "Food & Cooking", "Style & Events", "Other"] as const;
-export type MemberCategory = (typeof MEMBER_CATEGORIES)[number];
+export type ChannelKind = "facebook" | "instagram" | "tiktok";
 
-export type SocialPlatform = "facebook" | "instagram" | "tiktok";
-
-export interface MemberDocumentSummary {
+export interface Channel {
   id: string;
-  documentType: string;
+  kind: ChannelKind | string;
+  value: string;
+  status: "code_sent" | "confirmed";
+}
+
+export interface MemberDocument {
+  id: string;
+  type: string;
   originalName: string;
-  reviewStatus: string;
+  status: string;
   reviewerNote: string | null;
-  uploadedAt: string;
+  reviewedAt: string | null;
+  createdAt: string;
 }
 
 /** GET /api/member/profile → { profile } */
 export interface MemberProfile {
   id: string;
   email: string;
-  firstName: string;
-  lastName: string;
-  phone: string | null;
   emailVerifiedAt: string | null;
   phoneVerifiedAt: string | null;
   createdAt: string;
-  member: {
+  memberProfile: {
     id: string;
-    businessName: string | null;
-    category: string;
+    firstName: string;
+    lastName: string;
+    phone: string | null;
+    tradingName: string | null;
+    scope: string | null;
     idNumber: string | null; // masked by the server
     physicalAddress: string | null;
-    verificationStatus: string;
-    socialAccounts: { platform: SocialPlatform; url: string }[];
-    documents: MemberDocumentSummary[];
+    city: string | null;
+    memberStatus: string | null;
+    channels: Channel[];
   };
+  documents: MemberDocument[];
 }
 
 /** Fields the member can change. Leave a field out to keep it; null or "" clears optional fields. */
@@ -44,10 +49,11 @@ export interface ProfileChanges {
   firstName?: string;
   lastName?: string;
   phone?: string | null;
-  businessName?: string | null;
-  category?: MemberCategory;
+  tradingName?: string | null;
+  scope?: string | null;
   idNumber?: string;
   physicalAddress?: string | null;
+  city?: string | null;
   facebookUrl?: string | null;
   instagramUrl?: string | null;
   tiktokUrl?: string | null;
@@ -57,7 +63,7 @@ export const getProfile = (signal?: AbortSignal) => api<{ profile: MemberProfile
 
 export const updateProfile = (changes: ProfileChanges) => api<{ profile: MemberProfile }>("/member/profile", { method: "PATCH", body: changes });
 
-/* Application progress (GET /api/member/application). Proposed shape, to be confirmed in the contract. */
+/* Application progress (GET /api/member/application), as in docs/api-contract.md. */
 
 export type StepKey = "profile" | "documents" | "tutorials" | "assessment" | "review" | "certified";
 export type StepState = "complete" | "in_progress" | "action_needed" | "not_started" | "locked";

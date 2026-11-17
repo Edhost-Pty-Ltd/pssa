@@ -1,22 +1,23 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { getProfile, MEMBER_CATEGORIES, updateProfile, type MemberProfile, type ProfileChanges } from "../../api/member";
-import { Button, ButtonLink, ErrorState, LoadingState, Notice, Panel, SelectField, TextArea, TextField } from "../../components/ui";
+import { getProfile, updateProfile, type Channel, type MemberProfile, type ProfileChanges } from "../../api/member";
+import { Button, ButtonLink, ErrorState, LoadingState, Notice, Panel, StatusBadge, TextArea, TextField } from "../../components/ui";
 import { useAuth } from "../../context/auth-context";
 import { ApiError, errorMessage } from "../../lib/api";
 import { fieldMessage } from "../../lib/fieldMessage";
 import { isValidSaIdNumber } from "../../lib/saId";
 
-// Start an application / Profile. Uses GET and PATCH /api/member/profile.
-// Only fields that changed are sent. ID number, address and banking details are never shown publicly.
+// Start an application / Profile. Uses GET and PATCH /api/member/profile (docs/api-contract.md 6.2).
+// Only fields that changed are sent. ID number and address are private: never shown publicly.
 
 type Values = {
   firstName: string;
   lastName: string;
   phone: string;
-  businessName: string;
-  category: string;
+  tradingName: string;
+  scope: string;
   idNumber: string;
   physicalAddress: string;
+  city: string;
   facebookUrl: string;
   instagramUrl: string;
   tiktokUrl: string;
@@ -26,23 +27,25 @@ const LABELS: Record<keyof Values, string> = {
   firstName: "First name",
   lastName: "Last name",
   phone: "Phone number",
-  businessName: "Trading name",
-  category: "Category",
+  tradingName: "Trading name",
+  scope: "What you source",
   idNumber: "ID number",
   physicalAddress: "Address",
-  facebookUrl: "Facebook link",
-  instagramUrl: "Instagram link",
-  tiktokUrl: "TikTok link",
+  city: "City or town",
+  facebookUrl: "Facebook",
+  instagramUrl: "Instagram",
+  tiktokUrl: "TikTok",
 };
 
 // People often type a handle ("nba.naledi", "@nba.naledi") or a link without https://.
 // Turn either into the full link the backend expects.
 const LINK_BASE = {
-  facebookUrl: { domains: ["facebook.com", "fb.com"], prefix: "https://www.facebook.com/" },
-  instagramUrl: { domains: ["instagram.com"], prefix: "https://www.instagram.com/" },
-  tiktokUrl: { domains: ["tiktok.com"], prefix: "https://www.tiktok.com/@" },
+  facebookUrl: { kind: "facebook", domains: ["facebook.com", "fb.com"], prefix: "https://www.facebook.com/" },
+  instagramUrl: { kind: "instagram", domains: ["instagram.com"], prefix: "https://www.instagram.com/" },
+  tiktokUrl: { kind: "tiktok", domains: ["tiktok.com"], prefix: "https://www.tiktok.com/@" },
 } as const;
 type LinkField = keyof typeof LINK_BASE;
+const LINK_FIELDS = Object.keys(LINK_BASE) as LinkField[];
 
 function normalizeLink(field: LinkField, raw: string) {
   const value = raw.trim();
@@ -64,48 +67,50 @@ function isLinkFor(field: LinkField, value: string) {
   }
 }
 
-const LINK_FIELDS: LinkField[] = ["facebookUrl", "instagramUrl", "tiktokUrl"];
-const PLATFORM_NAME: Record<LinkField, string> = { facebookUrl: "Facebook", instagramUrl: "Instagram", tiktokUrl: "TikTok" };
+function channelFor(profile: MemberProfile, field: LinkField): Channel | undefined {
+  return profile.memberProfile.channels.find((c) => c.kind === LINK_BASE[field].kind);
+}
 
 function toValues(profile: MemberProfile): Values {
-  const social = (platform: string) => profile.member.socialAccounts.find((s) => s.platform === platform)?.url ?? "";
+  const p = profile.memberProfile;
   return {
-    firstName: profile.firstName ?? "",
-    lastName: profile.lastName ?? "",
-    phone: profile.phone ?? "",
-    businessName: profile.member.businessName ?? "",
-    category: profile.member.category ?? "",
+    firstName: p.firstName ?? "",
+    lastName: p.lastName ?? "",
+    phone: p.phone ?? "",
+    tradingName: p.tradingName ?? "",
+    scope: p.scope ?? "",
     idNumber: "", // the server only returns a masked number, so a new one is typed in fresh
-    physicalAddress: profile.member.physicalAddress ?? "",
-    facebookUrl: social("facebook"),
-    instagramUrl: social("instagram"),
-    tiktokUrl: social("tiktok"),
+    physicalAddress: p.physicalAddress ?? "",
+    city: p.city ?? "",
+    facebookUrl: channelFor(profile, "facebookUrl")?.value ?? "",
+    instagramUrl: channelFor(profile, "instagramUrl")?.value ?? "",
+    tiktokUrl: channelFor(profile, "tiktokUrl")?.value ?? "",
   };
 }
 
+const REQUIRED: Partial<Record<keyof Values, string>> = {
+  firstName: "Enter your first name.",
+  lastName: "Enter your last name.",
+  phone: "Enter a phone number customers and PSSA can reach you on.",
+  scope: "Tell us what you source.",
+  physicalAddress: "Enter your address.",
+  city: "Enter your city or town.",
+};
+
 /** Checks one field. Returns an error message, or undefined when the field is fine. */
 function checkField(key: keyof Values, v: Values, hasIdOnFile: boolean): string | undefined {
-  switch (key) {
-    case "firstName":
-      return v.firstName.trim() ? undefined : "Enter your first name.";
-    case "lastName":
-      return v.lastName.trim() ? undefined : "Enter your last name.";
-    case "category":
-      return v.category ? undefined : "Choose a category.";
-    case "idNumber": {
-      const id = v.idNumber.replace(/\s/g, "");
-      if (!id) return hasIdOnFile ? undefined : "Enter your South African ID number.";
-      return isValidSaIdNumber(id) ? undefined : "Enter a valid 13-digit South African ID number.";
-    }
-    case "physicalAddress":
-      return v.physicalAddress.trim() ? undefined : "Enter your address.";
-    case "facebookUrl":
-    case "instagramUrl":
-    case "tiktokUrl":
-      return !v[key].trim() || isLinkFor(key, v[key].trim()) ? undefined : `Enter your ${PLATFORM_NAME[key]} handle or a ${PLATFORM_NAME[key]} link.`;
-    default:
-      return undefined;
+  if (key === "idNumber") {
+    const id = v.idNumber.replace(/\s/g, "");
+    if (!id) return hasIdOnFile ? undefined : "Enter your South African ID number.";
+    return isValidSaIdNumber(id) ? undefined : "Enter a valid 13-digit South African ID number.";
   }
+  if ((LINK_FIELDS as string[]).includes(key)) {
+    const field = key as LinkField;
+    const name = LABELS[field];
+    return !v[field].trim() || isLinkFor(field, v[field].trim()) ? undefined : `Enter your ${name} handle or a ${name} link.`;
+  }
+  const required = REQUIRED[key];
+  return required && !v[key].trim() ? required : undefined;
 }
 
 function validate(v: Values, hasIdOnFile: boolean) {
@@ -120,18 +125,26 @@ function validate(v: Values, hasIdOnFile: boolean) {
 /** Only the fields that changed. Empty optional fields are sent as null so they are cleared. */
 function changes(initial: Values, v: Values): ProfileChanges {
   const out: ProfileChanges = {};
-  const trimmed = (key: keyof Values) => v[key].trim();
-  if (trimmed("firstName") !== initial.firstName) out.firstName = trimmed("firstName");
-  if (trimmed("lastName") !== initial.lastName) out.lastName = trimmed("lastName");
-  if (trimmed("phone") !== initial.phone) out.phone = trimmed("phone") || null;
-  if (trimmed("businessName") !== initial.businessName) out.businessName = trimmed("businessName") || null;
-  if (v.category !== initial.category) out.category = v.category as ProfileChanges["category"];
+  const t = (key: keyof Values) => v[key].trim();
+  if (t("firstName") !== initial.firstName) out.firstName = t("firstName");
+  if (t("lastName") !== initial.lastName) out.lastName = t("lastName");
+  if (t("phone") !== initial.phone) out.phone = t("phone") || null;
+  if (t("tradingName") !== initial.tradingName) out.tradingName = t("tradingName") || null;
+  if (t("scope") !== initial.scope) out.scope = t("scope") || null;
   if (v.idNumber.replace(/\s/g, "")) out.idNumber = v.idNumber.replace(/\s/g, "");
-  if (trimmed("physicalAddress") !== initial.physicalAddress) out.physicalAddress = trimmed("physicalAddress") || null;
-  if (trimmed("facebookUrl") !== initial.facebookUrl) out.facebookUrl = trimmed("facebookUrl") || null;
-  if (trimmed("instagramUrl") !== initial.instagramUrl) out.instagramUrl = trimmed("instagramUrl") || null;
-  if (trimmed("tiktokUrl") !== initial.tiktokUrl) out.tiktokUrl = trimmed("tiktokUrl") || null;
+  if (t("physicalAddress") !== initial.physicalAddress) out.physicalAddress = t("physicalAddress") || null;
+  if (t("city") !== initial.city) out.city = t("city") || null;
+  for (const field of LINK_FIELDS) if (t(field) !== initial[field]) out[field] = t(field) || null;
   return out;
+}
+
+function ChannelHint({ channel }: { channel?: Channel }) {
+  if (!channel) return <>Optional.</>;
+  return channel.status === "confirmed" ? (
+    <StatusBadge tone="green">Confirmed</StatusBadge>
+  ) : (
+    <>Not confirmed yet. You'll prove you control it under Verification.</>
+  );
 }
 
 export default function Profile() {
@@ -162,10 +175,23 @@ export default function Profile() {
     return () => controller.abort();
   }, [attempt]);
 
-  if (loadError) return <ErrorState title="We couldn't load your profile" text={loadError} onRetry={() => { setLoadError(null); setAttempt((n) => n + 1); }} />;
+  if (loadError) {
+    return (
+      <ErrorState
+        title="We couldn't load your profile"
+        text={loadError}
+        onRetry={() => {
+          setLoadError(null);
+          setAttempt((n) => n + 1);
+        }}
+      />
+    );
+  }
   if (!profile || !values || !initial) return <LoadingState rows={3} label="Loading your profile" />;
 
-  const hasIdOnFile = Boolean(profile.member.idNumber);
+  const p = profile.memberProfile;
+  const hasIdOnFile = Boolean(p.idNumber);
+
   const set = (key: keyof Values) => (e: { target: { value: string } }) => {
     setValues({ ...values, [key]: e.target.value });
     setSaved(false);
@@ -174,12 +200,13 @@ export default function Profile() {
 
   // When the member leaves a field: tidy a link, then check just that field.
   const leave = (key: keyof Values) => () => {
-    if (!values) return;
     let next = values;
     if ((LINK_FIELDS as string[]).includes(key)) {
       const tidy = normalizeLink(key as LinkField, values[key]);
-      if (tidy !== values[key]) next = { ...values, [key]: tidy };
-      setValues(next);
+      if (tidy !== values[key]) {
+        next = { ...values, [key]: tidy };
+        setValues(next);
+      }
     }
     setErrors((current) => ({ ...current, [key]: checkField(key, next, hasIdOnFile) }));
   };
@@ -210,7 +237,7 @@ export default function Profile() {
       setValues(v);
       setSaved(true);
       // Update the signed-in user so the sidebar shows the new name straight away.
-      if (user) setUser({ ...user, firstName: profile.firstName, lastName: profile.lastName, phone: profile.phone });
+      if (user) setUser({ ...user, firstName: profile.memberProfile.firstName, lastName: profile.memberProfile.lastName });
     } catch (err) {
       if (err instanceof ApiError && Object.keys(err.fields).length) {
         const mapped: Partial<Record<keyof Values, string>> = {};
@@ -252,27 +279,32 @@ export default function Profile() {
             autoComplete="tel"
             placeholder="e.g. 082 123 4567"
             value={values.phone}
-            onChange={set("phone")} onBlur={leave("phone")}
+            onChange={set("phone")}
+            onBlur={leave("phone")}
             error={errors.phone}
-            hint="Optional. A new number has to be confirmed again."
+            hint="A new number has to be confirmed again."
+            required
           />
         </Panel>
 
-        <Panel icon="badge" title="Your business" subtitle="How customers know you">
+        <Panel icon="badge" title="Your business" subtitle="How customers know you and what you do">
           <TextField
             label="Trading name"
-            value={values.businessName}
-            onChange={set("businessName")} onBlur={leave("businessName")}
-            error={errors.businessName}
+            value={values.tradingName}
+            onChange={set("tradingName")}
+            onBlur={leave("tradingName")}
+            error={errors.tradingName}
             hint="Optional. Leave empty if you trade under your own name."
           />
-          <SelectField
-            label="Category"
-            value={values.category}
-            onChange={set("category")} onBlur={leave("category")}
-            error={errors.category}
-            placeholder="Choose a category"
-            options={MEMBER_CATEGORIES.map((c) => ({ value: c, label: c }))}
+          <TextField
+            label="What you source"
+            placeholder="e.g. Fashion, beauty, homeware"
+            maxLength={150}
+            value={values.scope}
+            onChange={set("scope")}
+            onBlur={leave("scope")}
+            error={errors.scope}
+            hint="The kinds of goods or services you offer. This becomes the scope on your certificate."
             required
           />
         </Panel>
@@ -283,11 +315,12 @@ export default function Profile() {
             inputMode="numeric"
             autoComplete="off"
             maxLength={16}
-            placeholder={hasIdOnFile ? (profile.member.idNumber ?? "") : "13 digits"}
+            placeholder={hasIdOnFile ? (p.idNumber ?? "") : "13 digits"}
             value={values.idNumber}
-            onChange={set("idNumber")} onBlur={leave("idNumber")}
+            onChange={set("idNumber")}
+            onBlur={leave("idNumber")}
             error={errors.idNumber}
-            hint={hasIdOnFile ? `On file: ${profile.member.idNumber}. Leave empty to keep it.` : "It must match your ID document."}
+            hint={hasIdOnFile ? `On file: ${p.idNumber}. Leave empty to keep it.` : "It must match your ID document."}
             required={!hasIdOnFile}
           />
           <TextArea
@@ -295,17 +328,28 @@ export default function Profile() {
             rows={3}
             maxLength={300}
             value={values.physicalAddress}
-            onChange={set("physicalAddress")} onBlur={leave("physicalAddress")}
+            onChange={set("physicalAddress")}
+            onBlur={leave("physicalAddress")}
             error={errors.physicalAddress}
             hint="It must match your proof of address."
             required
           />
+          <TextField label="City or town" autoComplete="address-level2" maxLength={100} value={values.city} onChange={set("city")} onBlur={leave("city")} error={errors.city} required />
         </Panel>
 
-        <Panel icon="people" title="Trading channels" subtitle="The social pages you sell on. We'll ask you to prove you control them.">
-          <TextField label="Facebook" placeholder="Page name or link" value={values.facebookUrl} onChange={set("facebookUrl")} onBlur={leave("facebookUrl")} error={errors.facebookUrl} />
-          <TextField label="Instagram" placeholder="@handle or link" value={values.instagramUrl} onChange={set("instagramUrl")} onBlur={leave("instagramUrl")} error={errors.instagramUrl} />
-          <TextField label="TikTok" placeholder="@handle or link" value={values.tiktokUrl} onChange={set("tiktokUrl")} onBlur={leave("tiktokUrl")} error={errors.tiktokUrl} />
+        <Panel icon="people" title="Trading channels" subtitle="The social pages you sell on. You'll prove you control them under Verification.">
+          {LINK_FIELDS.map((field) => (
+            <TextField
+              key={field}
+              label={LABELS[field]}
+              placeholder={field === "facebookUrl" ? "Page name or link" : "@handle or link"}
+              value={values[field]}
+              onChange={set(field)}
+              onBlur={leave(field)}
+              error={errors[field]}
+              hint={<ChannelHint channel={channelFor(profile, field)} />}
+            />
+          ))}
         </Panel>
 
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
