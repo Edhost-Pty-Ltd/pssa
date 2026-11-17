@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { conflict } from "./http.js";
 import { hashPassword, passwordSchema } from "./password.js";
@@ -156,4 +156,35 @@ export async function createMember(input: MemberRegistration) {
     },
     select: userSelect,
   });
+}
+
+const passwordlessMemberSelect = { id: true, email: true, role: true } as const;
+
+/**
+ * Find a member by email, or create a passwordless MEMBER for public OTP sign-in.
+ * Profile fields are filled later on the member application steps.
+ */
+export async function findOrCreatePasswordlessMember(email: string) {
+  const existing = await prisma.user.findUnique({ where: { email }, select: passwordlessMemberSelect });
+  if (existing) return existing;
+
+  try {
+    return await prisma.user.create({
+      data: {
+        role: "MEMBER",
+        email,
+        passwordHash: null,
+        firstName: "",
+        lastName: "",
+        member: { create: { category: "Other" } },
+      },
+      select: passwordlessMemberSelect,
+    });
+  } catch (error) {
+    // Parallel first-time sends can race on the unique email constraint.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return prisma.user.findUniqueOrThrow({ where: { email }, select: passwordlessMemberSelect });
+    }
+    throw error;
+  }
 }

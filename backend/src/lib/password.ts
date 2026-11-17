@@ -25,7 +25,7 @@ export function verifyPassword(plain: string, hash: string) {
  */
 const DUMMY_HASH = bcrypt.hashSync(`no-such-user-${Math.random()}`, BCRYPT_COST);
 
-export async function verifyPasswordOrDummy(plain: string, hash: string | undefined) {
+export async function verifyPasswordOrDummy(plain: string, hash: string | null | undefined) {
   const ok = await bcrypt.compare(plain, hash ?? DUMMY_HASH);
   return Boolean(hash) && ok;
 }
