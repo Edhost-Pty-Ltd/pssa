@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import ComingSoon from "./pages/ComingSoon";
+import ComponentsPreview from "./pages/dev/ComponentsPreview";
 import Landing from "./pages/public/Landing";
 import ScreensReference from "./screens-reference";
 
@@ -12,6 +13,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/design/*" element={<ScreensReference />} />
+        {import.meta.env.DEV && <Route path="/dev/components" element={<ComponentsPreview />} />}
         <Route path="*" element={<ComingSoon />} />
       </Routes>
     </BrowserRouter>
