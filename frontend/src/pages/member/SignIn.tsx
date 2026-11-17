@@ -7,6 +7,7 @@ import "../../components/member/member.css";
 import { Button, Notice, TextField } from "../../components/ui";
 import { useAuth } from "../../context/auth-context";
 import { ApiError, errorMessage } from "../../lib/api";
+import { fieldMessage } from "../../lib/fieldMessage";
 import { safeNext } from "../../lib/safeNext";
 
 // Member sign-in, as in the Figma file: email → one-time code → signed in. No password.
@@ -19,13 +20,6 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function friendlyError(err: unknown) {
   if (err instanceof ApiError && err.status === 429) return "Too many attempts. Please wait a few minutes and try again.";
   return errorMessage(err);
-}
-
-// The backend sends some field errors as the end of a sentence ("is incorrect").
-// Turn those into a full sentence: "That code is incorrect."
-function fieldMessage(subject: string, message: string) {
-  const text = /^[a-z]/.test(message) ? `${subject} ${message}` : message;
-  return text.endsWith(".") ? text : `${text}.`;
 }
 
 function expiryTime(iso: string) {

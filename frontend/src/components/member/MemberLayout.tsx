@@ -8,6 +8,7 @@ import "./member.css";
 // The member portal shell from the Figma design: navy sidebar, top bar, page content.
 const NAV: { to: string; icon: IconName; label: string; end?: boolean }[] = [
   { to: "/member", icon: "home", label: "Overview", end: true },
+  { to: "/member/profile", icon: "user", label: "Profile" },
   { to: "/member/verification", icon: "shield", label: "Verification" },
   { to: "/member/tutorials", icon: "play", label: "Tutorials" },
   { to: "/member/assessment", icon: "book", label: "Assessment" },

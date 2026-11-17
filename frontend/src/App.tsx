@@ -5,7 +5,8 @@ import { AuthProvider } from "./context/AuthProvider";
 import ComingSoon from "./pages/ComingSoon";
 import ComponentsPreview from "./pages/dev/ComponentsPreview";
 import NotBuiltYet from "./pages/member/NotBuiltYet";
-import Overview from "./pages/member/Overview";
+import Dashboard from "./pages/member/Dashboard";
+import Profile from "./pages/member/Profile";
 import SignIn from "./pages/member/SignIn";
 import Landing from "./pages/public/Landing";
 import ScreensReference from "./screens-reference";
@@ -24,7 +25,8 @@ export default function App() {
           <Route path="/member/sign-in" element={<SignIn />} />
           <Route path="/member" element={<RequireMember />}>
             <Route element={<MemberLayout />}>
-              <Route index element={<Overview />} />
+              <Route index element={<Dashboard />} />
+              <Route path="profile" element={<Profile />} />
               <Route path="verification" element={<NotBuiltYet title="Verification" when="Phase 1 (verification documents)" />} />
               <Route path="tutorials" element={<NotBuiltYet title="Tutorials" when="Phase 2" />} />
               <Route path="assessment" element={<NotBuiltYet title="Assessment" when="Phase 2" />} />
