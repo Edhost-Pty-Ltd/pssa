@@ -91,3 +91,18 @@ export function lodgeAppeal(complaintId: string, reason: string, email?: string)
 export function realFieldErrors(fields: Record<string, string>) {
   return Object.fromEntries(Object.entries(fields).filter(([, message]) => message !== "ok"));
 }
+
+/* Member side: complaints that name the signed-in member. */
+
+/** Cases about the signed-in member, newest first (backend PR #46). */
+export const getMyComplaints = (signal?: AbortSignal) => api<{ complaints: PublicComplaint[] }>("/member/complaints", { signal });
+
+/** The member's side of the story. Allowed while the case is awaiting their response or under review. */
+export function respondToComplaint(complaintId: string, body: string, files: File[] = []) {
+  const path = `/member/complaints/${encodeURIComponent(complaintId)}/response`;
+  if (files.length === 0) return api<{ complaint: PublicComplaint }>(path, { method: "POST", body: { body } });
+  const form = new FormData();
+  form.set("body", body);
+  for (const file of files) form.append("files", file);
+  return api<{ complaint: PublicComplaint }>(path, { form });
+}

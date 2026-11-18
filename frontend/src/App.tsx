@@ -7,6 +7,7 @@ import ComponentsPreview from "./pages/dev/ComponentsPreview";
 import NotBuiltYet from "./pages/member/NotBuiltYet";
 import Certificate from "./pages/member/Certificate";
 import Dashboard from "./pages/member/Dashboard";
+import MemberComplaints from "./pages/member/MemberComplaints";
 import Profile from "./pages/member/Profile";
 import SignIn from "./pages/member/SignIn";
 import Verification from "./pages/member/Verification";
@@ -44,6 +45,7 @@ export default function App() {
               <Route path="tutorials" element={<NotBuiltYet title="Tutorials" when="Phase 2" />} />
               <Route path="assessment" element={<NotBuiltYet title="Assessment" when="Phase 2" />} />
               <Route path="certificate" element={<Certificate />} />
+              <Route path="complaints" element={<MemberComplaints />} />
               <Route path="*" element={<Navigate to="/member" replace />} />
             </Route>
           </Route>
