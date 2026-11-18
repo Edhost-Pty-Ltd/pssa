@@ -13,13 +13,19 @@ const NAV = [
   { label: "Raise a concern", href: "/concern" },
 ];
 
-export function SiteHeader() {
+export function SiteHeader({ transparent = false }: { transparent?: boolean }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-40 bg-navy text-white shadow-[0_1px_0_rgb(255_255_255/0.08)]">
+    <header
+      className={
+        transparent
+          ? "absolute inset-x-0 top-0 z-40 bg-transparent text-white"
+          : "sticky top-0 z-40 border-b border-white/15 bg-navy/75 text-white backdrop-blur-md shadow-[0_8px_30px_rgb(11_32_55/0.22)]"
+      }
+    >
       {/* Utility bar */}
-      <div className="hidden border-b border-white/10 md:block">
+      <div className={transparent ? "hidden border-b border-white/15 md:block" : "hidden border-b border-white/10 md:block"}>
         <div className="mx-auto flex max-w-7xl items-center justify-end gap-3 px-6 py-2 text-[13px]">
           <a href="/#register" className="mr-auto flex items-center gap-2 text-white/70 hover:text-white">
             <Icon name="search" size={15} /> Verify a member
