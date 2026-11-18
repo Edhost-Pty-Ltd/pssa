@@ -5,6 +5,7 @@ import { AuthProvider } from "./context/AuthProvider";
 import ComingSoon from "./pages/ComingSoon";
 import ComponentsPreview from "./pages/dev/ComponentsPreview";
 import NotBuiltYet from "./pages/member/NotBuiltYet";
+import Certificate from "./pages/member/Certificate";
 import Dashboard from "./pages/member/Dashboard";
 import Profile from "./pages/member/Profile";
 import SignIn from "./pages/member/SignIn";
@@ -34,7 +35,7 @@ export default function App() {
               <Route path="verification" element={<Verification />} />
               <Route path="tutorials" element={<NotBuiltYet title="Tutorials" when="Phase 2" />} />
               <Route path="assessment" element={<NotBuiltYet title="Assessment" when="Phase 2" />} />
-              <Route path="certificate" element={<NotBuiltYet title="Certificate & badge" when="Phase 2" />} />
+              <Route path="certificate" element={<Certificate />} />
               <Route path="*" element={<Navigate to="/member" replace />} />
             </Route>
           </Route>
