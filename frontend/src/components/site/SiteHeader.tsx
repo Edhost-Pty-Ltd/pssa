@@ -24,10 +24,10 @@ export function SiteHeader() {
           <a href="/#register" className="mr-auto flex items-center gap-2 text-white/70 hover:text-white">
             <Icon name="search" size={15} /> Verify a member
           </a>
-          <Link to="/login" className="rounded-md border border-white/30 px-3 py-1.5 font-semibold hover:bg-white/10">
+          <Link to="/member/sign-in" className="rounded-md border border-white/30 px-3 py-1.5 font-semibold hover:bg-white/10">
             Member login
           </Link>
-          <Link to="/apply" className="rounded-md bg-green px-3 py-1.5 font-semibold text-white hover:bg-green-dark">
+          <Link to="/member" className="rounded-md bg-green px-3 py-1.5 font-semibold text-white hover:bg-green-dark">
             Apply to join
           </Link>
         </div>
@@ -70,10 +70,10 @@ export function SiteHeader() {
               </li>
             ))}
             <li className="flex gap-3 py-3">
-              <Link to="/login" className="flex-1 rounded-md border border-white/30 px-3 py-2.5 text-center font-semibold">
+              <Link to="/member/sign-in" className="flex-1 rounded-md border border-white/30 px-3 py-2.5 text-center font-semibold">
                 Member login
               </Link>
-              <Link to="/apply" className="flex-1 rounded-md bg-green px-3 py-2.5 text-center font-semibold">
+              <Link to="/member" className="flex-1 rounded-md bg-green px-3 py-2.5 text-center font-semibold">
                 Apply to join
               </Link>
             </li>

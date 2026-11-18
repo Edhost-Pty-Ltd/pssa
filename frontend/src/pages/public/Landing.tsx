@@ -362,7 +362,7 @@ function WhyJoinAndBuySafely() {
           <p className="text-xs font-bold uppercase tracking-[0.22em] text-green">For personal shoppers</p>
           <h2 className="mt-4 text-4xl font-bold text-white sm:text-5xl">Why join?</h2>
           <IconList items={WHY_JOIN} />
-          <Link to="/apply" className="mt-10 inline-flex items-center gap-2 rounded-xl bg-green px-6 py-3.5 font-semibold hover:bg-green-dark">
+          <Link to="/member" className="mt-10 inline-flex items-center gap-2 rounded-xl bg-green px-6 py-3.5 font-semibold hover:bg-green-dark">
             Apply to join <Icon name="arrow" size={18} />
           </Link>
         </div>
@@ -507,7 +507,7 @@ function JoinBand() {
           <p className="mt-3 text-lg text-white/80">Give your customers a status they can check. Apply to join PSSA.</p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <Link to="/apply" className="inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3.5 font-semibold text-green-dark hover:bg-green-soft">
+          <Link to="/member" className="inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3.5 font-semibold text-green-dark hover:bg-green-soft">
             Apply to join <Icon name="arrow" size={18} />
           </Link>
           <Link to="/policies/verification" className="inline-flex items-center rounded-xl border border-white/50 px-6 py-3.5 font-semibold hover:bg-white/10">

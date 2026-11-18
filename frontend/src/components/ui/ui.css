@@ -15,8 +15,10 @@
   margin-bottom: 8px;
 }
 .ui-label .ui-required {
+  display: inline;
   color: #b43e39;
-  margin-left: 3px;
+  margin: 0 0 0 3px;
+  font-size: inherit;
 }
 .ui-control {
   display: flex;
