@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { z } from "zod";
 import { evaluateActivationGates } from "../lib/activationGates.js";
 import { applicationSummary, listApplications } from "../lib/adminApplicationQueries.js";
+import { ensureCertificatePdf } from "../lib/certificatePdf.js";
 import { issueCertificateOnActivation, liveCertificateStatus, serializeCertificate } from "../lib/certificates.js";
 import { attemptHistory, hasPassedEntranceExam, tutorialCompletion } from "../lib/examReviewQueries.js";
 import { conflict, notFound } from "../lib/http.js";
@@ -34,7 +35,7 @@ async function loadDecisionContext(applicationId: string) {
         select: {
           id: true,
           memberProfile: {
-            select: { id: true, memberStatus: true, scope: true },
+            select: { id: true, memberStatus: true, scope: true, firstName: true, lastName: true, tradingName: true },
           },
           documents: { select: { type: true, status: true }, orderBy: { createdAt: "desc" } },
         },
@@ -273,12 +274,22 @@ adminRouter.post("/applications/:id/decision", async (req, res) => {
     return { application: next, activated, certificate };
   });
 
-  const certificateOut = result.certificate
+  let issuedCertificate = result.certificate;
+  if (issuedCertificate && application.user.memberProfile) {
+    issuedCertificate = await ensureCertificatePdf(issuedCertificate, {
+      firstName: application.user.memberProfile.firstName ?? "",
+      lastName: application.user.memberProfile.lastName ?? "",
+      tradingName: application.user.memberProfile.tradingName ?? null,
+      scope: application.user.memberProfile.scope,
+    });
+  }
+
+  const certificateOut = issuedCertificate
     ? serializeCertificate(
-        result.certificate,
+        issuedCertificate,
         liveCertificateStatus(
           { memberStatus: "active", validUntil },
-          result.certificate,
+          issuedCertificate,
           now,
         ),
       )

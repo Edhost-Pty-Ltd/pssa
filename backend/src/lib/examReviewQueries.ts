@@ -74,7 +74,22 @@ export async function retakeWindow(memberProfileId: string, now = new Date()) {
   const passed = attempts.some((attempt) => attempt.passed === true);
 
   if (passed) return { retakeOpen: false, failedCount, opensOn: null, reason: "passed" as const };
-  if (failedCount >= 2) return { retakeOpen: false, failedCount, opensOn: null, reason: "locked" as const };
+
+  if (failedCount >= 2 && latestFail?.submittedAt) {
+    // Admin allow-retake unlocks one more attempt after the latest fail.
+    const override = await prisma.auditLog.findFirst({
+      where: {
+        action: "exam.allow_retake",
+        entityType: "member_profile",
+        entityId: memberProfileId,
+        createdAt: { gt: latestFail.submittedAt },
+      },
+      select: { id: true },
+    });
+    if (override) return { retakeOpen: true, failedCount, opensOn: null, reason: "open" as const };
+    return { retakeOpen: false, failedCount, opensOn: null, reason: "locked" as const };
+  }
+
   if (!latestFail?.submittedAt) return { retakeOpen: false, failedCount, opensOn: null, reason: "no_attempt" as const };
 
   const opensOn = new Date(addCalendarDays(johannesburgDate(latestFail.submittedAt), RETAKE_WAIT_DAYS));

@@ -229,19 +229,19 @@ The official exam is **30 questions in 45 minutes**, a pass mark of **at least 8
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
 | GET | `/api/tutorials/active` | Member or admin | **In:** cookie. **Out:** `200 { tutorials[] }` with title, duration and (for members) completion / watched seconds. Empty list includes a `reason` until official videos are active. | Exists |
-| GET | `/api/tutorials/:id/stream` | Member or admin | **In:** cookie. **Out:** the video stream. | To build |
-| POST | `/api/tutorials/:id/progress` | Member | **In:** `{ positionSeconds, durationSeconds? }`. **Out:** `200 { progress }`. A skip-ahead must not count as complete. | To build |
+| GET | `/api/tutorials/:id/stream` | Member or admin | **In:** cookie. Supports HTTP Range. Inactive tutorials are admin-only. **Out:** the private video bytes. | Exists |
+| POST | `/api/tutorials/:id/progress` | Member | **In:** `{ positionSeconds, durationSeconds? }`. **Out:** `200 { progress }`. Max position advances by at most 5 seconds per report so skip-ahead cannot complete a lesson. Complete at ≥95% of duration. | Exists |
 | GET | `/api/exam/status` | Member | **In:** cookie. **Out:** `200 { open, passed, attempts, canStart, reason?, retakeOpensAt? }`. `canStart` is true only when tutorials are complete, active questions exist, and the retake window allows it. | Exists |
-| POST | `/api/exam/start` | Member | **In:** empty, or `{ type: "entrance" \| "refresher" }`. **Out:** `201 { attempt, questions[], expiresAt }` — 30 questions, no answer key, 45-minute `expiresAt`. | To build |
-| POST | `/api/exam/attempts/:id/submit` | Member | **In:** `{ answers }`. **Out:** `200 { attempt }` with score, percent, passed, and `criticalFailed`. Late or over-time submits are scored as a fail. | To build |
+| POST | `/api/exam/start` | Member | **In:** empty, or `{ type: "entrance" }` (refresher not Phase 1). **Out:** `201 { attempt, questions[], expiresAt }` — up to 30 active questions, no answer key, 45-minute `expiresAt`. Resumes an open unexpired attempt with `200`. | Exists |
+| POST | `/api/exam/attempts/:id/submit` | Member | **In:** `{ answers }` as a map of questionId→optionId, or `[{ questionId, optionId }]`. **Out:** `200 { attempt }` with score, percent, passed (≥80% and every critical correct), and `criticalFailed`. Late or over-time submits are scored as a fail. | Exists |
 | GET | `/api/exam/attempts` | Member | **In:** cookie. **Out:** `200 { attempts[] }` (no answer key). | Exists |
 | POST | `/api/exam/attempts/:id/appeal` | Member | **In:** `{ reason }`. **Out:** `201 { appeal }`. | To build |
 | GET | `/api/tutorials` | Admin | **In:** cookie. **Out:** `200 { tutorials[] }` including inactive ones. | Exists |
-| POST | `/api/tutorials` | Admin | **In:** multipart video plus title. **Out:** `201 { tutorial }`. | To build |
-| PATCH | `/api/tutorials/:id` | Admin | **In:** title, duration, active flag. **Out:** `200 { tutorial }`. | To build |
-| POST | `/api/tutorials/:id/activate` | Admin | **In:** none. **Out:** `200 { tutorial }`. | To build |
+| POST | `/api/tutorials` | Admin | **In:** multipart `file` (MP4/WebM/MOV, max 200 MB) plus `title`, optional `durationSeconds`. **Out:** `201 { tutorial }` with `isActive: false`. | Exists |
+| PATCH | `/api/tutorials/:id` | Admin | **In:** title, durationSeconds, isActive. **Out:** `200 { tutorial }`. | Exists |
+| POST | `/api/tutorials/:id/activate` | Admin | **In:** none. **Out:** `200 { tutorial }` with `isActive: true`. | Exists |
 | GET | `/api/exam/questions` | Admin | **In:** cookie. **Out:** `200 { questions[] }` including `isCritical` and the correct option (admin only). | Exists |
-| POST | `/api/exam/attempts/:id/allow-retake` | Admin | **In:** `{ reason, conflictDeclared: true }`. **Out:** `200 { attempt }`. Used after two failed attempts. | To build |
+| POST | `/api/exam/attempts/:id/allow-retake` | Admin | **In:** `{ reason, conflictDeclared: true }`. **Out:** `200 { attempt, retake }`. Used after two failed attempts; records an audit unlock for one further attempt. | Exists |
 | GET | `/api/admin/applications/:id/tutorial` | Admin | **In:** path id. **Out:** `{ tutorial }` with completedCount / total / lessons. | Exists |
 | GET | `/api/admin/applications/:id/exam` | Admin | **In:** path id. **Out:** `{ exam }` with passed, attemptCount, latest score/time, and attempt history. | Exists |
 
@@ -257,12 +257,12 @@ The official exam is **30 questions in 45 minutes**, a pass mark of **at least 8
 
 ### 6.6 Certificates and live verification
 
-A certificate is issued only after the gates and a recorded human approval have passed. The number is `PSSA-YYYY-XXXXXX` and must be unique. A QR code on the PDF points at `/verify/PSSA-YYYY-XXXXXX`. Screenshots and old PDFs do not prove current status — only this live endpoint does.
+A certificate is issued only after the gates and a recorded human approval have passed. The number is `PSSA-YYYY-XXXXXX` and must be unique. On activation the API writes a PDF (with QR) under private storage and sets `pdfPath`. The QR encodes `{CLIENT_ORIGIN}/verify/PSSA-YYYY-XXXXXX` (frontend live-check). Screenshots and old PDFs do not prove current status — only the live endpoint does.
 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
 | GET | `/api/member/certificate` | Member | **In:** cookie. **Out:** `200 { certificate }` with number, validity, scope, `qrTargetUrl` (`/verify/PSSA-YYYY-XXXXXX`), live `status`, and `storedStatus`. Live status is derived from membership + dates (expired/suspended/revoked/resigned never look Active). `certificate: null` with a reason if none issued yet. | Exists |
-| GET | `/api/member/certificate/pdf` | Member | **In:** cookie. **Out:** the PDF. | To build |
+| GET | `/api/member/certificate/pdf` | Member | **In:** cookie. **Out:** the membership PDF (`application/pdf`) with name, number, validity, scope, and a QR code pointing at `{CLIENT_ORIGIN}/verify/PSSA-YYYY-XXXXXX`. Generated on activation (and lazily on first download if missing). Official logo is used when present at `backend/storage/branding/logo.png` (or `.jpg`); otherwise a text PSSA mark. Screenshots of the PDF are not proof — only live-check is. | Exists |
 | GET | `/api/verify/:certificateNumber` | Public | **In:** path is the certificate number, for example `PSSA-2026-004821` (spaces ignored, case-insensitive). **Out:** `200 { certificate }` with `number`, `firstName`, `lastName`, `tradingName`, `scope`, live `status` (`active` \| `suspended` \| `expired` \| `revoked` \| `resigned`), `validFrom`, `validUntil`, `channels[]` (`{ kind, value }` confirmed only), and `checkedAt` (ISO). `404` if the number is unknown. Never ID, bank or address fields. Status is computed live from the member profile and validity dates. | Exists |
 
 ### 6.7 Public register
@@ -282,20 +282,21 @@ Complaints are new. They are always free. Service times in Africa/Johannesburg: 
 | GET | `/api/complaints/:reference` | Complainant (login or a one-time access token sent by email) | **In:** the `PSSA-C-YYYY-XXXX` reference. **Out:** `200 { complaint }` with status, next steps and public-safe history. No private member evidence. | To build |
 | POST | `/api/member/complaints/:id/response` | Member named in the case | **In:** `{ body, files? }`. **Out:** `200 { complaint }`. | To build |
 | POST | `/api/complaints/:id/appeal` | Complainant or member | **In:** `{ reason }`. **Out:** `201 { appeal }` if lodged within ten business days. A different person hears the appeal. | To build |
-| GET | `/api/admin/complaints` | Admin | **In:** query `status?`, `type?`, `q?`, `page`. **Out:** `200 { items, page, pageSize, total }`. | To build |
-| GET | `/api/admin/complaints/:id` | Admin | **In:** path id. **Out:** `200 { complaint }` with timeline, evidence, member response, parties and deadlines. | To build |
-| PATCH | `/api/admin/complaints/:id` | Admin | **In:** `{ status?, assigneeId?, internalNote? }`. Setting `under_review` should stamp acknowledgement if it is still empty. | To build |
-| POST | `/api/admin/complaints/:id/decision` | Admin | **In:** `{ outcome: "no_breach" \| "corrective_action" \| "suspension" \| "revocation", reasons, conflictDeclared: true }`. **Out:** `200 { complaint, member? }`. If the outcome suspends or revokes a member, the live badge and public register update immediately. | To build |
-| POST | `/api/admin/complaints/:id/appeal-decision` | Admin (a different reviewer) | **In:** `{ decision, reasons, conflictDeclared: true }`. **Out:** `200 { appeal, complaint }`. | To build |
+| GET | `/api/admin/complaints` | Admin | **In:** query `status?`, `type?`, `q?`, `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }`. | Exists |
+| GET | `/api/admin/complaints/:id` | Admin | **In:** path id. **Out:** `200 { complaint }` with evidence metadata, member responses, appeals, parties and deadlines. Storage paths are not returned. | Exists |
+| PATCH | `/api/admin/complaints/:id` | Admin | **In:** `{ status?, assigneeId?, internalNote? }`. Setting `under_review` stamps `acknowledgedAt` if empty and sets response/decision due dates (5 / 30 business days). `internalNote` is stored on the audit log (no separate note column). | Exists |
+| POST | `/api/admin/complaints/:id/decision` | Admin | **In:** `{ outcome: "no_breach" \| "corrective_action" \| "suspension" \| "revocation", reasons, conflictDeclared: true }`. **Out:** `200 { complaint, member }`. Sets appeal deadline (+10 business days). Suspension/revocation updates member status (and revokes the active certificate on revocation). | Exists |
+| POST | `/api/admin/complaints/:id/appeal-decision` | Admin (a different reviewer) | **In:** `{ decision, reasons, conflictDeclared: true }`. **Out:** `200 { appeal, complaint }`. The original decision reviewer cannot decide the appeal. | Exists |
 
 ### 6.9 Members, status and renewal
 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
-| GET | `/api/admin/members` | Admin | **In:** query `status?`, `q?`, `page`. **Out:** `200 { items, page, pageSize, total }`. | To build |
-| GET | `/api/admin/members/:id` | Admin | **In:** path id. **Out:** `200 { member }` with status, certificate (`PSSA-YYYY-XXXXXX`), history summary. | To build |
-| POST | `/api/admin/members/:id/status` | Admin | **In:** `{ status: "active" \| "suspended" \| "expired" \| "revoked" \| "resigned", reason, conflictDeclared: true }`. **Out:** `200 { member, historyEntry }`. The live badge and public register update immediately. Include `resigned`, which the Figma control does not show. | To build |
-| GET | `/api/admin/members/:id/history` | Admin | **In:** path id. **Out:** `200 { history[] }`: from, to, reason, actor, `conflictDeclared`, at. | To build |
+| GET | `/api/admin/members` | Admin | **In:** query `status?` (`active` \| `suspended` \| `expired` \| `revoked` \| `resigned`), `q?`, `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }` with profile fields and latest certificate (live status). | Exists |
+| GET | `/api/admin/members/:id` | Admin | **In:** path id (`MemberProfile.id`). **Out:** `200 { member }` with status, certificate (`PSSA-YYYY-XXXXXX`), channels, identityType, and recent history. | Exists |
+| POST | `/api/admin/members/:id/status` | Admin | **In:** `{ status: "active" \| "suspended" \| "expired" \| "revoked" \| "resigned", reason, conflictDeclared: true }`. **Out:** `200 { member, historyEntry }`. Writes `StatusHistory` + audit. Revoked/resigned/expired also updates the stored certificate status so live-check stays correct. | Exists |
+| GET | `/api/admin/members/:id/history` | Admin | **In:** path id. **Out:** `200 { history[] }`: from, to, reason, actor, `conflictDeclared`, at. | Exists |
+| GET | `/api/admin/audit` | Admin | **In:** query `q?`, `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }` from existing `AuditLog` rows (action, entity, reason, actor, at). | Exists |
 | GET | `/api/member/renewal` | Member | **In:** cookie. **Out:** `200 { validUntil, windowOpensAt, status, checklist, lastReminderAt? }`. | To build |
 | POST | `/api/member/renewal/start` | Member | **In:** empty, or `{ confirm: true }`. **Out:** `201 { renewal }` so the member can update documents and sit the refresher exam. | To build |
 | POST | `/api/member/renewal/declaration` | Member | **In:** `{ accepted: true, version, statements? }`. **Out:** `200 { renewal }`. | To build |

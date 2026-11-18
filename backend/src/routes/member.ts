@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import type { DocumentType } from "@prisma/client";
 import { z } from "zod";
+import { certificatePdfDiskPath, ensureCertificatePdf } from "../lib/certificatePdf.js";
 import {
   findCertificateForMember,
   liveCertificateStatus,
@@ -490,6 +491,36 @@ memberRouter.get("/certificate", async (req, res) => {
       liveCertificateStatus(member.memberProfile!, certificate),
     ),
   });
+});
+
+memberRouter.get("/certificate/pdf", async (req, res) => {
+  const member = await loadMember(req.user!.id);
+  const profile = member.memberProfile!;
+  let certificate = await findCertificateForMember(profile.id);
+  if (!certificate) throw notFound("No certificate has been issued yet.");
+
+  certificate = await ensureCertificatePdf(certificate, {
+    firstName: profile.firstName,
+    lastName: profile.lastName,
+    tradingName: profile.tradingName,
+    scope: profile.scope,
+  });
+
+  const filePath = certificate.pdfPath ? certificatePdfDiskPath(certificate.pdfPath) : null;
+  if (!filePath) throw notFound("Certificate PDF is not available yet.");
+
+  await prisma.auditLog.create({
+    data: {
+      actorId: req.user!.id,
+      action: "member.certificate.pdf_access",
+      entityType: "certificate",
+      entityId: certificate.id,
+    },
+  });
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `inline; filename="${certificate.number}.pdf"`);
+  res.sendFile(filePath);
 });
 
 /* ---------------- Application tracker ---------------- */

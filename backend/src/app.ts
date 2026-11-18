@@ -8,6 +8,8 @@ import { authRouter } from "./routes/auth.js";
 import { membersRouter } from "./routes/members.js";
 import { memberRouter } from "./routes/member.js";
 import { adminRouter } from "./routes/admin.js";
+import { adminMembersRouter } from "./routes/adminMembers.js";
+import { adminComplaintsRouter } from "./routes/adminComplaints.js";
 import { tutorialsRouter } from "./routes/tutorials.js";
 import { examRouter } from "./routes/exam.js";
 import { publicMembersRouter } from "./routes/publicMembers.js";
@@ -37,6 +39,8 @@ export function createApp() {
   api.use("/members", membersRouter);
   api.use("/member", memberRouter);
   api.use("/admin", adminRouter);
+  api.use("/admin", adminMembersRouter);
+  api.use("/admin", adminComplaintsRouter);
   api.use("/tutorials", tutorialsRouter);
   api.use("/exam", examRouter);
   api.use(notFoundHandler);
