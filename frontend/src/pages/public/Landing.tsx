@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { searchRegister, type RegisterMember } from "../../api/register";
+import { initials, searchRegister, type RegisterMember } from "../../api/register";
 import { Icon, type IconName } from "../../components/Icon";
 import { LivingBackdrop } from "../../components/site/LivingBackdrop";
 import { Reveal } from "../../components/site/Reveal";
@@ -128,7 +128,7 @@ function RegisterSearch() {
     controller.current = new AbortController();
     setState({ kind: "loading" });
     try {
-      const result = await searchRegister(q, controller.current.signal);
+      const result = await searchRegister(q, { signal: controller.current.signal });
       setState({ kind: "done", query: q, members: result.items, total: result.total });
     } catch (error) {
       if ((error as Error).name === "AbortError") return;
@@ -195,8 +195,6 @@ function RegisterSearch() {
 
 const message = (text: string) => (text.endsWith(".") ? text : `${text}.`);
 
-const memberName = (m: RegisterMember) => [m.firstName, m.lastName].filter(Boolean).join(" ") || m.tradingName || "PSSA member";
-const initials = (m: RegisterMember) => `${m.firstName?.[0] ?? ""}${m.lastName?.[0] ?? ""}`.toUpperCase() || "P";
 
 function SearchResults({ query, members, total }: { query: string; members: RegisterMember[]; total: number }) {
   if (members.length === 0) {
@@ -215,15 +213,19 @@ function SearchResults({ query, members, total }: { query: string; members: Regi
       {members.map((m) => (
         <li key={m.id} className="flex items-center gap-4 p-4">
           <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-green-soft font-semibold text-green-dark">
-            {initials(m)}
+            {initials(m.name)}
           </span>
           <div className="min-w-0 flex-1">
-            <p className="font-semibold text-ink">{memberName(m)}</p>
+            <p className="font-semibold text-ink">{m.name}</p>
             <p className="truncate text-sm text-muted">{[m.tradingName, m.scope].filter(Boolean).join(" · ")}</p>
           </div>
-          <span className="flex items-center gap-1.5 rounded-full bg-green-soft px-3 py-1 text-xs font-semibold text-green-dark">
-            <Icon name="check" size={14} /> Active member
-          </span>
+          {m.status === "active" ? (
+            <span className="flex items-center gap-1.5 rounded-full bg-green-soft px-3 py-1 text-xs font-semibold text-green-dark">
+              <Icon name="check" size={14} /> Active member
+            </span>
+          ) : (
+            <span className="rounded-full bg-[var(--amber-soft)] px-3 py-1 text-xs font-semibold text-[#9a6700]">Not active</span>
+          )}
         </li>
       ))}
       {total > members.length && (

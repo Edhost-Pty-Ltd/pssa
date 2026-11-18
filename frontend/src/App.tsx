@@ -11,6 +11,8 @@ import Profile from "./pages/member/Profile";
 import SignIn from "./pages/member/SignIn";
 import Verification from "./pages/member/Verification";
 import Landing from "./pages/public/Landing";
+import Policy from "./pages/public/Policy";
+import Register from "./pages/public/Register";
 import RaiseConcern from "./pages/public/RaiseConcern";
 import TrackComplaint from "./pages/public/TrackComplaint";
 import VerifyCertificate from "./pages/public/VerifyCertificate";
@@ -26,6 +28,8 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/" element={<Landing />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/policies/:slug" element={<Policy />} />
           <Route path="/concern" element={<RaiseConcern />} />
           <Route path="/concern/track" element={<TrackComplaint />} />
           <Route path="/verify" element={<VerifyCertificate />} />
