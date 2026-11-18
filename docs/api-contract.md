@@ -247,10 +247,10 @@ The official exam is **30 questions in 45 minutes**, a pass mark of **at least 8
 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
-| GET | `/api/admin/summary` | Admin | **In:** none. **Out:** tiles such as awaiting review, needs information, average review time, approval rate. | To build |
-| GET | `/api/admin/applications` | Admin | **In:** query `status?`, `q?`, `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }`. | To build |
-| GET | `/api/admin/applications/:id` | Admin | **In:** path id. **Out:** `200 { application }` with profile, documents, channels, tutorial, exam, reviews, certificate and decision history. No raw ID or bank files in the JSON — use the file endpoints. | To build |
-| POST | `/api/admin/applications/:id/decision` | Admin | **In:** `{ decision: "approved" \| "rejected" \| "needs_info", reason, conflictDeclared: true }`. **Out:** `200 { application, certificate? }`. A reason is required for reject or needs-info. Approve must refuse to activate a member if verification, the exam, the agreement or the recorded approval is missing. A fee flag or a passed exam alone must never set Active. | To build |
+| GET | `/api/admin/summary` | Admin | **In:** none. **Out:** tiles such as awaiting review, needs information, average review time, approval rate. | Exists |
+| GET | `/api/admin/applications` | Admin | **In:** query `status?`, `q?`, `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }`. | Exists |
+| GET | `/api/admin/applications/:id` | Admin | **In:** path id. **Out:** `200 { application, activation }` with profile, documents, channels, reviews, decision history, and the four activation gates. No raw ID or bank files in the JSON — use the file endpoints. | Exists |
+| POST | `/api/admin/applications/:id/decision` | Admin | **In:** `{ decision: "approved" \| "rejected" \| "needs_info", reason, conflictDeclared: true }`. **Out:** `200 { application, activation, certificate }`. Reason (min 10 chars) and `conflictDeclared: true` are required for every decision. Approve requires verification docs accepted + agreement on file (`409` otherwise). Approve **records** the decision but sets `memberStatus: active` only when every gate passes (verification, exam, agreement, approval). Today the exam gate is still open (no exam models/content), so approve does **not** activate. `certificate` stays `null` until Active + `PSSA-YYYY-XXXXXX` issuance lands with KG. A fee flag alone must never set Active. | Exists |
 | POST | `/api/admin/applications/:id/second-approval` | Admin | **In:** `{ accepted: true, conflictDeclared: true, reason? }`. **Out:** `200 { application, certificate }`. Use this if the team keeps a second authorised reviewer before activation. The reviewer must not be the first decision-maker. | To build |
 
 ### 6.6 Certificates and live verification
@@ -329,6 +329,8 @@ Becoming an Active member takes four separate steps, and each one has to pass on
 4. A recorded human approval, with a conflict-of-interest declaration
 
 Paying a fee, or passing the exam, must never switch a profile to Active by itself. Membership then lasts **12 months** from activation, with no silent grace period.
+
+`POST /api/admin/applications/:id/decision` evaluates these gates on every approve. The application may become `approved` when verification + agreement are in place, but **Active is withheld** until every gate passes — including the entrance exam once that model/content exists.
 
 ---
 
