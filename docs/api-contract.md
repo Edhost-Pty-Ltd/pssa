@@ -292,10 +292,11 @@ Complaints are new. They are always free. Service times in Africa/Johannesburg: 
 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
-| GET | `/api/admin/members` | Admin | **In:** query `status?`, `q?`, `page`. **Out:** `200 { items, page, pageSize, total }`. | To build |
-| GET | `/api/admin/members/:id` | Admin | **In:** path id. **Out:** `200 { member }` with status, certificate (`PSSA-YYYY-XXXXXX`), history summary. | To build |
-| POST | `/api/admin/members/:id/status` | Admin | **In:** `{ status: "active" \| "suspended" \| "expired" \| "revoked" \| "resigned", reason, conflictDeclared: true }`. **Out:** `200 { member, historyEntry }`. The live badge and public register update immediately. Include `resigned`, which the Figma control does not show. | To build |
-| GET | `/api/admin/members/:id/history` | Admin | **In:** path id. **Out:** `200 { history[] }`: from, to, reason, actor, `conflictDeclared`, at. | To build |
+| GET | `/api/admin/members` | Admin | **In:** query `status?` (`active` \| `suspended` \| `expired` \| `revoked` \| `resigned`), `q?`, `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }` with profile fields and latest certificate (live status). | Exists |
+| GET | `/api/admin/members/:id` | Admin | **In:** path id (`MemberProfile.id`). **Out:** `200 { member }` with status, certificate (`PSSA-YYYY-XXXXXX`), channels, identityType, and recent history. | Exists |
+| POST | `/api/admin/members/:id/status` | Admin | **In:** `{ status: "active" \| "suspended" \| "expired" \| "revoked" \| "resigned", reason, conflictDeclared: true }`. **Out:** `200 { member, historyEntry }`. Writes `StatusHistory` + audit. Revoked/resigned/expired also updates the stored certificate status so live-check stays correct. | Exists |
+| GET | `/api/admin/members/:id/history` | Admin | **In:** path id. **Out:** `200 { history[] }`: from, to, reason, actor, `conflictDeclared`, at. | Exists |
+| GET | `/api/admin/audit` | Admin | **In:** query `q?`, `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }` from existing `AuditLog` rows (action, entity, reason, actor, at). | Exists |
 | GET | `/api/member/renewal` | Member | **In:** cookie. **Out:** `200 { validUntil, windowOpensAt, status, checklist, lastReminderAt? }`. | To build |
 | POST | `/api/member/renewal/start` | Member | **In:** empty, or `{ confirm: true }`. **Out:** `201 { renewal }` so the member can update documents and sit the refresher exam. | To build |
 | POST | `/api/member/renewal/declaration` | Member | **In:** `{ accepted: true, version, statements? }`. **Out:** `200 { renewal }`. | To build |
