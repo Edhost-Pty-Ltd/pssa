@@ -166,6 +166,12 @@ function RegisterSearch() {
         <p className="mt-3 flex items-center gap-2 text-sm text-muted">
           <Icon name="lock" size={15} /> Only professional details are shown. Never ID numbers, banking or home addresses.
         </p>
+        <p className="mt-2 text-sm text-muted">
+          Have a certificate number?{" "}
+          <Link to="/verify" className="font-semibold text-green-dark underline">
+            Check a certificate
+          </Link>
+        </p>
       </form>
 
       <div aria-live="polite">
