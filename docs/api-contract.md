@@ -116,7 +116,7 @@ These are the records the API hangs off. KG designs a new Prisma schema from scr
 | Model | Key fields and rules |
 | --- | --- |
 | User | `id`, `email`, `passwordHash?` (required for ADMIN, not required for passwordless members), `role`, `tokenVersion`, `emailVerifiedAt`, `phoneVerifiedAt`, `lastLoginAt`, `createdAt`. A password hash is never returned. |
-| MemberProfile | Names, phone, trading name, scope, idNumber, physicalAddress, city, channels, member status, `validFrom`, `validUntil`. Private fields never go on public endpoints. Identity today is treated as a South African ID number in the API; the Verification Standard also allows an overseas passport route — KG should make identity type/number support that (nullable SA ID vs passport) so “profile complete” does not force an SA ID forever. |
+| MemberProfile | Names, phone, trading name, scope, `identityType` (`sa_id` \| `passport`), `idNumber` (unique; SA ID or passport depending on type), physicalAddress, city, channels, member status, `validFrom`, `validUntil`. Private fields never go on public endpoints. Profile complete accepts either identity route. |
 | Application | `id`, `userId`, `number` (`APP-YYYY-XXXX`), `status`, `submittedAt`, `agreementAcceptedAt`, `agreementVersion`, reviews. Created by the submit endpoint. |
 | Document | `id`, `userId`, `type`, storage path, `status`, `reviewerNote`, `reviewedAt`, `reviewedBy`. Types: `id_document`, `proof_of_residence`, `bank_evidence`, `business_registration`, `channel_evidence`. Stored privately. |
 | TutorialVideo and VideoProgress | Progress must not treat a skip-ahead as completion. Official lesson files come from the senior (four tutorial videos). |
@@ -152,7 +152,7 @@ The signed-in member API lives under `/api/member` (not `/api/seller` or `/api/a
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
 | GET | `/api/member/profile` | Member | **In:** cookie. **Out:** `200 { profile }` including status, masked ID number, address, channels and a documents summary. Never a password hash. | Exists |
-| PATCH | `/api/member/profile` | Member | **In:** partial body: name, phone, trading name, scope, idNumber, physicalAddress, city, channel URLs (`null` deletes a channel). **Out:** `200 { profile }`. `409` if the ID number belongs to someone else. | Exists |
+| PATCH | `/api/member/profile` | Member | **In:** partial body: name, phone, trading name, scope, `identityType` (`sa_id` \| `passport`), idNumber, physicalAddress, city, channel URLs (`null` deletes a channel). Setting `idNumber` requires an identity type (sent now or already stored). SA ID must be a valid 13-digit number; passport must be 6–12 letters/digits. **Out:** `200 { profile }` with `identityType` and a masked `idNumber`. `409` if the identity number belongs to someone else. | Exists |
 | GET | `/api/member/application` | Member | **In:** cookie. **Out:** `200 { application, progress }` — see **Application progress shape** below. Until the member accepts the agreement or submits, `application` may be a null draft (`id` / `number` null, `status: "draft"`). Status stays `draft` until submit. | Exists |
 | POST | `/api/member/application/submit` | Member | **In:** empty body, or `{ confirm: true }`. **Out:** `200` or `201 { application }` with status `submitted` and an `APP-YYYY-XXXX` number. `409` if required profile fields, documents or agreement acceptance are missing. | Exists |
 | POST | `/api/member/application/agreement` | Member | **In:** `{ accepted: true, version }` (the published Policy 01 version). **Out:** `200 { application }` with `agreementAcceptedAt` and version stored. Creates the draft application row (and number) if it does not exist yet. Agreement text content is blocked until the senior provides Policy 01; the API already stores acceptance + version. | Exists |
@@ -203,7 +203,7 @@ Rules for the member portal:
 - `percent` is `round(100 * completeSteps / 6)`.
 - `actions` lists document resubmission work (and later other action-needed items) for the dashboard cards.
 - `canSubmit` is true only when profile + required documents/channels + agreement are done and the application is still `draft` or `needs_info`.
-- Profile complete requires name, phone, id number, address, city and scope. **`tradingName` is optional** (members may trade under their own name).
+- Profile complete requires name, phone, **`identityType` + matching `idNumber`** (SA ID or passport), address, city and scope. **`tradingName` is optional** (members may trade under their own name).
 - Channel confirm currently accepts any 6-digit code for UI testing; verification gate V5 needs a real outbound code check before launch. Adding the same platform again updates the existing channel instead of creating a duplicate.
 - Tutorials/assessment stay locked or not started until those models and official content land.
 
@@ -346,6 +346,4 @@ These are still for the team to write down, alongside the branch rule (feature b
 - Is the customer order template a static frontend file, or served from `GET /api/order-template`?
 - The session cookie is named `ec_session` in this contract. Do we keep that name, or rename it now, before launch?
 - When will fees, if any, be introduced, and how do we make sure a payment record can never set a member to Active by itself?
-- Should `MemberProfile` store identity as SA ID and/or passport (overseas route in the Verification Standard), and how does “profile complete” treat each?
-
 This contract is for internal team planning. It is not a legal policy and does not replace the official PSSA documents.

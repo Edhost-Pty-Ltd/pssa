@@ -4,7 +4,7 @@ import { unlink } from "node:fs/promises";
 import type { DocumentType } from "@prisma/client";
 import { z } from "zod";
 import { badRequest, conflict, forbidden, notFound } from "../lib/http.js";
-import { isValidSaIdNumber, maskIdNumber, nextApplicationNumber } from "../lib/members.js";
+import { isValidIdentityNumber, maskIdNumber, nextApplicationNumber } from "../lib/members.js";
 import { prisma } from "../lib/prisma.js";
 import { assertFileSignature, documentUpload, privateFilePath, removePrivateFile } from "../lib/uploads.js";
 import { requireRole } from "../middleware/auth.js";
@@ -62,6 +62,7 @@ const profileSelect = {
       phone: true,
       tradingName: true,
       scope: true,
+      identityType: true,
       idNumber: true,
       physicalAddress: true,
       city: true,
@@ -149,14 +150,20 @@ function hasText(value: string | null | undefined) {
   return Boolean(value && value.trim());
 }
 
+function identityComplete(profile: LoadedMember["memberProfile"]) {
+  if (!profile?.identityType || !hasText(profile.idNumber)) return false;
+  return isValidIdentityNumber(profile.identityType, profile.idNumber!);
+}
+
 function profileComplete(profile: LoadedMember["memberProfile"]) {
   // tradingName is optional (mentor): members may trade under their own name.
+  // Identity may be SA ID or passport (KG identityType).
   return Boolean(
     profile &&
       hasText(profile.firstName) &&
       hasText(profile.lastName) &&
       hasText(profile.phone) &&
-      hasText(profile.idNumber) &&
+      identityComplete(profile) &&
       hasText(profile.physicalAddress) &&
       hasText(profile.city) &&
       hasText(profile.scope),
@@ -169,6 +176,7 @@ function profileStarted(profile: LoadedMember["memberProfile"]) {
       (hasText(profile.firstName) ||
         hasText(profile.lastName) ||
         hasText(profile.phone) ||
+        Boolean(profile.identityType) ||
         hasText(profile.idNumber) ||
         hasText(profile.physicalAddress) ||
         hasText(profile.city) ||
@@ -351,10 +359,10 @@ const updateSchema = z
     phone: z.union([z.null(), z.literal("").transform(() => null), phoneSchema]).optional(),
     tradingName: nullableText(150).optional(),
     scope: nullableText(150).optional(),
+    identityType: z.enum(["sa_id", "passport"], { error: 'must be "sa_id" or "passport"' }).optional(),
     idNumber: z
       .string()
-      .transform((value) => value.replace(/\s/g, ""))
-      .refine(isValidSaIdNumber, "must be a valid 13-digit South African ID number")
+      .transform((value) => value.replace(/\s/g, "").toUpperCase())
       .optional(),
     physicalAddress: nullableText(300).optional(),
     city: nullableText(100).optional(),
@@ -372,10 +380,28 @@ memberRouter.patch("/profile", async (req, res) => {
   const body = updateSchema.parse(req.body ?? {});
   const current = await loadMember(req.user!.id);
   const memberId = current.memberProfile!.id;
+  const nextIdentityType = body.identityType ?? current.memberProfile!.identityType ?? null;
+  const nextIdNumber = body.idNumber !== undefined ? body.idNumber : current.memberProfile!.idNumber;
+
+  if (body.identityType !== undefined || body.idNumber !== undefined) {
+    if (!nextIdentityType) {
+      throw badRequest("Choose an identity type (sa_id or passport).", { fields: { identityType: "is required" } });
+    }
+    if (nextIdNumber && !isValidIdentityNumber(nextIdentityType, nextIdNumber)) {
+      throw badRequest(
+        nextIdentityType === "sa_id"
+          ? "must be a valid 13-digit South African ID number"
+          : "must be a valid passport number (6–12 letters or digits)",
+        { fields: { idNumber: nextIdentityType === "sa_id" ? "must be a valid SA ID number" : "must be a valid passport number" } },
+      );
+    }
+  }
 
   if (body.idNumber && body.idNumber !== current.memberProfile!.idNumber) {
     const taken = await prisma.memberProfile.findUnique({ where: { idNumber: body.idNumber }, select: { id: true } });
-    if (taken) throw conflict("A member with this ID number is already registered.", { fields: { idNumber: "is already registered" } });
+    if (taken) {
+      throw conflict("A member with this identity number is already registered.", { fields: { idNumber: "is already registered" } });
+    }
   }
 
   const userFields = {
@@ -389,6 +415,7 @@ memberRouter.patch("/profile", async (req, res) => {
     ...(body.phone !== undefined ? { phone: body.phone } : {}),
     ...(body.tradingName !== undefined ? { tradingName: body.tradingName } : {}),
     ...(body.scope !== undefined ? { scope: body.scope } : {}),
+    ...(body.identityType !== undefined ? { identityType: body.identityType } : {}),
     ...(body.idNumber !== undefined ? { idNumber: body.idNumber } : {}),
     ...(body.physicalAddress !== undefined ? { physicalAddress: body.physicalAddress } : {}),
     ...(body.city !== undefined ? { city: body.city } : {}),
