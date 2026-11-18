@@ -263,7 +263,7 @@ A certificate is issued only after the gates and a recorded human approval have 
 | --- | --- | --- | --- | --- |
 | GET | `/api/member/certificate` | Member | **In:** cookie. **Out:** `200 { certificate }` with number, validity, scope, `qrTargetUrl` (`/verify/PSSA-YYYY-XXXXXX`), live `status`, and `storedStatus`. Live status is derived from membership + dates (expired/suspended/revoked/resigned never look Active). `certificate: null` with a reason if none issued yet. | Exists |
 | GET | `/api/member/certificate/pdf` | Member | **In:** cookie. **Out:** the PDF. | To build |
-| GET | `/api/verify/:certificateNumber` | Public | **In:** path is the certificate number, for example `PSSA-2026-004821`. **Out:** `200 { verification }` with name, trading name, number, scope, live `status`, `validUntil`, verified channels. `404` if the number is unknown. Never ID, bank or address fields. Status is computed live from the member profile and validity dates. | Exists |
+| GET | `/api/verify/:certificateNumber` | Public | **In:** path is the certificate number, for example `PSSA-2026-004821` (spaces ignored, case-insensitive). **Out:** `200 { certificate }` with `number`, `firstName`, `lastName`, `tradingName`, `scope`, live `status` (`active` \| `suspended` \| `expired` \| `revoked` \| `resigned`), `validFrom`, `validUntil`, `channels[]` (`{ kind, value }` confirmed only), and `checkedAt` (ISO). `404` if the number is unknown. Never ID, bank or address fields. Status is computed live from the member profile and validity dates. | Exists |
 
 ### 6.7 Public register
 

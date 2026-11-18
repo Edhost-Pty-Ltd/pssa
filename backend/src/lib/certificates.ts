@@ -78,13 +78,16 @@ export function serializeCertificate(certificate: CertificateRow, liveStatus: Pu
   };
 }
 
-export function serializePublicVerification(input: {
+/** Public live-check payload — matches Tshepang’s CertificateCheck shape. */
+export function serializePublicCertificate(input: {
   certificate: CertificateRow;
   profile: Pick<MemberProfile, "firstName" | "lastName" | "tradingName" | "scope" | "memberStatus" | "validUntil">;
   channels: Array<Pick<Channel, "kind" | "value" | "status">>;
   now?: Date;
 }) {
-  const status = liveCertificateStatus(input.profile, input.certificate, input.now);
+  const now = input.now ?? new Date();
+  const status = liveCertificateStatus(input.profile, input.certificate, now);
+  const validUntil = input.profile.validUntil ?? input.certificate.validUntil;
   return {
     number: input.certificate.number,
     firstName: input.profile.firstName,
@@ -93,10 +96,11 @@ export function serializePublicVerification(input: {
     scope: input.certificate.scope ?? input.profile.scope,
     status,
     validFrom: input.certificate.validFrom,
-    validUntil: input.profile.validUntil ?? input.certificate.validUntil,
-    verifiedChannels: input.channels
+    validUntil,
+    channels: input.channels
       .filter((channel) => channel.status === "confirmed")
-      .map((channel) => ({ platform: channel.kind, handle: channel.value })),
+      .map((channel) => ({ kind: channel.kind, value: channel.value })),
+    checkedAt: now.toISOString(),
   };
 }
 
