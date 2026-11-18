@@ -7,9 +7,16 @@ export type Role = "MEMBER" | "ADMIN" | "CUSTOMER";
 
 export interface MemberSummary {
   id: string;
-  businessName: string | null;
-  category: string;
+  firstName: string;
+  lastName: string;
+  phone: string | null;
+  tradingName: string | null;
+  scope: string | null;
   idNumber: string | null; // masked by the server, never the full number
+  city: string | null;
+  memberStatus: string | null;
+  validFrom: string | null;
+  validUntil: string | null;
   createdAt: string;
 }
 
@@ -19,11 +26,10 @@ export interface User {
   role: Role;
   firstName: string | null;
   lastName: string | null;
-  phone: string | null;
   emailVerifiedAt: string | null;
   phoneVerifiedAt: string | null;
   createdAt: string;
-  member: MemberSummary | null;
+  memberProfile: MemberSummary | null;
 }
 
 export interface CodeSent {
