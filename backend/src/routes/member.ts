@@ -3,6 +3,11 @@ import { existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import type { DocumentType } from "@prisma/client";
 import { z } from "zod";
+import {
+  findCertificateForMember,
+  liveCertificateStatus,
+  serializeCertificate,
+} from "../lib/certificates.js";
 import { badRequest, conflict, forbidden, notFound } from "../lib/http.js";
 import { isValidSaIdNumber, maskIdNumber, nextApplicationNumber } from "../lib/members.js";
 import { prisma } from "../lib/prisma.js";
@@ -416,6 +421,21 @@ memberRouter.patch("/profile", async (req, res) => {
   });
 
   res.json({ profile: serializeProfile(await loadMember(current.id)) });
+});
+
+memberRouter.get("/certificate", async (req, res) => {
+  const member = await loadMember(req.user!.id);
+  const certificate = await findCertificateForMember(member.memberProfile!.id);
+  if (!certificate) {
+    res.json({ certificate: null, reason: "No certificate has been issued yet." });
+    return;
+  }
+  res.json({
+    certificate: serializeCertificate(
+      certificate,
+      liveCertificateStatus(member.memberProfile!, certificate),
+    ),
+  });
 });
 
 /* ---------------- Application tracker ---------------- */

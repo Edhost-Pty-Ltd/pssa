@@ -252,7 +252,7 @@ The official exam is **30 questions in 45 minutes**, a pass mark of **at least 8
 | GET | `/api/admin/summary` | Admin | **In:** none. **Out:** tiles such as awaiting review, needs information, average review time, approval rate. | Exists |
 | GET | `/api/admin/applications` | Admin | **In:** query `status?`, `q?`, `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }`. | Exists |
 | GET | `/api/admin/applications/:id` | Admin | **In:** path id. **Out:** `200 { application, activation }` with profile, documents, channels, reviews, decision history, and the four activation gates. No raw ID or bank files in the JSON — use the file endpoints. | Exists |
-| POST | `/api/admin/applications/:id/decision` | Admin | **In:** `{ decision: "approved" \| "rejected" \| "needs_info", reason, conflictDeclared: true }`. **Out:** `200 { application, activation, certificate }`. Reason (min 10 chars) and `conflictDeclared: true` are required for every decision. Approve requires verification docs accepted + agreement on file (`409` otherwise). Approve **records** the decision but sets `memberStatus: active` only when every gate passes (verification, exam, agreement, approval). Today the exam gate is still open (no exam models/content), so approve does **not** activate. `certificate` stays `null` until Active + `PSSA-YYYY-XXXXXX` issuance lands with KG. A fee flag alone must never set Active. | Exists |
+| POST | `/api/admin/applications/:id/decision` | Admin | **In:** `{ decision: "approved" \| "rejected" \| "needs_info", reason, conflictDeclared: true }`. **Out:** `200 { application, activation, certificate }`. Reason (min 10 chars) and `conflictDeclared: true` are required for every decision. Approve requires verification docs accepted + agreement on file (`409` otherwise). Approve **records** the decision but sets `memberStatus: active` only when every gate passes (verification, exam, agreement, approval). The exam gate reads a passed entrance attempt. On activation a unique `PSSA-YYYY-XXXXXX` certificate is issued (`certificate` in the response); otherwise `certificate` is `null`. A fee flag alone must never set Active. | Exists |
 | POST | `/api/admin/applications/:id/second-approval` | Admin | **In:** `{ accepted: true, conflictDeclared: true, reason? }`. **Out:** `200 { application, certificate }`. Use this if the team keeps a second authorised reviewer before activation. The reviewer must not be the first decision-maker. | To build |
 
 ### 6.6 Certificates and live verification
@@ -261,9 +261,9 @@ A certificate is issued only after the gates and a recorded human approval have 
 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
-| GET | `/api/member/certificate` | Member | **In:** cookie. **Out:** `200 { certificate }` with number, validity, scope, live-check URL and status. An expired or revoked member still sees the record, clearly not Active. | To build |
+| GET | `/api/member/certificate` | Member | **In:** cookie. **Out:** `200 { certificate }` with number, validity, scope, `qrTargetUrl` (`/verify/PSSA-YYYY-XXXXXX`), live `status`, and `storedStatus`. Live status is derived from membership + dates (expired/suspended/revoked/resigned never look Active). `certificate: null` with a reason if none issued yet. | Exists |
 | GET | `/api/member/certificate/pdf` | Member | **In:** cookie. **Out:** the PDF. | To build |
-| GET | `/api/verify/:certificateNumber` | Public | **In:** path is the certificate number, for example `PSSA-2026-004821`. **Out:** `200` public payload: name, trading name, number, scope, status, `validUntil`, verified channels. `404` if the number is unknown. Never ID, bank or address fields. Status must change the moment membership expires, is suspended, is revoked or the member resigns, even if a background job failed. Use neutral public wording. | To build |
+| GET | `/api/verify/:certificateNumber` | Public | **In:** path is the certificate number, for example `PSSA-2026-004821`. **Out:** `200 { verification }` with name, trading name, number, scope, live `status`, `validUntil`, verified channels. `404` if the number is unknown. Never ID, bank or address fields. Status is computed live from the member profile and validity dates. | Exists |
 
 ### 6.7 Public register
 
@@ -332,7 +332,7 @@ Becoming an Active member takes four separate steps, and each one has to pass on
 
 Paying a fee, or passing the exam, must never switch a profile to Active by itself. Membership then lasts **12 months** from activation, with no silent grace period.
 
-`POST /api/admin/applications/:id/decision` evaluates these gates on every approve. The application may become `approved` when verification + agreement are in place, but **Active is withheld** until every gate passes — including the entrance exam once that model/content exists.
+`POST /api/admin/applications/:id/decision` evaluates these gates on every approve. The application may become `approved` when verification + agreement are in place, but **Active is withheld** until every gate passes — including a passed entrance exam. Activation issues `PSSA-YYYY-XXXXXX` and sets `qrTargetUrl` to `/verify/PSSA-YYYY-XXXXXX`.
 
 ---
 
