@@ -32,8 +32,8 @@ interface Slot {
 const SLOTS: Slot[] = [
   {
     key: "id",
-    title: "South African ID document",
-    hint: "A clear copy of your green ID book, or both sides of your smart ID card.",
+    title: "ID document or passport",
+    hint: "Both sides of your smart ID card, your green ID book, or the photo page of your passport. It must match your profile.",
     icon: "shield",
     types: [{ type: "id_document", label: "ID document" }],
   },
