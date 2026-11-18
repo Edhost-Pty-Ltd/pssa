@@ -1,7 +1,9 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { searchRegister, type RegisterMember } from "../../api/register";
 import { Icon, type IconName } from "../../components/Icon";
+import { LivingBackdrop } from "../../components/site/LivingBackdrop";
+import { Reveal } from "../../components/site/Reveal";
 import { SiteFooter } from "../../components/site/SiteFooter";
 import { SiteHeader } from "../../components/site/SiteHeader";
 import { errorMessage } from "../../lib/api";
@@ -11,7 +13,7 @@ import { errorMessage } from "../../lib/api";
 export default function Landing() {
   return (
     <div className="landing font-body text-ink">
-      <SiteHeader />
+      <SiteHeader transparent />
       <main>
         <Hero />
         <About />
@@ -29,28 +31,80 @@ export default function Landing() {
 
 /* Hero */
 
+const HERO_PILLARS: { href: string; kicker: string; title: string; detail: string; icon: IconName }[] = [
+  {
+    href: "#about",
+    kicker: "Association Role",
+    title: "Independent Vetting",
+    detail: "Identity, banking, and trading channels verified before any badge is issued.",
+    icon: "shield",
+  },
+  {
+    href: "#membership",
+    kicker: "Four-Gate Path",
+    title: "Conduct & Certification",
+    detail: "Every applicant passes evidence checks, an 80% assessment, and dual approval.",
+    icon: "badge",
+  },
+  {
+    href: "#standards",
+    kicker: "Consumer Protection",
+    title: "Published Standards",
+    detail: "Clear rules, written order templates, and free-of-charge concern reviews.",
+    icon: "book",
+  },
+];
+
 function Hero() {
   return (
-    <section className="pattern-weave relative overflow-hidden text-white">
-      <div className="mx-auto max-w-7xl px-6 pb-24 pt-16 text-center sm:pt-24">
-        <p className="text-xs font-bold uppercase tracking-[0.22em] text-green">
+    <section className="relative overflow-hidden bg-navy text-white">
+      <LivingBackdrop variant="hero" />
+      <div className="relative z-10 mx-auto max-w-7xl px-6 pb-20 pt-28 text-center sm:pb-24 sm:pt-40">
+        <p className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-navy/45 px-4 py-1.5 text-xs font-bold uppercase tracking-[0.22em] text-green backdrop-blur-md">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-green" aria-hidden="true" />
           Personal Shoppers and Sourcing Association
         </p>
-        <h1 className="mt-8 flex flex-col items-center gap-3 text-5xl font-bold sm:text-7xl lg:text-[88px]">
-          <span className="label-block">Check before</span>
-          <span className="label-block">you pay.</span>
+        <h1 className="mt-8 text-5xl font-bold leading-[1.05] tracking-tight text-white drop-shadow-[0_6px_24px_rgba(11,32,55,0.45)] sm:text-7xl lg:text-[88px]">
+          Check before
+          <br />
+          you pay.
         </h1>
 
-        <div className="relative mx-auto mt-12 max-w-2xl px-8 sm:px-12">
-          <span aria-hidden="true" className="absolute inset-y-0 left-0 w-3 border-y-4 border-l-4 border-white/35" />
-          <span aria-hidden="true" className="absolute inset-y-0 right-0 w-3 border-y-4 border-r-4 border-white/35" />
-          <p className="py-2 text-lg leading-relaxed text-white/85 sm:text-xl">
+        <div className="relative mx-auto mt-12 max-w-2xl rounded-2xl border border-white/20 bg-navy/35 px-8 py-4 backdrop-blur-md sm:px-12">
+          <span aria-hidden="true" className="absolute inset-y-2 left-2 w-3 border-y-4 border-l-4 border-white/45" />
+          <span aria-hidden="true" className="absolute inset-y-2 right-2 w-3 border-y-4 border-r-4 border-white/45" />
+          <p className="py-1 text-lg leading-relaxed text-white/95 sm:text-xl">
             PSSA verifies who personal shoppers are, how they trade and the channels they control, so you can check a
             member's live status before you buy.
           </p>
         </div>
 
         <RegisterSearch />
+
+        {/* MASA-inspired Core Offerings Quick Links */}
+        <div className="mx-auto mt-10 grid max-w-5xl gap-4 text-left sm:grid-cols-3">
+          {HERO_PILLARS.map((pillar) => (
+            <a
+              key={pillar.title}
+              href={pillar.href}
+              className="glass-dark-card group flex flex-col justify-between rounded-2xl p-5 transition duration-300 hover:-translate-y-1 hover:border-green/50 hover:bg-navy/70"
+            >
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-green">{pillar.kicker}</span>
+                  <span className="flex size-9 items-center justify-center rounded-full bg-white/10 text-green transition group-hover:bg-green group-hover:text-white">
+                    <Icon name={pillar.icon} size={17} />
+                  </span>
+                </div>
+                <h2 className="mt-3 text-lg font-bold text-white">{pillar.title}</h2>
+                <p className="mt-1.5 text-sm leading-relaxed text-white/75">{pillar.detail}</p>
+              </div>
+              <span className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-green transition group-hover:translate-x-1">
+                Explore <Icon name="arrow" size={14} />
+              </span>
+            </a>
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -84,13 +138,13 @@ function RegisterSearch() {
   }
 
   return (
-    <div id="register" className="mx-auto mt-12 max-w-3xl scroll-mt-40 rounded-2xl bg-white p-5 text-left text-ink shadow-2xl sm:p-7">
+    <div id="register" className="glass-panel mx-auto mt-12 max-w-3xl scroll-mt-40 rounded-2xl p-5 text-left text-ink sm:p-7">
       <form onSubmit={onSubmit}>
         <label htmlFor="register-search" className="font-display text-xl font-semibold text-navy">
           Verify a member
         </label>
         <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-          <div className="flex flex-1 items-center gap-3 rounded-xl border border-line px-4 focus-within:border-green">
+          <div className="flex flex-1 items-center gap-3 rounded-xl border border-line/90 bg-white/75 px-4 focus-within:border-green focus-within:bg-white">
             <span className="text-muted"><Icon name="search" /></span>
             <input
               id="register-search"
@@ -198,26 +252,59 @@ const PRINCIPLES: { icon: IconName; title: string; text: string }[] = [
 
 function About() {
   return (
-    <section id="about" className="scroll-mt-32 bg-sand">
+    <section id="about" className="scroll-mt-32 bg-gradient-to-b from-sand via-sand/70 to-soft/60">
       <div className="mx-auto max-w-7xl px-6 py-20 sm:py-24">
-        <div className="max-w-3xl">
-          <p className="text-xs font-bold uppercase tracking-[0.22em] text-green-dark">About PSSA</p>
-          <h2 className="mt-4 text-4xl font-bold text-navy sm:text-5xl">An association, not a marketplace.</h2>
-          <p className="mt-5 text-lg leading-relaxed text-ink/80">
+        <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
+          <div className="max-w-2xl">
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-green-dark">About PSSA</p>
+            <h2 className="mt-4 text-4xl font-bold text-navy sm:text-5xl">An association, not a marketplace.</h2>
+          </div>
+          <p className="max-w-xl text-base leading-relaxed text-ink/80 sm:text-lg">
             PSSA is a voluntary membership body for personal shoppers and sourcing traders. Members earn their place
             through verification and a conduct assessment, and customers can check their status at any time.
           </p>
         </div>
-        <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {PRINCIPLES.map((p) => (
-            <div key={p.title} className="rounded-2xl bg-white p-6 shadow-sm">
-              <span className="flex size-12 items-center justify-center rounded-full bg-navy text-green">
-                <Icon name={p.icon} size={22} />
-              </span>
-              <h3 className="mt-5 text-xl font-semibold text-navy">{p.title}</h3>
-              <p className="mt-2 leading-relaxed text-muted">{p.text}</p>
+
+        {/* Editorial Bento Grid with bespoke personal-shopping photography */}
+        <div className="mt-14 grid gap-5 lg:grid-cols-12">
+          <Reveal className="lg:col-span-5">
+            <div className="group relative h-full min-h-[360px] overflow-hidden rounded-3xl border border-white/60 shadow-xl lg:min-h-[440px]">
+              <img
+                src="/images/shopper-editorial.jpg"
+                alt="Personal shopper curating tailored garments and luxury boutique bags in a sunlit showroom"
+                className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
+              />
+              <div
+                aria-hidden="true"
+                className="absolute inset-0 bg-gradient-to-t from-navy/80 via-navy/15 to-transparent"
+              />
+              <div className="absolute inset-x-5 bottom-5 rounded-2xl border border-white/25 bg-navy/55 p-4 text-white backdrop-blur-md">
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-green">Curated &amp; Verified</p>
+                <p className="mt-1 font-display text-lg font-semibold">
+                  Independent standards for modern personal shoppers.
+                </p>
+              </div>
             </div>
-          ))}
+          </Reveal>
+
+          <div className="grid gap-5 sm:grid-cols-2 lg:col-span-7">
+            {PRINCIPLES.map((p, idx) => (
+              <Reveal key={p.title} delayMs={idx * 80}>
+                <div className="glass-card flex h-full flex-col justify-between rounded-3xl p-6 sm:p-7">
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="flex size-12 items-center justify-center rounded-2xl bg-navy text-green shadow-sm">
+                        <Icon name={p.icon} size={22} />
+                      </span>
+                      <span className="font-display text-2xl font-bold text-navy/15">0{idx + 1}</span>
+                    </div>
+                    <h3 className="mt-6 text-xl font-semibold text-navy">{p.title}</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-muted sm:text-base">{p.text}</p>
+                  </div>
+                </div>
+              </Reveal>
+            ))}
+          </div>
         </div>
       </div>
     </section>
@@ -275,9 +362,13 @@ const STEPS: { title: string; text: string; points: string[]; panel: string; not
 ];
 
 function Membership() {
+  const [activeStep, setActiveStep] = useState(0);
+  const step = STEPS[activeStep];
+  const light = step.panel.includes("bg-sand");
+
   return (
-    <section id="membership" className="scroll-mt-32 bg-white">
-      <div className="mx-auto max-w-7xl px-6 pb-14 pt-20 sm:pt-24">
+    <section id="membership" className="scroll-mt-32 bg-gradient-to-b from-soft/60 via-white to-white py-20 sm:py-24">
+      <div className="mx-auto max-w-7xl px-6">
         <p className="text-xs font-bold uppercase tracking-[0.22em] text-green-dark">How membership works</p>
         <div className="mt-4 grid gap-6 lg:grid-cols-2 lg:items-end">
           <h2 className="text-4xl font-bold text-navy sm:text-5xl">Four gates. Every applicant.</h2>
@@ -286,39 +377,99 @@ function Membership() {
             own never activates membership.
           </p>
         </div>
-      </div>
 
-      {STEPS.map((step, i) => {
-        const flip = i % 2 === 1;
-        const light = step.panel.includes("bg-sand");
-        return (
-          <div key={step.title} className="grid md:grid-cols-2">
-            <div className={`flex items-center justify-center bg-soft px-6 py-14 ${flip ? "md:order-2" : ""}`}>
-              <div className="text-center">
-                <span className="font-display text-[120px] font-bold leading-none text-navy/10 sm:text-[160px]">
-                  0{i + 1}
-                </span>
-                <p className="-mt-6 text-sm font-bold uppercase tracking-[0.22em] text-navy/60">Step {i + 1} of 4</p>
+        {/* Interactive Gate Selector */}
+        <div className="mt-12 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" role="tablist" aria-label="Membership gates">
+          {STEPS.map((item, i) => {
+            const isSelected = i === activeStep;
+            return (
+              <button
+                key={item.title}
+                type="button"
+                role="tab"
+                aria-selected={isSelected}
+                onClick={() => setActiveStep(i)}
+                className={`group rounded-2xl border p-4 text-left transition duration-200 ${
+                  isSelected
+                    ? "border-green bg-navy text-white shadow-lg"
+                    : "glass-card text-navy hover:border-green/50"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className={`font-display text-2xl font-bold ${isSelected ? "text-green" : "text-navy/40 group-hover:text-green-dark"}`}>
+                    0{i + 1}
+                  </span>
+                  <span className={`text-[11px] font-bold uppercase tracking-[0.14em] ${isSelected ? "text-white/75" : "text-muted"}`}>
+                    Gate {i + 1} of 4
+                  </span>
+                </div>
+                <p className="mt-2 font-semibold">{item.title}</p>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Active Gate Showcase with editorial still-life imagery */}
+        <Reveal className="mt-6">
+          <div className="grid overflow-hidden rounded-3xl border border-line/80 bg-white shadow-xl md:grid-cols-[0.9fr_1.1fr]">
+            <div className="group relative min-h-[300px] overflow-hidden bg-navy">
+              <img
+                src="/images/sourcing-craft.jpg"
+                alt="Curated personal shopping parcels, structured leather handbag, and minimal verification card"
+                className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
+              />
+              <div
+                aria-hidden="true"
+                className="absolute inset-0 bg-gradient-to-t from-navy/85 via-navy/25 to-transparent"
+              />
+              <div className="relative z-10 flex h-full flex-col justify-between p-8 text-white">
+                <div className="flex items-center justify-between">
+                  <span className="rounded-full border border-white/25 bg-navy/50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-green backdrop-blur-md">
+                    Gate 0{activeStep + 1} of 04
+                  </span>
+                  <div className="flex gap-1.5">
+                    {STEPS.map((s, idx) => (
+                      <button
+                        key={s.title}
+                        type="button"
+                        aria-label={`Select gate ${idx + 1}: ${s.title}`}
+                        onClick={() => setActiveStep(idx)}
+                        className={`h-2 rounded-full transition-all ${
+                          idx === activeStep ? "w-7 bg-green" : "w-2 bg-white/40 hover:bg-white/75"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div className="mt-24">
+                  <span className="font-display text-7xl font-bold leading-none text-white/90 sm:text-8xl">
+                    0{activeStep + 1}
+                  </span>
+                  <p className="mt-2 text-sm text-white/80">Provenance, identity, and accountability at every step.</p>
+                </div>
               </div>
             </div>
-            <div className={`${step.panel} px-8 py-14 sm:px-14 sm:py-16`}>
+
+            <div className={`${step.panel} px-8 py-12 transition-colors duration-300 sm:px-12 sm:py-14`}>
               <h3 className="text-3xl font-bold sm:text-4xl">{step.title}</h3>
-              <p className={`mt-4 max-w-lg text-lg leading-relaxed ${light ? "text-ink/80" : "text-white/80"}`}>{step.text}</p>
+              <p className={`mt-4 max-w-lg text-lg leading-relaxed ${light ? "text-ink/80" : "text-white/85"}`}>
+                {step.text}
+              </p>
               <ul className="mt-6 max-w-lg space-y-3">
                 {step.points.map((point) => (
                   <li key={point} className="flex gap-3">
                     <span className={light ? "text-green-dark" : "text-green"}>
                       <Icon name="check" size={20} />
                     </span>
-                    <span className={light ? "text-ink/85" : "text-white/90"}>{point}</span>
+                    <span className={light ? "text-ink/85" : "text-white/95"}>{point}</span>
                   </li>
                 ))}
               </ul>
               {step.note && <p className="mt-6 text-sm italic text-ink/60">{step.note}</p>}
             </div>
           </div>
-        );
-      })}
+        </Reveal>
+      </div>
     </section>
   );
 }
@@ -356,23 +507,24 @@ function IconList({ items }: { items: { icon: IconName; text: string }[] }) {
 
 function WhyJoinAndBuySafely() {
   return (
-    <section id="buy-safely" className="pattern-weave scroll-mt-32 text-white">
-      <div className="mx-auto grid max-w-7xl gap-16 px-6 py-20 sm:py-24 lg:grid-cols-2">
-        <div>
+    <section id="buy-safely" className="relative scroll-mt-32 overflow-hidden bg-navy text-white">
+      <LivingBackdrop variant="band" />
+      <div className="relative z-10 mx-auto grid max-w-7xl gap-8 px-6 py-20 sm:py-24 lg:grid-cols-2">
+        <div className="glass-dark-card rounded-3xl p-8 sm:p-10">
           <p className="text-xs font-bold uppercase tracking-[0.22em] text-green">For personal shoppers</p>
           <h2 className="mt-4 text-4xl font-bold text-white sm:text-5xl">Why join?</h2>
           <IconList items={WHY_JOIN} />
-          <Link to="/apply" className="mt-10 inline-flex items-center gap-2 rounded-xl bg-green px-6 py-3.5 font-semibold hover:bg-green-dark">
+          <Link to="/apply" className="mt-10 inline-flex items-center gap-2 rounded-xl bg-green px-6 py-3.5 font-semibold transition hover:bg-green-dark">
             Apply to join <Icon name="arrow" size={18} />
           </Link>
         </div>
-        <div className="lg:border-l lg:border-white/15 lg:pl-16">
+        <div className="glass-dark-card rounded-3xl p-8 sm:p-10">
           <p className="text-xs font-bold uppercase tracking-[0.22em] text-green">For customers</p>
           <h2 className="mt-4 text-4xl font-bold text-white sm:text-5xl">Buy safely.</h2>
           <IconList items={BUY_SAFELY} />
           <Link
             to="/policies/order-template"
-            className="mt-10 inline-flex items-center gap-2 rounded-xl border border-white/40 px-6 py-3.5 font-semibold hover:bg-white/10"
+            className="mt-10 inline-flex items-center gap-2 rounded-xl border border-white/40 bg-white/10 px-6 py-3.5 font-semibold backdrop-blur-sm transition hover:bg-white/20"
           >
             <Icon name="download" size={18} /> Customer order template
           </Link>
@@ -393,24 +545,56 @@ const STATUSES = [
 
 function LiveStatus() {
   return (
-    <section className="bg-white">
-      <div className="mx-auto grid max-w-7xl gap-12 px-6 py-20 sm:py-24 lg:grid-cols-[1fr_1.2fr] lg:items-center">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.22em] text-green-dark">Live verification</p>
-          <h2 className="mt-4 text-4xl font-bold text-navy sm:text-5xl">A badge is only as good as its live status.</h2>
-          <p className="mt-5 text-lg leading-relaxed text-muted">
-            Every PSSA badge must identify the member and link to their live page on PSSA.site. When membership expires
-            or is suspended, that page changes straight away.
-          </p>
+    <section className="bg-gradient-to-b from-white via-white to-soft">
+      <div className="mx-auto max-w-7xl px-6 py-20 sm:py-24">
+        <div className="grid gap-10 lg:grid-cols-12 lg:items-center">
+          <div className="lg:col-span-5">
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-green-dark">Live verification</p>
+            <h2 className="mt-4 text-4xl font-bold text-navy sm:text-5xl">
+              A badge is only as good as its live status.
+            </h2>
+            <p className="mt-5 text-lg leading-relaxed text-muted">
+              Every PSSA badge must identify the member and link to their live page on PSSA.site. When membership expires
+              or is suspended, that page changes straight away.
+            </p>
+
+            {/* Concierge editorial photo with floating live status pill */}
+            <div className="group relative mt-8 overflow-hidden rounded-3xl border border-line/80 shadow-lg">
+              <img
+                src="/images/trust-concierge.jpg"
+                alt="Personal shopper concierge reviewing an order on a tablet beside curated packaging"
+                className="h-64 w-full object-cover transition duration-700 group-hover:scale-105"
+              />
+              <div
+                aria-hidden="true"
+                className="absolute inset-0 bg-gradient-to-t from-navy/70 via-transparent to-transparent"
+              />
+              <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between rounded-2xl border border-white/25 bg-navy/60 px-4 py-2.5 text-xs text-white backdrop-blur-md">
+                <span className="flex items-center gap-2 font-semibold">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-green" />
+                  Live Register Sync
+                </span>
+                <span className="text-white/75">Instant status updates</span>
+              </div>
+            </div>
+          </div>
+
+          <ul className="grid gap-4 sm:grid-cols-2 lg:col-span-7">
+            {STATUSES.map((s, idx) => (
+              <Reveal key={s.label} delayMs={idx * 70}>
+                <li className={`glass-card flex h-full flex-col justify-between rounded-3xl p-6 ${idx % 2 === 1 ? "sm:translate-y-4" : ""}`}>
+                  <div>
+                    <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold ${s.tone}`}>
+                      {s.label === "Active" && <span className="h-2 w-2 animate-pulse rounded-full bg-green" aria-hidden="true" />}
+                      {s.label}
+                    </span>
+                    <p className="mt-4 leading-relaxed text-ink/80">{s.text}</p>
+                  </div>
+                </li>
+              </Reveal>
+            ))}
+          </ul>
         </div>
-        <ul className="grid gap-4 sm:grid-cols-2">
-          {STATUSES.map((s) => (
-            <li key={s.label} className="rounded-2xl border border-line p-6">
-              <span className={`inline-block rounded-full px-3 py-1 text-xs font-bold ${s.tone}`}>{s.label}</span>
-              <p className="mt-4 leading-relaxed text-ink/80">{s.text}</p>
-            </li>
-          ))}
-        </ul>
       </div>
     </section>
   );
@@ -419,17 +603,85 @@ function LiveStatus() {
 /* Complaints */
 
 const STAGES = [
-  { title: "Acknowledged", time: "Within 2 business days" },
-  { title: "Triage", time: "Normally within 5 business days" },
-  { title: "Member responds", time: "5 business days" },
-  { title: "Outcome", time: "Aim: within 30 business days" },
-  { title: "Appeal", time: "File within 10 business days" },
+  {
+    title: "Acknowledged",
+    time: "Within 2 business days",
+    accent: "from-green to-green-dark",
+    badge: "bg-green-soft text-green-dark",
+    stepLabel: "Intake",
+  },
+  {
+    title: "Triage",
+    time: "Normally within 5 business days",
+    accent: "from-[#3b82f6] to-navy-3",
+    badge: "bg-[var(--blue-soft)] text-navy-3",
+    stepLabel: "Evidence Check",
+  },
+  {
+    title: "Member responds",
+    time: "5 business days",
+    accent: "from-[#d97706] to-[#b45309]",
+    badge: "bg-[var(--amber-soft)] text-[#8a5a00]",
+    stepLabel: "Right of Reply",
+  },
+  {
+    title: "Outcome",
+    time: "Aim: within 30 business days",
+    accent: "from-green-dark to-navy",
+    badge: "bg-sand text-navy",
+    stepLabel: "Written Reasons",
+  },
+  {
+    title: "Appeal",
+    time: "File within 10 business days",
+    accent: "from-navy to-navy-3",
+    badge: "bg-navy text-white",
+    stepLabel: "Independent Review",
+  },
 ];
 
 function Complaints() {
+  const sectionRef = useRef<HTMLElement>(null);
+  const [scrollProgress, setScrollProgress] = useState(0.2);
+
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setScrollProgress(1);
+      return;
+    }
+
+    const onScroll = () => {
+      const rect = el.getBoundingClientRect();
+      const vh = window.innerHeight || 800;
+      const raw = (vh * 0.85 - rect.top) / (rect.height * 0.65);
+      setScrollProgress(Math.max(0.12, Math.min(1, raw)));
+    };
+
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const activeStageIndex = Math.min(STAGES.length - 1, Math.floor(scrollProgress * STAGES.length));
+
   return (
-    <section className="bg-soft">
-      <div className="mx-auto max-w-7xl px-6 py-20 sm:py-24">
+    <section
+      ref={sectionRef}
+      className="relative overflow-hidden bg-gradient-to-b from-soft via-sand/40 to-white"
+    >
+      {/* Subtle theme ambient glows */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -top-24 left-1/4 h-72 w-72 rounded-full bg-green/10 blur-3xl"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -bottom-24 right-1/4 h-72 w-72 rounded-full bg-sand-dark/25 blur-3xl"
+      />
+
+      <div className="relative z-10 mx-auto max-w-7xl px-6 py-20 sm:py-24">
         <div className="grid gap-6 lg:grid-cols-2 lg:items-end">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.22em] text-green-dark">Complaints and appeals</p>
@@ -440,17 +692,61 @@ function Complaints() {
             PSSA can't guarantee repayment or replace the police, courts or consumer bodies.
           </p>
         </div>
-        <ol className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          {STAGES.map((stage, i) => (
-            <li key={stage.title} className="rounded-2xl bg-white p-6 shadow-sm">
-              <span className="font-display text-3xl font-bold text-green">{i + 1}</span>
-              <p className="mt-3 font-semibold text-navy">{stage.title}</p>
-              <p className="mt-1 text-sm text-muted">{stage.time}</p>
-            </li>
-          ))}
-        </ol>
-        <p className="mt-4 text-sm italic text-muted">Proposed service targets, pending board adoption.</p>
-        <Link to="/concern" className="mt-8 inline-flex items-center gap-2 rounded-xl bg-navy px-6 py-3.5 font-semibold text-white hover:bg-navy-2">
+
+        {/* Scroll-animated timeline progress */}
+        <div className="relative mt-14">
+          <div
+            aria-hidden="true"
+            className="absolute top-11 right-8 left-8 hidden h-1 overflow-hidden rounded-full bg-navy/10 lg:block"
+          >
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-green via-green-dark to-navy transition-all duration-300 ease-out"
+              style={{ width: `${Math.round(scrollProgress * 100)}%` }}
+            />
+          </div>
+
+          <ol className="relative grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            {STAGES.map((stage, i) => {
+              const reached = i <= activeStageIndex;
+              return (
+                <Reveal key={stage.title} delayMs={i * 75}>
+                  <li
+                    className={`glass-card group relative flex h-full flex-col overflow-hidden rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl ${
+                      reached ? "border-green/35 ring-1 ring-green/15" : ""
+                    }`}
+                  >
+                    <div
+                      aria-hidden="true"
+                      className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${stage.accent} transition-opacity duration-300 ${
+                        reached ? "opacity-100" : "opacity-35 group-hover:opacity-100"
+                      }`}
+                    />
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className={`inline-flex size-10 items-center justify-center rounded-full font-display text-lg font-bold transition-transform duration-300 group-hover:scale-110 ${
+                          reached ? "bg-navy text-white shadow-md" : "bg-green-soft text-green-dark"
+                        }`}
+                      >
+                        {i + 1}
+                      </span>
+                      <span className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-bold uppercase tracking-wider ${stage.badge}`}>
+                        {stage.stepLabel}
+                      </span>
+                    </div>
+                    <p className="mt-5 text-lg font-bold text-navy">{stage.title}</p>
+                    <p className="mt-1.5 text-sm text-muted">{stage.time}</p>
+                  </li>
+                </Reveal>
+              );
+            })}
+          </ol>
+        </div>
+
+        <p className="mt-5 text-sm italic text-muted">Proposed service targets, pending board adoption.</p>
+        <Link
+          to="/concern"
+          className="mt-8 inline-flex items-center gap-2 rounded-xl bg-navy px-6 py-3.5 font-semibold text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-navy-2"
+        >
           <Icon name="flag" size={18} /> Raise a concern
         </Link>
       </div>
@@ -461,34 +757,143 @@ function Complaints() {
 /* Standards and policies */
 
 const POLICIES = [
-  { slug: "code-of-conduct", title: "Code of Conduct", text: "The rules members follow on social media, websites and in private messages." },
-  { slug: "verification", title: "Verification Standard", text: "How we check identity, address, banking, authority and trading channels." },
-  { slug: "certification", title: "Certification and Renewal", text: "The assessment, 12-month membership and annual renewal." },
-  { slug: "complaints", title: "Complaints and Appeals", text: "How concerns are handled, timelines, decisions and appeals." },
-  { slug: "privacy", title: "Privacy and Retention", text: "What we collect, why, who can see it and how long we keep it." },
-  { slug: "badge-rules", title: "Badge and Certificate Rules", text: "Who may display the badge, and how to report misuse." },
-  { slug: "independence", title: "Independence and Fees", text: "Fees are kept separate from approval and disciplinary decisions." },
-  { slug: "order-template", title: "Customer Order Template", text: "A blank written order to agree with your shopper before you pay." },
+  {
+    slug: "code-of-conduct",
+    title: "Code of Conduct",
+    text: "The rules members follow on social media, websites and in private messages.",
+    tag: "Conduct",
+    iconBg: "bg-green-soft text-green-dark group-hover:bg-green group-hover:text-white",
+    bar: "from-green to-green-dark",
+  },
+  {
+    slug: "verification",
+    title: "Verification Standard",
+    text: "How we check identity, address, banking, authority and trading channels.",
+    tag: "Vetting",
+    iconBg: "bg-[var(--blue-soft)] text-navy group-hover:bg-navy group-hover:text-white",
+    bar: "from-navy to-navy-3",
+  },
+  {
+    slug: "certification",
+    title: "Certification and Renewal",
+    text: "The assessment, 12-month membership and annual renewal.",
+    tag: "Renewal",
+    iconBg: "bg-sand text-navy group-hover:bg-navy group-hover:text-white",
+    bar: "from-sand-dark to-navy",
+  },
+  {
+    slug: "complaints",
+    title: "Complaints and Appeals",
+    text: "How concerns are handled, timelines, decisions and appeals.",
+    tag: "Disputes",
+    iconBg: "bg-[var(--amber-soft)] text-[#8a5a00] group-hover:bg-[#b45309] group-hover:text-white",
+    bar: "from-[#d97706] to-green-dark",
+  },
+  {
+    slug: "privacy",
+    title: "Privacy and Retention",
+    text: "What we collect, why, who can see it and how long we keep it.",
+    tag: "Privacy",
+    iconBg: "bg-green-soft text-green-dark group-hover:bg-green group-hover:text-white",
+    bar: "from-green-dark to-navy",
+  },
+  {
+    slug: "badge-rules",
+    title: "Badge and Certificate Rules",
+    text: "Who may display the badge, and how to report misuse.",
+    tag: "Trust Mark",
+    iconBg: "bg-[var(--blue-soft)] text-navy group-hover:bg-navy group-hover:text-white",
+    bar: "from-navy-3 to-green",
+  },
+  {
+    slug: "independence",
+    title: "Independence and Fees",
+    text: "Fees are kept separate from approval and disciplinary decisions.",
+    tag: "Governance",
+    iconBg: "bg-sand text-navy group-hover:bg-navy group-hover:text-white",
+    bar: "from-sand-dark to-green-dark",
+  },
+  {
+    slug: "order-template",
+    title: "Customer Order Template",
+    text: "A blank written order to agree with your shopper before you pay.",
+    tag: "Template",
+    iconBg: "bg-green-soft text-green-dark group-hover:bg-green group-hover:text-white",
+    bar: "from-green to-navy",
+  },
 ];
 
 function Standards() {
+  const sectionRef = useRef<HTMLElement>(null);
+  const [parallaxOffset, setParallaxOffset] = useState(0);
+
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const onScroll = () => {
+      const rect = el.getBoundingClientRect();
+      const vh = window.innerHeight || 800;
+      const centered = (rect.top + rect.height * 0.5 - vh * 0.5) / vh;
+      setParallaxOffset(Math.max(-14, Math.min(14, centered * 16)));
+    };
+
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   return (
-    <section id="standards" className="scroll-mt-32 bg-white">
-      <div className="mx-auto max-w-7xl px-6 py-20 sm:py-24">
+    <section
+      id="standards"
+      ref={sectionRef}
+      className="relative scroll-mt-32 overflow-hidden bg-gradient-to-b from-white via-green-soft/35 to-sand/40"
+    >
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute top-16 -right-24 h-80 w-80 rounded-full bg-green/10 blur-3xl"
+      />
+      <div className="relative z-10 mx-auto max-w-7xl px-6 py-20 sm:py-24">
         <p className="text-xs font-bold uppercase tracking-[0.22em] text-green-dark">Standards and policies</p>
-        <h2 className="mt-4 max-w-3xl text-4xl font-bold text-navy sm:text-5xl">Published rules, applied the same way to everyone.</h2>
-        <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {POLICIES.map((p) => (
-            <Link
-              key={p.slug}
-              to={`/policies/${p.slug}`}
-              className="group flex flex-col rounded-2xl border border-line p-6 transition hover:border-green hover:shadow-md"
-            >
-              <span className="text-navy group-hover:text-green-dark"><Icon name="file" size={22} /></span>
-              <h3 className="mt-4 text-lg font-semibold text-navy">{p.title}</h3>
-              <p className="mt-2 flex-1 text-sm leading-relaxed text-muted">{p.text}</p>
-              <span className="mt-4 text-xs font-semibold uppercase tracking-[0.14em] text-muted">Draft v1.0</span>
-            </Link>
+        <h2 className="mt-4 max-w-3xl text-4xl font-bold text-navy sm:text-5xl">
+          Published rules, applied the same way to everyone.
+        </h2>
+        <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          {POLICIES.map((p, idx) => (
+            <Reveal key={p.slug} delayMs={idx * 50}>
+              <div
+                style={{
+                  transform: `translateY(${(idx % 2 === 0 ? parallaxOffset : -parallaxOffset).toFixed(1)}px)`,
+                  transition: "transform 180ms ease-out",
+                }}
+              >
+                <Link
+                  to={`/policies/${p.slug}`}
+                  className="glass-card group relative flex h-full flex-col overflow-hidden rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl"
+                >
+                  <div
+                    aria-hidden="true"
+                    className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${p.bar} opacity-60 transition-all duration-300 group-hover:h-1.5 group-hover:opacity-100`}
+                  />
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`flex size-10 items-center justify-center rounded-xl transition-colors duration-300 ${p.iconBg}`}>
+                      <Icon name="file" size={19} />
+                    </span>
+                    <span className="rounded-full border border-line bg-white/80 px-2.5 py-0.5 text-[10.5px] font-bold uppercase tracking-wider text-navy">
+                      {p.tag}
+                    </span>
+                  </div>
+                  <h3 className="mt-5 text-lg font-semibold text-navy">{p.title}</h3>
+                  <p className="mt-2 flex-1 text-sm leading-relaxed text-muted">{p.text}</p>
+                  <div className="mt-5 flex items-center justify-between border-t border-line/70 pt-3">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">Draft v1.0</span>
+                    <span className="inline-flex items-center gap-1 text-xs font-bold text-green-dark transition-transform duration-300 group-hover:translate-x-1">
+                      Read <Icon name="arrow" size={14} />
+                    </span>
+                  </div>
+                </Link>
+              </div>
+            </Reveal>
           ))}
         </div>
       </div>
@@ -500,17 +905,28 @@ function Standards() {
 
 function JoinBand() {
   return (
-    <section className="bg-green-dark text-white">
-      <div className="mx-auto flex max-w-7xl flex-col items-start gap-8 px-6 py-16 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h2 className="text-3xl font-bold text-white sm:text-4xl">Are you a personal shopper or sourcing trader?</h2>
-          <p className="mt-3 text-lg text-white/80">Give your customers a status they can check. Apply to join PSSA.</p>
+    <section className="bg-sand/40 px-6 py-16 sm:py-20">
+      <div className="mx-auto max-w-7xl overflow-hidden rounded-3xl bg-gradient-to-r from-navy via-navy-2 to-green-dark p-8 text-white shadow-2xl sm:p-12 lg:flex lg:items-center lg:justify-between lg:gap-10">
+        <div className="max-w-2xl">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-green">Membership Application</p>
+          <h2 className="mt-3 text-3xl font-bold text-white sm:text-4xl">
+            Are you a personal shopper or sourcing trader?
+          </h2>
+          <p className="mt-3 text-lg text-white/80">
+            Give your customers a status they can check. Apply to join PSSA.
+          </p>
         </div>
-        <div className="flex flex-wrap gap-3">
-          <Link to="/apply" className="inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3.5 font-semibold text-green-dark hover:bg-green-soft">
+        <div className="mt-8 flex flex-wrap gap-3 lg:mt-0">
+          <Link
+            to="/apply"
+            className="inline-flex items-center gap-2 rounded-xl bg-green px-6 py-3.5 font-semibold text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-green-dark"
+          >
             Apply to join <Icon name="arrow" size={18} />
           </Link>
-          <Link to="/policies/verification" className="inline-flex items-center rounded-xl border border-white/50 px-6 py-3.5 font-semibold hover:bg-white/10">
+          <Link
+            to="/policies/verification"
+            className="inline-flex items-center rounded-xl border border-white/35 bg-white/10 px-6 py-3.5 font-semibold backdrop-blur-sm transition hover:bg-white/20"
+          >
             Read the Verification Standard
           </Link>
         </div>
