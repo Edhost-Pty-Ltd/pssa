@@ -150,6 +150,7 @@ function hasText(value: string | null | undefined) {
 }
 
 function profileComplete(profile: LoadedMember["memberProfile"]) {
+  // tradingName is optional (mentor): members may trade under their own name.
   return Boolean(
     profile &&
       hasText(profile.firstName) &&
@@ -158,7 +159,6 @@ function profileComplete(profile: LoadedMember["memberProfile"]) {
       hasText(profile.idNumber) &&
       hasText(profile.physicalAddress) &&
       hasText(profile.city) &&
-      hasText(profile.tradingName) &&
       hasText(profile.scope),
   );
 }
@@ -505,7 +505,8 @@ async function storeDocument(userId: string, file: Express.Multer.File | undefin
         userId,
         type,
         storagePath: file.filename,
-        originalName: file.originalname.slice(0, 180),
+        // Multer decodes the multipart filename as latin1; re-decode as utf8 for em dash etc.
+        originalName: Buffer.from(file.originalname, "latin1").toString("utf8").slice(0, 180),
         status: "uploaded",
       },
       select: documentSelect,
@@ -583,16 +584,31 @@ const channelCreateSchema = z
 memberRouter.post("/channels", async (req, res) => {
   const body = channelCreateSchema.parse(req.body ?? {});
   const member = await loadMember(req.user!.id);
-  const channel = await prisma.channel.create({
-    data: {
-      memberProfileId: member.memberProfile!.id,
-      kind: body.platform.toLowerCase(),
-      value: body.url ?? body.handle!,
-      status: "code_sent",
-    },
-    select: channelSelect,
+  const kind = body.platform.toLowerCase();
+  const value = body.url ?? body.handle!;
+  const existing = await prisma.channel.findFirst({
+    where: { memberProfileId: member.memberProfile!.id, kind },
+    select: { id: true },
   });
-  res.status(201).json({ channel });
+
+  // One channel row per platform — re-adding updates the value and resets confirmation.
+  const channel = existing
+    ? await prisma.channel.update({
+        where: { id: existing.id },
+        data: { value, status: "code_sent" },
+        select: channelSelect,
+      })
+    : await prisma.channel.create({
+        data: {
+          memberProfileId: member.memberProfile!.id,
+          kind,
+          value,
+          status: "code_sent",
+        },
+        select: channelSelect,
+      });
+
+  res.status(existing ? 200 : 201).json({ channel });
 });
 
 const channelConfirmSchema = z.object({
@@ -608,7 +624,8 @@ memberRouter.post("/channels/:id/confirm", async (req, res) => {
   });
   if (!existing) throw notFound("Channel not found.");
 
-  // SMS verification is not wired yet; a well-formed code confirms the channel for Phase 1 UI flow.
+  // TODO(V5): send a real channel verification code (SMS/DM) and match it here before launch.
+  // Any well-formed 6-digit code confirms for local/UI testing only.
   const channel = await prisma.channel.update({
     where: { id: existing.id },
     data: { status: "confirmed" },
