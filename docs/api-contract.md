@@ -257,12 +257,12 @@ The official exam is **30 questions in 45 minutes**, a pass mark of **at least 8
 
 ### 6.6 Certificates and live verification
 
-A certificate is issued only after the gates and a recorded human approval have passed. The number is `PSSA-YYYY-XXXXXX` and must be unique. A QR code on the PDF points at `/verify/PSSA-YYYY-XXXXXX`. Screenshots and old PDFs do not prove current status — only this live endpoint does.
+A certificate is issued only after the gates and a recorded human approval have passed. The number is `PSSA-YYYY-XXXXXX` and must be unique. On activation the API writes a PDF (with QR) under private storage and sets `pdfPath`. The QR encodes `{CLIENT_ORIGIN}/verify/PSSA-YYYY-XXXXXX` (frontend live-check). Screenshots and old PDFs do not prove current status — only the live endpoint does.
 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
 | GET | `/api/member/certificate` | Member | **In:** cookie. **Out:** `200 { certificate }` with number, validity, scope, `qrTargetUrl` (`/verify/PSSA-YYYY-XXXXXX`), live `status`, and `storedStatus`. Live status is derived from membership + dates (expired/suspended/revoked/resigned never look Active). `certificate: null` with a reason if none issued yet. | Exists |
-| GET | `/api/member/certificate/pdf` | Member | **In:** cookie. **Out:** the PDF. | To build |
+| GET | `/api/member/certificate/pdf` | Member | **In:** cookie. **Out:** the membership PDF (`application/pdf`) with name, number, validity, scope, and a QR code pointing at `{CLIENT_ORIGIN}/verify/PSSA-YYYY-XXXXXX`. Generated on activation (and lazily on first download if missing). Official logo is used when present at `backend/storage/branding/logo.png` (or `.jpg`); otherwise a text PSSA mark. Screenshots of the PDF are not proof — only live-check is. | Exists |
 | GET | `/api/verify/:certificateNumber` | Public | **In:** path is the certificate number, for example `PSSA-2026-004821` (spaces ignored, case-insensitive). **Out:** `200 { certificate }` with `number`, `firstName`, `lastName`, `tradingName`, `scope`, live `status` (`active` \| `suspended` \| `expired` \| `revoked` \| `resigned`), `validFrom`, `validUntil`, `channels[]` (`{ kind, value }` confirmed only), and `checkedAt` (ISO). `404` if the number is unknown. Never ID, bank or address fields. Status is computed live from the member profile and validity dates. | Exists |
 
 ### 6.7 Public register
@@ -292,10 +292,11 @@ Complaints are new. They are always free. Service times in Africa/Johannesburg: 
 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
-| GET | `/api/admin/members` | Admin | **In:** query `status?`, `q?`, `page`. **Out:** `200 { items, page, pageSize, total }`. | To build |
-| GET | `/api/admin/members/:id` | Admin | **In:** path id. **Out:** `200 { member }` with status, certificate (`PSSA-YYYY-XXXXXX`), history summary. | To build |
-| POST | `/api/admin/members/:id/status` | Admin | **In:** `{ status: "active" \| "suspended" \| "expired" \| "revoked" \| "resigned", reason, conflictDeclared: true }`. **Out:** `200 { member, historyEntry }`. The live badge and public register update immediately. Include `resigned`, which the Figma control does not show. | To build |
-| GET | `/api/admin/members/:id/history` | Admin | **In:** path id. **Out:** `200 { history[] }`: from, to, reason, actor, `conflictDeclared`, at. | To build |
+| GET | `/api/admin/members` | Admin | **In:** query `status?` (`active` \| `suspended` \| `expired` \| `revoked` \| `resigned`), `q?`, `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }` with profile fields and latest certificate (live status). | Exists |
+| GET | `/api/admin/members/:id` | Admin | **In:** path id (`MemberProfile.id`). **Out:** `200 { member }` with status, certificate (`PSSA-YYYY-XXXXXX`), channels, identityType, and recent history. | Exists |
+| POST | `/api/admin/members/:id/status` | Admin | **In:** `{ status: "active" \| "suspended" \| "expired" \| "revoked" \| "resigned", reason, conflictDeclared: true }`. **Out:** `200 { member, historyEntry }`. Writes `StatusHistory` + audit. Revoked/resigned/expired also updates the stored certificate status so live-check stays correct. | Exists |
+| GET | `/api/admin/members/:id/history` | Admin | **In:** path id. **Out:** `200 { history[] }`: from, to, reason, actor, `conflictDeclared`, at. | Exists |
+| GET | `/api/admin/audit` | Admin | **In:** query `q?`, `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }` from existing `AuditLog` rows (action, entity, reason, actor, at). | Exists |
 | GET | `/api/member/renewal` | Member | **In:** cookie. **Out:** `200 { validUntil, windowOpensAt, status, checklist, lastReminderAt? }`. | To build |
 | POST | `/api/member/renewal/start` | Member | **In:** empty, or `{ confirm: true }`. **Out:** `201 { renewal }` so the member can update documents and sit the refresher exam. | To build |
 | POST | `/api/member/renewal/declaration` | Member | **In:** `{ accepted: true, version, statements? }`. **Out:** `200 { renewal }`. | To build |

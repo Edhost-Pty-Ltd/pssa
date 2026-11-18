@@ -28,6 +28,16 @@ export const MEMBER_STATUS: StatusMap = {
   resigned: { label: "Resigned", tone: "grey" },
 };
 
+// What the public sees on the live check. Neutral wording: we say a member is not active,
+// never why (suspended, revoked, ...), so the public page doesn't make accusations.
+export const PUBLIC_MEMBER_STATUS: StatusMap = {
+  active: { label: "Active member", tone: "green" },
+  suspended: { label: "Not currently active", tone: "red" },
+  expired: { label: "Membership expired", tone: "grey" },
+  revoked: { label: "Not currently active", tone: "red" },
+  resigned: { label: "No longer a member", tone: "grey" },
+};
+
 export const COMPLAINT_STATUS: StatusMap = {
   received: { label: "Received", tone: "blue" },
   under_review: { label: "Under review", tone: "blue" },
