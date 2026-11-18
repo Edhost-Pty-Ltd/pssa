@@ -173,3 +173,91 @@
 .task-row .status {
   margin-bottom: 6px;
 }
+
+/* Verification documents: the design's sizes are very small, so make them readable. */
+.document-card > p,
+.document-card .doc-meta {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 4px 0 0;
+}
+.document-card h3 {
+  font-size: 15px;
+  margin: 14px 0 0;
+}
+.doc-actions {
+  flex-wrap: wrap;
+}
+.doc-actions button,
+.doc-actions a {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  padding: 8px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--navy);
+}
+.doc-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.doc-error {
+  font-size: 12px;
+}
+.doc-optional {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-left: 6px;
+}
+.channel-table > div {
+  font-size: 13px;
+}
+.channel-table b {
+  overflow-wrap: anywhere;
+}
+.channel-confirm {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.channel-confirm input {
+  width: 110px;
+  border: 1px solid #cfd7dd;
+  border-radius: 6px;
+  padding: 7px 9px;
+  letter-spacing: 0.2em;
+  text-align: center;
+}
+.channel-add {
+  display: grid;
+  grid-template-columns: 200px 1fr auto;
+  gap: 12px;
+  align-items: end;
+  padding-top: 18px;
+}
+.channel-add .ui-field + .ui-field {
+  margin-top: 0;
+}
+@media (max-width: 760px) {
+  .document-grid {
+    grid-template-columns: 1fr;
+  }
+  .channel-add {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  /* Phones: the code box and Confirm button get a full row under the channel. */
+  .channel-table > div > .channel-confirm-cell {
+    grid-column: 1 / -1;
+  }
+  .channel-confirm input {
+    flex: 1;
+  }
+}
