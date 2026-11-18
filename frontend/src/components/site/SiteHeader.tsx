@@ -7,7 +7,7 @@ import { Wordmark } from "./Wordmark";
 const NAV = [
   { label: "About", href: "/#about" },
   { label: "Membership", href: "/#membership" },
-  { label: "Member register", href: "/#register" },
+  { label: "Member register", href: "/register" },
   { label: "Buy safely", href: "/#buy-safely" },
   { label: "Standards", href: "/#standards" },
   { label: "Raise a concern", href: "/concern" },
