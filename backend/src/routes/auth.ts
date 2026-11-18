@@ -110,6 +110,7 @@ authRouter.post("/otp/send", authLimiter, async (req, res) => {
   });
 
   // Admin (and non-member) accounts use password login. Same response shape so we don't leak role.
+  // Do not create a MEMBER row here — accounts are created only after a correct verify.
   if (existing && existing.role !== "MEMBER") {
     return res.json({
       sent: true,
@@ -118,17 +119,8 @@ authRouter.post("/otp/send", authLimiter, async (req, res) => {
     });
   }
 
-  const user = existing ?? (await findOrCreatePasswordlessMember(email));
-  if (user.role !== "MEMBER") {
-    return res.json({
-      sent: true,
-      destination: maskDestination("email", email),
-      expiresAt: fakeExpiresAt(),
-    });
-  }
-
   const recent = await prisma.otpCode.findFirst({
-    where: { userId: user.id, channel: "email", createdAt: { gt: new Date(Date.now() - OTP_SETTINGS.resendAfterSeconds * 1000) } },
+    where: { email, channel: "email", createdAt: { gt: new Date(Date.now() - OTP_SETTINGS.resendAfterSeconds * 1000) } },
     select: { id: true },
   });
   if (recent) {
@@ -138,9 +130,9 @@ authRouter.post("/otp/send", authLimiter, async (req, res) => {
   const code = generateOtp();
   const expiresAt = fakeExpiresAt();
   const [, created] = await prisma.$transaction([
-    prisma.otpCode.deleteMany({ where: { userId: user.id, channel: "email", consumedAt: null } }),
+    prisma.otpCode.deleteMany({ where: { email, channel: "email", consumedAt: null } }),
     prisma.otpCode.create({
-      data: { userId: user.id, channel: "email", codeHash: await hashOtp(code), expiresAt },
+      data: { email, channel: "email", codeHash: await hashOtp(code), expiresAt },
       select: { id: true },
     }),
   ]);
@@ -177,18 +169,8 @@ authRouter.post("/otp/send", authLimiter, async (req, res) => {
 authRouter.post("/otp/verify", authLimiter, async (req, res) => {
   const { email, code } = verifyOtpSchema.parse(req.body ?? {});
 
-  const account = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true, role: true },
-  });
-
-  // Same failure shape whether the email is unknown, not a member, or the code is wrong.
-  if (!account || account.role !== "MEMBER") {
-    throw badRequest("That code is incorrect.", { fields: { code: "is incorrect" } });
-  }
-
   const record = await prisma.otpCode.findFirst({
-    where: { userId: account.id, channel: "email", consumedAt: null },
+    where: { email, channel: "email", consumedAt: null },
     orderBy: { createdAt: "desc" },
   });
   if (!record || record.expiresAt < new Date()) {
@@ -202,6 +184,12 @@ authRouter.post("/otp/verify", authLimiter, async (req, res) => {
     throw badRequest("That code is incorrect.", { fields: { code: "is incorrect" } });
   }
 
+  const existing = await prisma.user.findUnique({ where: { email }, select: { id: true, role: true } });
+  if (existing && existing.role !== "MEMBER") {
+    throw badRequest("That code is incorrect.", { fields: { code: "is incorrect" } });
+  }
+
+  const account = existing ?? (await findOrCreatePasswordlessMember(email));
   const now = new Date();
   const [, user] = await prisma.$transaction([
     prisma.otpCode.update({ where: { id: record.id }, data: { consumedAt: now } }),
