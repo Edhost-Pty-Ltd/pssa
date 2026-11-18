@@ -116,7 +116,7 @@ These are the records the API hangs off. KG designs a new Prisma schema from scr
 | Model | Key fields and rules |
 | --- | --- |
 | User | `id`, `email`, `passwordHash?` (required for ADMIN, not required for passwordless members), `role`, `tokenVersion`, `emailVerifiedAt`, `phoneVerifiedAt`, `lastLoginAt`, `createdAt`. A password hash is never returned. |
-| MemberProfile | Names, phone, trading name, scope, idNumber, physicalAddress, city, channels, member status, `validFrom`, `validUntil`. Private fields never go on public endpoints. Identity today is treated as a South African ID number in the API; the Verification Standard also allows an overseas passport route — KG should make identity type/number support that (nullable SA ID vs passport) so “profile complete” does not force an SA ID forever. |
+| MemberProfile | Names, phone, trading name, scope, `identityType` (`sa_id` \| `passport`), `idNumber` (unique; SA ID or passport depending on type), physicalAddress, city, channels, member status, `validFrom`, `validUntil`. Private fields never go on public endpoints. Profile complete accepts either identity route. |
 | Application | `id`, `userId`, `number` (`APP-YYYY-XXXX`), `status`, `submittedAt`, `agreementAcceptedAt`, `agreementVersion`, reviews. Created by the submit endpoint. |
 | Document | `id`, `userId`, `type`, storage path, `status`, `reviewerNote`, `reviewedAt`, `reviewedBy`. Types: `id_document`, `proof_of_residence`, `bank_evidence`, `business_registration`, `channel_evidence`. Stored privately. |
 | TutorialVideo and VideoProgress | Progress must not treat a skip-ahead as completion. Official lesson files come from the senior (four tutorial videos). |
@@ -152,7 +152,7 @@ The signed-in member API lives under `/api/member` (not `/api/seller` or `/api/a
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
 | GET | `/api/member/profile` | Member | **In:** cookie. **Out:** `200 { profile }` including status, masked ID number, address, channels and a documents summary. Never a password hash. | Exists |
-| PATCH | `/api/member/profile` | Member | **In:** partial body: name, phone, trading name, scope, idNumber, physicalAddress, city, channel URLs (`null` deletes a channel). **Out:** `200 { profile }`. `409` if the ID number belongs to someone else. | Exists |
+| PATCH | `/api/member/profile` | Member | **In:** partial body: name, phone, trading name, scope, `identityType` (`sa_id` \| `passport`), idNumber, physicalAddress, city, channel URLs (`null` deletes a channel). Setting `idNumber` requires an identity type (sent now or already stored). SA ID must be a valid 13-digit number; passport must be 6–12 letters/digits. **Out:** `200 { profile }` with `identityType` and a masked `idNumber`. `409` if the identity number belongs to someone else. | Exists |
 | GET | `/api/member/application` | Member | **In:** cookie. **Out:** `200 { application, progress }` — see **Application progress shape** below. Until the member accepts the agreement or submits, `application` may be a null draft (`id` / `number` null, `status: "draft"`). Status stays `draft` until submit. | Exists |
 | POST | `/api/member/application/submit` | Member | **In:** empty body, or `{ confirm: true }`. **Out:** `200` or `201 { application }` with status `submitted` and an `APP-YYYY-XXXX` number. `409` if required profile fields, documents or agreement acceptance are missing. | Exists |
 | POST | `/api/member/application/agreement` | Member | **In:** `{ accepted: true, version }` (the published Policy 01 version). **Out:** `200 { application }` with `agreementAcceptedAt` and version stored. Creates the draft application row (and number) if it does not exist yet. Agreement text content is blocked until the senior provides Policy 01; the API already stores acceptance + version. | Exists |
@@ -203,9 +203,9 @@ Rules for the member portal:
 - `percent` is `round(100 * completeSteps / 6)`.
 - `actions` lists document resubmission work (and later other action-needed items) for the dashboard cards.
 - `canSubmit` is true only when profile + required documents/channels + agreement are done and the application is still `draft` or `needs_info`.
-- Profile complete requires name, phone, id number, address, city and scope. **`tradingName` is optional** (members may trade under their own name).
+- Profile complete requires name, phone, **`identityType` + matching `idNumber`** (SA ID or passport), address, city and scope. **`tradingName` is optional** (members may trade under their own name).
 - Channel confirm currently accepts any 6-digit code for UI testing; verification gate V5 needs a real outbound code check before launch. Adding the same platform again updates the existing channel instead of creating a duplicate.
-- Tutorials/assessment stay locked or not started until those models and official content land.
+- Tutorials/assessment read live `TutorialVideo` / `VideoProgress` / `ExamAttempt` rows. With no active videos the tutorials step shows “Waiting for official tutorials” and assessment stays locked. Assessment unlocks only when every active tutorial is `completed`.
 
 ### 6.3 Documents
 
@@ -228,22 +228,22 @@ The official exam is **30 questions in 45 minutes**, a pass mark of **at least 8
 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
-| GET | `/api/tutorials/active` | Member or admin | **In:** cookie. **Out:** `200 { tutorials[] }` with title, duration and the member’s completion. | To build |
+| GET | `/api/tutorials/active` | Member or admin | **In:** cookie. **Out:** `200 { tutorials[] }` with title, duration and (for members) completion / watched seconds. Empty list includes a `reason` until official videos are active. | Exists |
 | GET | `/api/tutorials/:id/stream` | Member or admin | **In:** cookie. **Out:** the video stream. | To build |
 | POST | `/api/tutorials/:id/progress` | Member | **In:** `{ positionSeconds, durationSeconds? }`. **Out:** `200 { progress }`. A skip-ahead must not count as complete. | To build |
-| GET | `/api/exam/status` | Member | **In:** cookie. **Out:** `200 { open, passed, attempts, canStart, reason?, retakeOpensAt? }`. | To build |
+| GET | `/api/exam/status` | Member | **In:** cookie. **Out:** `200 { open, passed, attempts, canStart, reason?, retakeOpensAt? }`. `canStart` is true only when tutorials are complete, active questions exist, and the retake window allows it. | Exists |
 | POST | `/api/exam/start` | Member | **In:** empty, or `{ type: "entrance" \| "refresher" }`. **Out:** `201 { attempt, questions[], expiresAt }` — 30 questions, no answer key, 45-minute `expiresAt`. | To build |
 | POST | `/api/exam/attempts/:id/submit` | Member | **In:** `{ answers }`. **Out:** `200 { attempt }` with score, percent, passed, and `criticalFailed`. Late or over-time submits are scored as a fail. | To build |
-| GET | `/api/exam/attempts` | Member | **In:** cookie. **Out:** `200 { attempts[] }` (no answer key). | To build |
+| GET | `/api/exam/attempts` | Member | **In:** cookie. **Out:** `200 { attempts[] }` (no answer key). | Exists |
 | POST | `/api/exam/attempts/:id/appeal` | Member | **In:** `{ reason }`. **Out:** `201 { appeal }`. | To build |
-| GET | `/api/tutorials` | Admin | **In:** cookie. **Out:** `200 { tutorials[] }` including inactive ones. | To build |
+| GET | `/api/tutorials` | Admin | **In:** cookie. **Out:** `200 { tutorials[] }` including inactive ones. | Exists |
 | POST | `/api/tutorials` | Admin | **In:** multipart video plus title. **Out:** `201 { tutorial }`. | To build |
 | PATCH | `/api/tutorials/:id` | Admin | **In:** title, duration, active flag. **Out:** `200 { tutorial }`. | To build |
 | POST | `/api/tutorials/:id/activate` | Admin | **In:** none. **Out:** `200 { tutorial }`. | To build |
-| GET | `/api/exam/questions` | Admin | **In:** cookie. **Out:** `200 { questions[] }` including `isCritical` and the correct option (admin only). | To build |
+| GET | `/api/exam/questions` | Admin | **In:** cookie. **Out:** `200 { questions[] }` including `isCritical` and the correct option (admin only). | Exists |
 | POST | `/api/exam/attempts/:id/allow-retake` | Admin | **In:** `{ reason, conflictDeclared: true }`. **Out:** `200 { attempt }`. Used after two failed attempts. | To build |
-| GET | `/api/admin/applications/:id/tutorial` | Admin | **In:** path id. **Out:** tutorial completion for that applicant. | To build |
-| GET | `/api/admin/applications/:id/exam` | Admin | **In:** path id. **Out:** score, pass/fail, attempts used, time taken. | To build |
+| GET | `/api/admin/applications/:id/tutorial` | Admin | **In:** path id. **Out:** `{ tutorial }` with completedCount / total / lessons. | Exists |
+| GET | `/api/admin/applications/:id/exam` | Admin | **In:** path id. **Out:** `{ exam }` with passed, attemptCount, latest score/time, and attempt history. | Exists |
 
 ### 6.5 Admin applications
 
@@ -252,7 +252,7 @@ The official exam is **30 questions in 45 minutes**, a pass mark of **at least 8
 | GET | `/api/admin/summary` | Admin | **In:** none. **Out:** tiles such as awaiting review, needs information, average review time, approval rate. | Exists |
 | GET | `/api/admin/applications` | Admin | **In:** query `status?`, `q?`, `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }`. | Exists |
 | GET | `/api/admin/applications/:id` | Admin | **In:** path id. **Out:** `200 { application, activation }` with profile, documents, channels, reviews, decision history, and the four activation gates. No raw ID or bank files in the JSON — use the file endpoints. | Exists |
-| POST | `/api/admin/applications/:id/decision` | Admin | **In:** `{ decision: "approved" \| "rejected" \| "needs_info", reason, conflictDeclared: true }`. **Out:** `200 { application, activation, certificate }`. Reason (min 10 chars) and `conflictDeclared: true` are required for every decision. Approve requires verification docs accepted + agreement on file (`409` otherwise). Approve **records** the decision but sets `memberStatus: active` only when every gate passes (verification, exam, agreement, approval). Today the exam gate is still open (no exam models/content), so approve does **not** activate. `certificate` stays `null` until Active + `PSSA-YYYY-XXXXXX` issuance lands with KG. A fee flag alone must never set Active. | Exists |
+| POST | `/api/admin/applications/:id/decision` | Admin | **In:** `{ decision: "approved" \| "rejected" \| "needs_info", reason, conflictDeclared: true }`. **Out:** `200 { application, activation, certificate }`. Reason (min 10 chars) and `conflictDeclared: true` are required for every decision. Approve requires verification docs accepted + agreement on file (`409` otherwise). Approve **records** the decision but sets `memberStatus: active` only when every gate passes (verification, exam, agreement, approval). The exam gate reads a passed entrance `ExamAttempt`. On activation a unique `PSSA-YYYY-XXXXXX` certificate is issued (`certificate` in the response); otherwise `certificate` is `null`. A fee flag alone must never set Active. | Exists |
 | POST | `/api/admin/applications/:id/second-approval` | Admin | **In:** `{ accepted: true, conflictDeclared: true, reason? }`. **Out:** `200 { application, certificate }`. Use this if the team keeps a second authorised reviewer before activation. The reviewer must not be the first decision-maker. | To build |
 
 ### 6.6 Certificates and live verification
@@ -261,9 +261,9 @@ A certificate is issued only after the gates and a recorded human approval have 
 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
-| GET | `/api/member/certificate` | Member | **In:** cookie. **Out:** `200 { certificate }` with number, validity, scope, live-check URL and status. An expired or revoked member still sees the record, clearly not Active. | To build |
+| GET | `/api/member/certificate` | Member | **In:** cookie. **Out:** `200 { certificate }` with number, validity, scope, `qrTargetUrl` (`/verify/PSSA-YYYY-XXXXXX`), live `status`, and `storedStatus`. Live status is derived from membership + dates (expired/suspended/revoked/resigned never look Active). `certificate: null` with a reason if none issued yet. | Exists |
 | GET | `/api/member/certificate/pdf` | Member | **In:** cookie. **Out:** the PDF. | To build |
-| GET | `/api/verify/:certificateNumber` | Public | **In:** path is the certificate number, for example `PSSA-2026-004821`. **Out:** `200` public payload: name, trading name, number, scope, status, `validUntil`, verified channels. `404` if the number is unknown. Never ID, bank or address fields. Status must change the moment membership expires, is suspended, is revoked or the member resigns, even if a background job failed. Use neutral public wording. | To build |
+| GET | `/api/verify/:certificateNumber` | Public | **In:** path is the certificate number, for example `PSSA-2026-004821` (spaces ignored, case-insensitive). **Out:** `200 { certificate }` with `number`, `firstName`, `lastName`, `tradingName`, `scope`, live `status` (`active` \| `suspended` \| `expired` \| `revoked` \| `resigned`), `validFrom`, `validUntil`, `channels[]` (`{ kind, value }` confirmed only), and `checkedAt` (ISO). `404` if the number is unknown. Never ID, bank or address fields. Status is computed live from the member profile and validity dates. | Exists |
 
 ### 6.7 Public register
 
@@ -332,7 +332,7 @@ Becoming an Active member takes four separate steps, and each one has to pass on
 
 Paying a fee, or passing the exam, must never switch a profile to Active by itself. Membership then lasts **12 months** from activation, with no silent grace period.
 
-`POST /api/admin/applications/:id/decision` evaluates these gates on every approve. The application may become `approved` when verification + agreement are in place, but **Active is withheld** until every gate passes — including the entrance exam once that model/content exists.
+`POST /api/admin/applications/:id/decision` evaluates these gates on every approve. The application may become `approved` when verification + agreement are in place, but **Active is withheld** until every gate passes — including a passed entrance exam attempt. Activation issues `PSSA-YYYY-XXXXXX` and sets `qrTargetUrl` to `/verify/PSSA-YYYY-XXXXXX`.
 
 ---
 
@@ -346,6 +346,4 @@ These are still for the team to write down, alongside the branch rule (feature b
 - Is the customer order template a static frontend file, or served from `GET /api/order-template`?
 - The session cookie is named `ec_session` in this contract. Do we keep that name, or rename it now, before launch?
 - When will fees, if any, be introduced, and how do we make sure a payment record can never set a member to Active by itself?
-- Should `MemberProfile` store identity as SA ID and/or passport (overseas route in the Verification Standard), and how does “profile complete” treat each?
-
 This contract is for internal team planning. It is not a legal policy and does not replace the official PSSA documents.

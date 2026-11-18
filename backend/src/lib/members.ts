@@ -38,6 +38,15 @@ export function isValidSaIdNumber(id: string) {
   return sum % 10 === 0;
 }
 
+/** Passport / travel document number: 6–12 letters or digits (overseas identity route). */
+export function isValidPassportNumber(value: string) {
+  return /^[A-Za-z0-9]{6,12}$/.test(value);
+}
+
+export function isValidIdentityNumber(identityType: "sa_id" | "passport", value: string) {
+  return identityType === "sa_id" ? isValidSaIdNumber(value) : isValidPassportNumber(value);
+}
+
 export const accountSchema = z.object({
   firstName: requiredText(100),
   lastName: requiredText(100),
@@ -91,6 +100,7 @@ export const userSelect = {
       phone: true,
       tradingName: true,
       scope: true,
+      identityType: true,
       idNumber: true,
       physicalAddress: true,
       city: true,

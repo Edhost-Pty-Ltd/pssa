@@ -78,6 +78,27 @@ enum CertificateStatus {
   resigned
 }
 
+enum ComplaintType {
+  misconduct
+  impersonation
+  badge_misuse
+}
+
+enum ComplaintStatus {
+  received
+  under_review
+  awaiting_member_response
+  decided
+  under_appeal
+}
+
+enum ComplaintOutcome {
+  no_breach
+  corrective_action
+  suspension
+  revocation
+}
+
 model User {
   id              String    @id @default(cuid())
   email           String    @unique
@@ -101,6 +122,8 @@ model User {
   auditLogs          AuditLog[]      @relation("AuditActor")
   uploadedVideos     TutorialVideo[]
   issuedCertificates Certificate[]   @relation("CertificateIssuer")
+  reviewedComplaints Complaint[]       @relation("ComplaintReviewer")
+  appealDecisions    ComplaintAppeal[] @relation("AppealReviewer")
 
   @@index([role])
   @@map("users")
@@ -125,11 +148,13 @@ model MemberProfile {
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
 
-  channels      Channel[]
-  statusHistory StatusHistory[]
-  videoProgress VideoProgress[]
-  examAttempts  ExamAttempt[]
-  certificates  Certificate[]
+  channels           Channel[]
+  statusHistory      StatusHistory[]
+  videoProgress      VideoProgress[]
+  examAttempts       ExamAttempt[]
+  certificates       Certificate[]
+  complaints         Complaint[]
+  complaintResponses ComplaintResponse[]
 
   @@index([memberStatus])
   @@map("member_profiles")
@@ -332,4 +357,82 @@ model Certificate {
 
   @@index([memberProfileId])
   @@map("certificates")
+}
+
+model Complaint {
+  id                  String            @id @default(cuid())
+  referenceNumber     String?           @unique @map("reference_number")
+  memberProfileId     String?           @map("member_profile_id")
+  member              MemberProfile?    @relation(fields: [memberProfileId], references: [id])
+  type                ComplaintType
+  description         String?
+  status              ComplaintStatus   @default(received)
+  contactName         String?           @map("contact_name")
+  contactEmail        String?           @map("contact_email")
+  contactPhone        String?           @map("contact_phone")
+  consentAt           DateTime?         @map("consent_at")
+  isDraft             Boolean           @default(true) @map("is_draft")
+  acknowledgedAt      DateTime?         @map("acknowledged_at")
+  memberResponseDueAt DateTime?         @map("member_response_due_at")
+  decisionDueAt       DateTime?         @map("decision_due_at")
+  decidedAt           DateTime?         @map("decided_at")
+  appealDeadline      DateTime?         @map("appeal_deadline")
+  outcome             ComplaintOutcome?
+  reasons             String?
+  conflictDeclared    Boolean?          @map("conflict_declared")
+  reviewerId          String?           @map("reviewer_id")
+  reviewer            User?             @relation("ComplaintReviewer", fields: [reviewerId], references: [id])
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+
+  evidence  ComplaintEvidence[]
+  responses ComplaintResponse[]
+  appeals   ComplaintAppeal[]
+
+  @@index([status])
+  @@map("complaints")
+}
+
+model ComplaintEvidence {
+  id           String    @id @default(cuid())
+  complaintId  String    @map("complaint_id")
+  complaint    Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  storagePath  String    @map("storage_path")
+  originalName String    @map("original_name")
+  mimeType     String    @map("mime_type")
+  sizeBytes    Int       @map("size_bytes")
+  uploadedAt   DateTime  @default(now()) @map("uploaded_at")
+
+  @@index([complaintId])
+  @@map("complaint_evidence")
+}
+
+model ComplaintResponse {
+  id              String        @id @default(cuid())
+  complaintId     String        @map("complaint_id")
+  complaint       Complaint     @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  memberProfileId String        @map("member_profile_id")
+  member          MemberProfile @relation(fields: [memberProfileId], references: [id])
+  body            String
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  @@index([complaintId])
+  @@map("complaint_responses")
+}
+
+model ComplaintAppeal {
+  id               String    @id @default(cuid())
+  complaintId      String    @map("complaint_id")
+  complaint        Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  reason           String
+  lodgedAt         DateTime  @default(now()) @map("lodged_at")
+  decidedAt        DateTime? @map("decided_at")
+  decision         String?
+  reasons          String?
+  conflictDeclared Boolean?  @map("conflict_declared")
+  reviewerId       String?   @map("reviewer_id")
+  reviewer         User?     @relation("AppealReviewer", fields: [reviewerId], references: [id])
+
+  @@index([complaintId])
+  @@map("complaint_appeals")
 }

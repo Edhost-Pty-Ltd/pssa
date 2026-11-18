@@ -3,8 +3,14 @@ import { existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import type { DocumentType } from "@prisma/client";
 import { z } from "zod";
+import {
+  findCertificateForMember,
+  liveCertificateStatus,
+  serializeCertificate,
+} from "../lib/certificates.js";
+import { hasPassedEntranceExam, tutorialCompletion } from "../lib/examReviewQueries.js";
 import { badRequest, conflict, forbidden, notFound } from "../lib/http.js";
-import { isValidSaIdNumber, maskIdNumber, nextApplicationNumber } from "../lib/members.js";
+import { isValidIdentityNumber, maskIdNumber, nextApplicationNumber } from "../lib/members.js";
 import { prisma } from "../lib/prisma.js";
 import { assertFileSignature, documentUpload, privateFilePath, removePrivateFile } from "../lib/uploads.js";
 import { requireRole } from "../middleware/auth.js";
@@ -62,6 +68,7 @@ const profileSelect = {
       phone: true,
       tradingName: true,
       scope: true,
+      identityType: true,
       idNumber: true,
       physicalAddress: true,
       city: true,
@@ -149,14 +156,20 @@ function hasText(value: string | null | undefined) {
   return Boolean(value && value.trim());
 }
 
+function identityComplete(profile: LoadedMember["memberProfile"]) {
+  if (!profile?.identityType || !hasText(profile.idNumber)) return false;
+  return isValidIdentityNumber(profile.identityType, profile.idNumber!);
+}
+
 function profileComplete(profile: LoadedMember["memberProfile"]) {
   // tradingName is optional (mentor): members may trade under their own name.
+  // Identity may be SA ID or passport (KG identityType).
   return Boolean(
     profile &&
       hasText(profile.firstName) &&
       hasText(profile.lastName) &&
       hasText(profile.phone) &&
-      hasText(profile.idNumber) &&
+      identityComplete(profile) &&
       hasText(profile.physicalAddress) &&
       hasText(profile.city) &&
       hasText(profile.scope),
@@ -169,6 +182,7 @@ function profileStarted(profile: LoadedMember["memberProfile"]) {
       (hasText(profile.firstName) ||
         hasText(profile.lastName) ||
         hasText(profile.phone) ||
+        Boolean(profile.identityType) ||
         hasText(profile.idNumber) ||
         hasText(profile.physicalAddress) ||
         hasText(profile.city) ||
@@ -217,7 +231,7 @@ function documentActions(documents: LoadedMember["documents"]): ProgressAction[]
   return actions;
 }
 
-function buildProgress(user: LoadedMember) {
+async function buildProgress(user: LoadedMember) {
   const application = user.applications[0] ?? null;
   const profileDone = profileComplete(user.memberProfile);
   const docsDone = documentsComplete(user.documents, user.memberProfile!.channels);
@@ -227,11 +241,12 @@ function buildProgress(user: LoadedMember) {
   const needsInfo = application?.status === "needs_info";
   const certified = application?.status === "approved" || user.memberProfile!.memberStatus === "active";
 
-  // Tutorials / exam are blocked until those models and official content land.
-  const tutorialsDone = false;
-  const tutorialsTotal = 4;
-  const tutorialsCompleted = 0;
-  const examDone = false;
+  const memberId = user.memberProfile!.id;
+  const tutorials = await tutorialCompletion(memberId);
+  const tutorialsDone = tutorials.complete;
+  const tutorialsTotal = tutorials.total;
+  const tutorialsCompleted = tutorials.completedCount;
+  const examDone = await hasPassedEntranceExam(memberId);
 
   const profileStep: ProgressStep = profileDone
     ? { key: "profile", label: "Profile", state: "complete", detail: "Complete" }
@@ -257,22 +272,47 @@ function buildProgress(user: LoadedMember) {
     documentsStep = { key: "documents", label: "Verification documents", state: "not_started", detail: "Not started" };
   }
 
-  const tutorialsStep: ProgressStep = !profileDone
-    ? { key: "tutorials", label: "Conduct tutorials", state: "locked", detail: "Locked" }
-    : tutorialsDone
-      ? { key: "tutorials", label: "Conduct tutorials", state: "complete", detail: `${tutorialsCompleted} of ${tutorialsTotal} complete` }
-      : {
-          key: "tutorials",
-          label: "Conduct tutorials",
-          state: "not_started",
-          detail: `${tutorialsCompleted} of ${tutorialsTotal} complete`,
-        };
+  let tutorialsStep: ProgressStep;
+  if (!profileDone) {
+    tutorialsStep = { key: "tutorials", label: "Conduct tutorials", state: "locked", detail: "Locked" };
+  } else if (tutorialsTotal === 0) {
+    tutorialsStep = {
+      key: "tutorials",
+      label: "Conduct tutorials",
+      state: "not_started",
+      detail: "Waiting for official tutorials",
+    };
+  } else if (tutorialsDone) {
+    tutorialsStep = {
+      key: "tutorials",
+      label: "Conduct tutorials",
+      state: "complete",
+      detail: `${tutorialsCompleted} of ${tutorialsTotal} complete`,
+    };
+  } else if (tutorialsCompleted > 0) {
+    tutorialsStep = {
+      key: "tutorials",
+      label: "Conduct tutorials",
+      state: "in_progress",
+      detail: `${tutorialsCompleted} of ${tutorialsTotal} complete`,
+    };
+  } else {
+    tutorialsStep = {
+      key: "tutorials",
+      label: "Conduct tutorials",
+      state: "not_started",
+      detail: `${tutorialsCompleted} of ${tutorialsTotal} complete`,
+    };
+  }
 
-  const assessmentStep: ProgressStep = !tutorialsDone
-    ? { key: "assessment", label: "Entrance assessment", state: "locked", detail: "Locked" }
-    : examDone
-      ? { key: "assessment", label: "Entrance assessment", state: "complete", detail: "Complete" }
-      : { key: "assessment", label: "Entrance assessment", state: "not_started", detail: "Not started" };
+  let assessmentStep: ProgressStep;
+  if (!tutorialsDone) {
+    assessmentStep = { key: "assessment", label: "Entrance assessment", state: "locked", detail: "Locked" };
+  } else if (examDone) {
+    assessmentStep = { key: "assessment", label: "Entrance assessment", state: "complete", detail: "Complete" };
+  } else {
+    assessmentStep = { key: "assessment", label: "Entrance assessment", state: "not_started", detail: "Not started" };
+  }
 
   let reviewStep: ProgressStep;
   if (certified || application?.status === "approved") {
@@ -351,10 +391,10 @@ const updateSchema = z
     phone: z.union([z.null(), z.literal("").transform(() => null), phoneSchema]).optional(),
     tradingName: nullableText(150).optional(),
     scope: nullableText(150).optional(),
+    identityType: z.enum(["sa_id", "passport"], { error: 'must be "sa_id" or "passport"' }).optional(),
     idNumber: z
       .string()
-      .transform((value) => value.replace(/\s/g, ""))
-      .refine(isValidSaIdNumber, "must be a valid 13-digit South African ID number")
+      .transform((value) => value.replace(/\s/g, "").toUpperCase())
       .optional(),
     physicalAddress: nullableText(300).optional(),
     city: nullableText(100).optional(),
@@ -372,10 +412,28 @@ memberRouter.patch("/profile", async (req, res) => {
   const body = updateSchema.parse(req.body ?? {});
   const current = await loadMember(req.user!.id);
   const memberId = current.memberProfile!.id;
+  const nextIdentityType = body.identityType ?? current.memberProfile!.identityType ?? null;
+  const nextIdNumber = body.idNumber !== undefined ? body.idNumber : current.memberProfile!.idNumber;
+
+  if (body.identityType !== undefined || body.idNumber !== undefined) {
+    if (!nextIdentityType) {
+      throw badRequest("Choose an identity type (sa_id or passport).", { fields: { identityType: "is required" } });
+    }
+    if (nextIdNumber && !isValidIdentityNumber(nextIdentityType, nextIdNumber)) {
+      throw badRequest(
+        nextIdentityType === "sa_id"
+          ? "must be a valid 13-digit South African ID number"
+          : "must be a valid passport number (6–12 letters or digits)",
+        { fields: { idNumber: nextIdentityType === "sa_id" ? "must be a valid SA ID number" : "must be a valid passport number" } },
+      );
+    }
+  }
 
   if (body.idNumber && body.idNumber !== current.memberProfile!.idNumber) {
     const taken = await prisma.memberProfile.findUnique({ where: { idNumber: body.idNumber }, select: { id: true } });
-    if (taken) throw conflict("A member with this ID number is already registered.", { fields: { idNumber: "is already registered" } });
+    if (taken) {
+      throw conflict("A member with this identity number is already registered.", { fields: { idNumber: "is already registered" } });
+    }
   }
 
   const userFields = {
@@ -389,6 +447,7 @@ memberRouter.patch("/profile", async (req, res) => {
     ...(body.phone !== undefined ? { phone: body.phone } : {}),
     ...(body.tradingName !== undefined ? { tradingName: body.tradingName } : {}),
     ...(body.scope !== undefined ? { scope: body.scope } : {}),
+    ...(body.identityType !== undefined ? { identityType: body.identityType } : {}),
     ...(body.idNumber !== undefined ? { idNumber: body.idNumber } : {}),
     ...(body.physicalAddress !== undefined ? { physicalAddress: body.physicalAddress } : {}),
     ...(body.city !== undefined ? { city: body.city } : {}),
@@ -418,6 +477,21 @@ memberRouter.patch("/profile", async (req, res) => {
   res.json({ profile: serializeProfile(await loadMember(current.id)) });
 });
 
+memberRouter.get("/certificate", async (req, res) => {
+  const member = await loadMember(req.user!.id);
+  const certificate = await findCertificateForMember(member.memberProfile!.id);
+  if (!certificate) {
+    res.json({ certificate: null, reason: "No certificate has been issued yet." });
+    return;
+  }
+  res.json({
+    certificate: serializeCertificate(
+      certificate,
+      liveCertificateStatus(member.memberProfile!, certificate),
+    ),
+  });
+});
+
 /* ---------------- Application tracker ---------------- */
 
 memberRouter.get("/application", async (req, res) => {
@@ -425,7 +499,7 @@ memberRouter.get("/application", async (req, res) => {
   const application = member.applications[0] ?? null;
   res.json({
     application: serializeApplication(application),
-    progress: buildProgress(member),
+    progress: await buildProgress(member),
   });
 });
 
@@ -451,7 +525,7 @@ memberRouter.post("/application/agreement", async (req, res) => {
 
 memberRouter.post("/application/submit", async (req, res) => {
   const member = await loadMember(req.user!.id);
-  const progress = buildProgress(member);
+  const progress = await buildProgress(member);
 
   if (!profileComplete(member.memberProfile)) {
     throw conflict("Complete your profile before submitting.", { fields: { profile: "is incomplete" } });

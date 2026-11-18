@@ -112,7 +112,7 @@ function Hero() {
 type SearchState =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "done"; query: string; members: RegisterMember[] }
+  | { kind: "done"; query: string; members: RegisterMember[]; total: number }
   | { kind: "error"; message: string };
 
 function RegisterSearch() {
@@ -128,8 +128,8 @@ function RegisterSearch() {
     controller.current = new AbortController();
     setState({ kind: "loading" });
     try {
-      const members = await searchRegister(q, controller.current.signal);
-      setState({ kind: "done", query: q, members });
+      const result = await searchRegister(q, controller.current.signal);
+      setState({ kind: "done", query: q, members: result.items, total: result.total });
     } catch (error) {
       if ((error as Error).name === "AbortError") return;
       setState({ kind: "error", message: errorMessage(error) });
@@ -175,7 +175,7 @@ function RegisterSearch() {
       </form>
 
       <div aria-live="polite">
-        {state.kind === "done" && <SearchResults query={state.query} members={state.members} />}
+        {state.kind === "done" && <SearchResults query={state.query} members={state.members} total={state.total} />}
         {state.kind === "error" && (
           <div className="mt-5 flex gap-3 rounded-xl bg-[var(--amber-soft)] p-4 text-sm">
             <span className="text-[#9a6700]"><Icon name="warning" /></span>
@@ -195,7 +195,10 @@ function RegisterSearch() {
 
 const message = (text: string) => (text.endsWith(".") ? text : `${text}.`);
 
-function SearchResults({ query, members }: { query: string; members: RegisterMember[] }) {
+const memberName = (m: RegisterMember) => [m.firstName, m.lastName].filter(Boolean).join(" ") || m.tradingName || "PSSA member";
+const initials = (m: RegisterMember) => `${m.firstName?.[0] ?? ""}${m.lastName?.[0] ?? ""}`.toUpperCase() || "P";
+
+function SearchResults({ query, members, total }: { query: string; members: RegisterMember[]; total: number }) {
   if (members.length === 0) {
     return (
       <div className="mt-5 rounded-xl bg-soft p-4 text-sm">
@@ -212,20 +215,22 @@ function SearchResults({ query, members }: { query: string; members: RegisterMem
       {members.map((m) => (
         <li key={m.id} className="flex items-center gap-4 p-4">
           <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-green-soft font-semibold text-green-dark">
-            {m.firstName[0]}
-            {m.lastName[0]}
+            {initials(m)}
           </span>
           <div className="min-w-0 flex-1">
-            <p className="font-semibold text-ink">
-              {m.firstName} {m.lastName}
-            </p>
-            <p className="truncate text-sm text-muted">{[m.businessName, m.category].filter(Boolean).join(" · ")}</p>
+            <p className="font-semibold text-ink">{memberName(m)}</p>
+            <p className="truncate text-sm text-muted">{[m.tradingName, m.scope].filter(Boolean).join(" · ")}</p>
           </div>
           <span className="flex items-center gap-1.5 rounded-full bg-green-soft px-3 py-1 text-xs font-semibold text-green-dark">
             <Icon name="check" size={14} /> Active member
           </span>
         </li>
       ))}
+      {total > members.length && (
+        <li className="p-4 text-sm text-muted">
+          Showing {members.length} of {total} members. Add more of the name to narrow the search.
+        </li>
+      )}
     </ul>
   );
 }
@@ -643,15 +648,13 @@ const STAGES = [
 
 function Complaints() {
   const sectionRef = useRef<HTMLElement>(null);
-  const [scrollProgress, setScrollProgress] = useState(0.2);
+  // With reduced motion, show every stage straight away and skip the scroll animation.
+  const [reducedMotion] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const [scrollProgress, setScrollProgress] = useState(reducedMotion ? 1 : 0.2);
 
   useEffect(() => {
     const el = sectionRef.current;
-    if (!el) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setScrollProgress(1);
-      return;
-    }
+    if (!el || reducedMotion) return;
 
     const onScroll = () => {
       const rect = el.getBoundingClientRect();
@@ -663,7 +666,7 @@ function Complaints() {
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
-  }, []);
+  }, [reducedMotion]);
 
   const activeStageIndex = Math.min(STAGES.length - 1, Math.floor(scrollProgress * STAGES.length));
 

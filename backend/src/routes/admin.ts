@@ -3,6 +3,8 @@ import { existsSync } from "node:fs";
 import { z } from "zod";
 import { evaluateActivationGates } from "../lib/activationGates.js";
 import { applicationSummary, listApplications } from "../lib/adminApplicationQueries.js";
+import { issueCertificateOnActivation, liveCertificateStatus, serializeCertificate } from "../lib/certificates.js";
+import { attemptHistory, hasPassedEntranceExam, tutorialCompletion } from "../lib/examReviewQueries.js";
 import { conflict, notFound } from "../lib/http.js";
 import { prisma } from "../lib/prisma.js";
 import { privateFilePath } from "../lib/uploads.js";
@@ -32,7 +34,7 @@ async function loadDecisionContext(applicationId: string) {
         select: {
           id: true,
           memberProfile: {
-            select: { id: true, memberStatus: true },
+            select: { id: true, memberStatus: true, scope: true },
           },
           documents: { select: { type: true, status: true }, orderBy: { createdAt: "desc" } },
         },
@@ -122,12 +124,15 @@ adminRouter.get("/applications/:id", async (req, res) => {
         select: { status: true },
       })
     : [];
+  const examPassed = application.user.memberProfile
+    ? await hasPassedEntranceExam(application.user.memberProfile.id)
+    : false;
   const activation = evaluateActivationGates({
     application,
     profile: application.user.memberProfile,
     documents: application.user.documents,
     channels,
-    examPassed: null,
+    examPassed,
     recordingApproval: false,
   });
 
@@ -153,13 +158,14 @@ adminRouter.post("/applications/:id/decision", async (req, res) => {
     where: { memberProfileId: application.user.memberProfile.id },
     select: { status: true },
   });
+  const examPassed = await hasPassedEntranceExam(application.user.memberProfile.id);
 
   const activation = evaluateActivationGates({
     application,
     profile: application.user.memberProfile,
     documents: application.user.documents,
     channels,
-    examPassed: null,
+    examPassed,
     recordingApproval: body.decision === "approved",
   });
 
@@ -210,11 +216,13 @@ adminRouter.post("/applications/:id/decision", async (req, res) => {
     });
 
     let activated = false;
+    let certificate = null as Awaited<ReturnType<typeof issueCertificateOnActivation>> | null;
     // Never set Active from approve alone — every gate must pass (exam included).
     if (body.decision === "approved" && activation.canActivate) {
-      const fromStatus = application.user.memberProfile!.memberStatus;
+      const profile = application.user.memberProfile!;
+      const fromStatus = profile.memberStatus;
       await tx.memberProfile.update({
-        where: { id: application.user.memberProfile!.id },
+        where: { id: profile.id },
         data: {
           memberStatus: "active",
           validFrom: now,
@@ -223,11 +231,28 @@ adminRouter.post("/applications/:id/decision", async (req, res) => {
       });
       await tx.statusHistory.create({
         data: {
-          memberProfileId: application.user.memberProfile!.id,
+          memberProfileId: profile.id,
           fromStatus,
           toStatus: "active",
           reason: body.reason,
           actorId: req.user!.id,
+          conflictDeclared: true,
+        },
+      });
+      certificate = await issueCertificateOnActivation(tx, {
+        memberProfileId: profile.id,
+        scope: profile.scope,
+        validFrom: now,
+        validUntil,
+        issuedById: req.user!.id,
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: req.user!.id,
+          action: "certificate.issued",
+          entityType: "certificate",
+          entityId: certificate.id,
+          reason: `Issued ${certificate.number} on activation`,
           conflictDeclared: true,
         },
       });
@@ -245,17 +270,27 @@ adminRouter.post("/applications/:id/decision", async (req, res) => {
       });
     }
 
-    return { application: next, activated };
+    return { application: next, activated, certificate };
   });
+
+  const certificateOut = result.certificate
+    ? serializeCertificate(
+        result.certificate,
+        liveCertificateStatus(
+          { memberStatus: "active", validUntil },
+          result.certificate,
+          now,
+        ),
+      )
+    : null;
 
   const activationOut = {
     ...activation,
     activated: result.activated,
-    // Certificate issuance waits on Active + PSSA number format with KG.
-    certificate: null as null,
+    certificate: certificateOut,
   };
 
-  res.json({ application: result.application, activation: activationOut, certificate: null });
+  res.json({ application: result.application, activation: activationOut, certificate: certificateOut });
 });
 
 const documentReviewSchema = z
@@ -313,10 +348,59 @@ adminRouter.get("/documents/:id/file", async (req, res) => {
   res.sendFile(filePath);
 });
 
-adminRouter.get("/applications/:id/tutorial", async (_req, res) => {
-  res.json({ tutorial: null, reason: "Tutorial models are not in the Phase 1 schema yet." });
+adminRouter.get("/applications/:id/tutorial", async (req, res) => {
+  const application = await prisma.application.findUnique({
+    where: { id: String(req.params.id) },
+    select: { user: { select: { memberProfile: { select: { id: true } } } } },
+  });
+  if (!application) throw notFound("Application not found.");
+  if (!application.user.memberProfile) {
+    res.json({ tutorial: null, reason: "This application has no member profile." });
+    return;
+  }
+  const tutorial = await tutorialCompletion(application.user.memberProfile.id);
+  res.json({ tutorial });
 });
 
-adminRouter.get("/applications/:id/exam", async (_req, res) => {
-  res.json({ exam: null, reason: "Exam models are not in the Phase 1 schema yet." });
+adminRouter.get("/applications/:id/exam", async (req, res) => {
+  const application = await prisma.application.findUnique({
+    where: { id: String(req.params.id) },
+    select: { user: { select: { memberProfile: { select: { id: true } } } } },
+  });
+  if (!application) throw notFound("Application not found.");
+  if (!application.user.memberProfile) {
+    res.json({ exam: null, reason: "This application has no member profile." });
+    return;
+  }
+
+  const memberProfileId = application.user.memberProfile.id;
+  const [{ attempts, attemptCount }, passed] = await Promise.all([
+    attemptHistory(memberProfileId, "entrance"),
+    hasPassedEntranceExam(memberProfileId),
+  ]);
+  const latest = attempts[0] ?? null;
+  const timeTakenSeconds =
+    latest?.submittedAt && latest.startedAt
+      ? Math.max(0, Math.round((latest.submittedAt.getTime() - latest.startedAt.getTime()) / 1000))
+      : null;
+
+  res.json({
+    exam: {
+      passed,
+      attemptCount,
+      latest: latest
+        ? {
+            id: latest.id,
+            score: latest.score,
+            percent: latest.percent,
+            passed: latest.passed,
+            criticalFailed: latest.criticalFailed,
+            startedAt: latest.startedAt,
+            submittedAt: latest.submittedAt,
+            timeTakenSeconds,
+          }
+        : null,
+      attempts,
+    },
+  });
 });
