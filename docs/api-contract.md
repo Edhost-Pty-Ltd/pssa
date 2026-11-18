@@ -203,6 +203,8 @@ Rules for the member portal:
 - `percent` is `round(100 * completeSteps / 6)`.
 - `actions` lists document resubmission work (and later other action-needed items) for the dashboard cards.
 - `canSubmit` is true only when profile + required documents/channels + agreement are done and the application is still `draft` or `needs_info`.
+- Profile complete requires name, phone, id number, address, city and scope. **`tradingName` is optional** (members may trade under their own name).
+- Channel confirm currently accepts any 6-digit code for UI testing; verification gate V5 needs a real outbound code check before launch. Adding the same platform again updates the existing channel instead of creating a duplicate.
 - Tutorials/assessment stay locked or not started until those models and official content land.
 
 ### 6.3 Documents
