@@ -9,6 +9,22 @@ export interface VerifiedChannel {
   value: string;
 }
 
+/** What GET /api/verify/:certificateNumber returns (agreed with backend). */
+interface VerificationResponse {
+  verification: {
+    number: string;
+    firstName: string;
+    lastName: string;
+    tradingName: string | null;
+    scope: string | null;
+    status: PublicMemberStatus;
+    validFrom?: string | null;
+    validUntil: string;
+    verifiedChannels: VerifiedChannel[];
+  };
+}
+
+/** The shape the page uses. `checkedAt` is when this browser asked the server. */
 export interface CertificateCheck {
   number: string;
   firstName: string;
@@ -30,6 +46,20 @@ export function normalizeCertificateNumber(input: string) {
   return input.trim().toUpperCase().replace(/\s+/g, "");
 }
 
-export function checkCertificate(number: string, signal?: AbortSignal) {
-  return api<{ certificate: CertificateCheck }>(`/verify/${encodeURIComponent(number)}`, { signal });
+export async function checkCertificate(number: string, signal?: AbortSignal): Promise<{ certificate: CertificateCheck }> {
+  const { verification: v } = await api<VerificationResponse>(`/verify/${encodeURIComponent(number)}`, { signal });
+  return {
+    certificate: {
+      number: v.number,
+      firstName: v.firstName,
+      lastName: v.lastName,
+      tradingName: v.tradingName,
+      scope: v.scope,
+      status: v.status,
+      validFrom: v.validFrom ?? null,
+      validUntil: v.validUntil,
+      channels: v.verifiedChannels ?? [],
+      checkedAt: new Date().toISOString(),
+    },
+  };
 }
