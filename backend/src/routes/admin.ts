@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { z } from "zod";
 import { evaluateActivationGates } from "../lib/activationGates.js";
 import { applicationSummary, listApplications } from "../lib/adminApplicationQueries.js";
+import { issueCertificateOnActivation, liveCertificateStatus, serializeCertificate } from "../lib/certificates.js";
 import { attemptHistory, hasPassedEntranceExam, tutorialCompletion } from "../lib/examReviewQueries.js";
 import { conflict, notFound } from "../lib/http.js";
 import { prisma } from "../lib/prisma.js";
@@ -33,7 +34,7 @@ async function loadDecisionContext(applicationId: string) {
         select: {
           id: true,
           memberProfile: {
-            select: { id: true, memberStatus: true },
+            select: { id: true, memberStatus: true, scope: true },
           },
           documents: { select: { type: true, status: true }, orderBy: { createdAt: "desc" } },
         },
@@ -215,11 +216,13 @@ adminRouter.post("/applications/:id/decision", async (req, res) => {
     });
 
     let activated = false;
+    let certificate = null as Awaited<ReturnType<typeof issueCertificateOnActivation>> | null;
     // Never set Active from approve alone — every gate must pass (exam included).
     if (body.decision === "approved" && activation.canActivate) {
-      const fromStatus = application.user.memberProfile!.memberStatus;
+      const profile = application.user.memberProfile!;
+      const fromStatus = profile.memberStatus;
       await tx.memberProfile.update({
-        where: { id: application.user.memberProfile!.id },
+        where: { id: profile.id },
         data: {
           memberStatus: "active",
           validFrom: now,
@@ -228,11 +231,28 @@ adminRouter.post("/applications/:id/decision", async (req, res) => {
       });
       await tx.statusHistory.create({
         data: {
-          memberProfileId: application.user.memberProfile!.id,
+          memberProfileId: profile.id,
           fromStatus,
           toStatus: "active",
           reason: body.reason,
           actorId: req.user!.id,
+          conflictDeclared: true,
+        },
+      });
+      certificate = await issueCertificateOnActivation(tx, {
+        memberProfileId: profile.id,
+        scope: profile.scope,
+        validFrom: now,
+        validUntil,
+        issuedById: req.user!.id,
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: req.user!.id,
+          action: "certificate.issued",
+          entityType: "certificate",
+          entityId: certificate.id,
+          reason: `Issued ${certificate.number} on activation`,
           conflictDeclared: true,
         },
       });
@@ -250,17 +270,27 @@ adminRouter.post("/applications/:id/decision", async (req, res) => {
       });
     }
 
-    return { application: next, activated };
+    return { application: next, activated, certificate };
   });
+
+  const certificateOut = result.certificate
+    ? serializeCertificate(
+        result.certificate,
+        liveCertificateStatus(
+          { memberStatus: "active", validUntil },
+          result.certificate,
+          now,
+        ),
+      )
+    : null;
 
   const activationOut = {
     ...activation,
     activated: result.activated,
-    // Certificate issuance waits on Active + PSSA number format with KG.
-    certificate: null as null,
+    certificate: certificateOut,
   };
 
-  res.json({ application: result.application, activation: activationOut, certificate: null });
+  res.json({ application: result.application, activation: activationOut, certificate: certificateOut });
 });
 
 const documentReviewSchema = z
