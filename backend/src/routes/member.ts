@@ -9,6 +9,7 @@ import {
   liveCertificateStatus,
   serializeCertificate,
 } from "../lib/certificates.js";
+import { serializePublicComplaint } from "../lib/complaints.js";
 import { hasPassedEntranceExam, tutorialCompletion } from "../lib/examReviewQueries.js";
 import { badRequest, conflict, forbidden, notFound } from "../lib/http.js";
 import { isValidIdentityNumber, maskIdNumber, nextApplicationNumber } from "../lib/members.js";
@@ -737,6 +738,112 @@ memberRouter.post("/channels/:id/confirm", async (req, res) => {
     select: channelSelect,
   });
   res.json({ channel });
+});
+
+const memberComplaintResponseSchema = z.object({
+  body: z.string({ error: "is required" }).trim().min(10, "must be at least 10 characters").max(5000),
+});
+
+/** Named member replies to a case that is waiting for their response. Optional files attach as evidence. */
+memberRouter.post("/complaints/:id/response", (req, res, next) => {
+  const contentType = String(req.headers["content-type"] ?? "");
+  if (contentType.includes("multipart/form-data")) {
+    return documentUpload.array("files", 5)(req, res, next);
+  }
+  return next();
+}, async (req, res) => {
+  const body = memberComplaintResponseSchema.parse(req.body ?? {});
+  const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+  const member = await loadMember(req.user!.id);
+  const profileId = member.memberProfile!.id;
+  const raw = String(req.params.id ?? "").trim();
+
+  try {
+    for (const file of files) {
+      file.originalname = Buffer.from(file.originalname, "latin1").toString("utf8");
+      await assertFileSignature(file);
+    }
+
+    const complaint = await prisma.complaint.findFirst({
+      where: raw.toUpperCase().startsWith("PSSA-C-")
+        ? { referenceNumber: raw.toUpperCase(), memberProfileId: profileId }
+        : { id: raw, memberProfileId: profileId },
+      select: {
+        id: true,
+        status: true,
+        isDraft: true,
+        referenceNumber: true,
+        type: true,
+        description: true,
+        acknowledgedAt: true,
+        memberResponseDueAt: true,
+        decisionDueAt: true,
+        decidedAt: true,
+        appealDeadline: true,
+        outcome: true,
+        createdAt: true,
+        updatedAt: true,
+        member: { select: { firstName: true, lastName: true, tradingName: true } },
+        _count: { select: { evidence: true, responses: true } },
+        appeals: { select: { id: true, lodgedAt: true, decidedAt: true, decision: true } },
+      },
+    });
+    if (!complaint || complaint.isDraft) throw notFound("Complaint not found.");
+    if (complaint.status !== "awaiting_member_response" && complaint.status !== "under_review") {
+      throw conflict("This complaint is not waiting for a member response.");
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.complaintResponse.create({
+        data: {
+          complaintId: complaint.id,
+          memberProfileId: profileId,
+          body: body.body,
+        },
+      });
+      for (const file of files) {
+        await tx.complaintEvidence.create({
+          data: {
+            complaintId: complaint.id,
+            storagePath: file.filename,
+            originalName: file.originalname,
+            mimeType: file.mimetype,
+            sizeBytes: file.size,
+          },
+        });
+      }
+      return tx.complaint.update({
+        where: { id: complaint.id },
+        data: { status: "under_review" },
+        select: {
+          id: true,
+          referenceNumber: true,
+          type: true,
+          status: true,
+          description: true,
+          isDraft: true,
+          acknowledgedAt: true,
+          memberResponseDueAt: true,
+          decisionDueAt: true,
+          decidedAt: true,
+          appealDeadline: true,
+          outcome: true,
+          createdAt: true,
+          updatedAt: true,
+          member: { select: { firstName: true, lastName: true, tradingName: true } },
+          _count: { select: { evidence: true, responses: true } },
+          appeals: { select: { id: true, lodgedAt: true, decidedAt: true, decision: true } },
+        },
+      });
+    });
+
+    res.json({ complaint: serializePublicComplaint(updated) });
+  } catch (error) {
+    for (const file of files) {
+      await removePrivateFile(file.filename).catch(() => {});
+    }
+    throw error;
+  }
 });
 
 function contentDisposition(filename: string) {
