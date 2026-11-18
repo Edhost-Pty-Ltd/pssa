@@ -18,6 +18,18 @@ export async function nextComplaintReferenceNumber(tx: Prisma.TransactionClient 
   return `${prefix}${String(next).padStart(4, "0")}`;
 }
 
+const FREE_TEXT_SUBJECT_TYPES = new Set(["impersonation", "badge_misuse"]);
+
+/** Misconduct needs a register member; impersonation / badge_misuse may use subjectLabel instead. */
+export function hasComplaintSubject(input: {
+  type?: string | null;
+  memberProfileId?: string | null;
+  subjectLabel?: string | null;
+}) {
+  if (input.memberProfileId) return true;
+  return Boolean(input.type && FREE_TEXT_SUBJECT_TYPES.has(input.type) && input.subjectLabel?.trim());
+}
+
 export function isComplaintComplete(input: {
   type?: string | null;
   description?: string | null;
@@ -25,6 +37,7 @@ export function isComplaintComplete(input: {
   contactEmail?: string | null;
   consentAt?: Date | null;
   memberProfileId?: string | null;
+  subjectLabel?: string | null;
 }) {
   return Boolean(
     input.type &&
@@ -32,7 +45,7 @@ export function isComplaintComplete(input: {
       input.contactName?.trim() &&
       input.contactEmail?.trim() &&
       input.consentAt &&
-      input.memberProfileId,
+      hasComplaintSubject(input),
   );
 }
 
@@ -62,6 +75,7 @@ export function serializePublicComplaint(
     | "type"
     | "status"
     | "description"
+    | "subjectLabel"
     | "isDraft"
     | "acknowledgedAt"
     | "memberResponseDueAt"
@@ -84,6 +98,7 @@ export function serializePublicComplaint(
     status: complaint.status,
     isDraft: complaint.isDraft,
     description: complaint.description,
+    subjectLabel: complaint.subjectLabel,
     acknowledgedAt: complaint.acknowledgedAt,
     memberResponseDueAt: complaint.memberResponseDueAt,
     decisionDueAt: complaint.decisionDueAt,

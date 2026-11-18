@@ -14,7 +14,7 @@ import { hasPassedEntranceExam, tutorialCompletion } from "../lib/examReviewQuer
 import { badRequest, conflict, forbidden, notFound } from "../lib/http.js";
 import { isValidIdentityNumber, maskIdNumber, nextApplicationNumber } from "../lib/members.js";
 import { prisma } from "../lib/prisma.js";
-import { assertFileSignature, documentUpload, privateFilePath, removePrivateFile } from "../lib/uploads.js";
+import { assertFileSignature, complaintUpload, documentUpload, privateFilePath, removePrivateFile } from "../lib/uploads.js";
 import { requireRole } from "../middleware/auth.js";
 
 /**
@@ -748,7 +748,7 @@ const memberComplaintResponseSchema = z.object({
 memberRouter.post("/complaints/:id/response", (req, res, next) => {
   const contentType = String(req.headers["content-type"] ?? "");
   if (contentType.includes("multipart/form-data")) {
-    return documentUpload.array("files", 5)(req, res, next);
+    return complaintUpload.array("files", 5)(req, res, next);
   }
   return next();
 }, async (req, res) => {
@@ -775,6 +775,7 @@ memberRouter.post("/complaints/:id/response", (req, res, next) => {
         referenceNumber: true,
         type: true,
         description: true,
+        subjectLabel: true,
         acknowledgedAt: true,
         memberResponseDueAt: true,
         decisionDueAt: true,
@@ -821,6 +822,7 @@ memberRouter.post("/complaints/:id/response", (req, res, next) => {
           type: true,
           status: true,
           description: true,
+          subjectLabel: true,
           isDraft: true,
           acknowledgedAt: true,
           memberResponseDueAt: true,

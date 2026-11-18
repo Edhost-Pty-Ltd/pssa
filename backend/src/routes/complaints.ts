@@ -9,7 +9,7 @@ import {
 import { badRequest, conflict, forbidden, notFound } from "../lib/http.js";
 import { prisma } from "../lib/prisma.js";
 import { authLimiter } from "../lib/rateLimit.js";
-import { assertFileSignature, documentUpload, removePrivateFile } from "../lib/uploads.js";
+import { assertFileSignature, complaintUpload, removePrivateFile } from "../lib/uploads.js";
 
 /**
  * Public complaint intake, status by reference, and appeal lodging.
@@ -44,6 +44,8 @@ const createSchema = z.object({
   contactPhone: optionalText(30),
   memberProfileId: optionalText(64),
   certificateNumber: optionalText(32),
+  /** Name or social handle when the subject is not on the register (impersonation / badge_misuse). */
+  subjectLabel: optionalText(200),
   consent: z
     .union([z.boolean(), z.literal("true"), z.literal("false"), z.literal("1"), z.literal("0")])
     .optional()
@@ -64,7 +66,7 @@ function boolConsent(value: boolean | undefined) {
 complaintsRouter.post("/", authLimiter, (req, res, next) => {
   const contentType = String(req.headers["content-type"] ?? "");
   if (contentType.includes("multipart/form-data")) {
-    return documentUpload.array("evidence", 5)(req, res, next);
+    return complaintUpload.array("evidence", 5)(req, res, next);
   }
   return next();
 }, async (req, res) => {
@@ -88,6 +90,13 @@ complaintsRouter.post("/", authLimiter, (req, res, next) => {
       });
     }
 
+    if (body.type === "misconduct" && body.subjectLabel && !member) {
+      throw badRequest("Misconduct reports must name a registered member.", {
+        fields: { member: "is required", subjectLabel: "not used for misconduct" },
+      });
+    }
+
+    const subjectLabel = body.subjectLabel?.trim() || null;
     const consentAt = boolConsent(body.consent) ? new Date() : null;
     const wantDraft = body.draft === true;
     const complete = isComplaintComplete({
@@ -97,19 +106,27 @@ complaintsRouter.post("/", authLimiter, (req, res, next) => {
       contactEmail: body.contactEmail,
       consentAt,
       memberProfileId: member?.id ?? null,
+      subjectLabel,
     });
 
     if (!wantDraft && !complete) {
-      throw badRequest("A complete report needs type, description, contact name and email, privacy consent, and a member lookup.", {
-        fields: {
-          type: body.type ? "ok" : "is required",
-          description: body.description ? "ok" : "is required",
-          contactName: body.contactName ? "ok" : "is required",
-          contactEmail: body.contactEmail ? "ok" : "is required",
-          consent: consentAt ? "ok" : "is required",
-          member: member ? "ok" : "is required",
+      const needsFreeText = body.type === "impersonation" || body.type === "badge_misuse";
+      throw badRequest(
+        needsFreeText
+          ? "A complete report needs type, description, contact name and email, privacy consent, and either a member lookup or a name/social handle."
+          : "A complete report needs type, description, contact name and email, privacy consent, and a member lookup.",
+        {
+          fields: {
+            type: body.type ? "ok" : "is required",
+            description: body.description ? "ok" : "is required",
+            contactName: body.contactName ? "ok" : "is required",
+            contactEmail: body.contactEmail ? "ok" : "is required",
+            consent: consentAt ? "ok" : "is required",
+            member: member ? "ok" : needsFreeText ? "optional when subjectLabel is set" : "is required",
+            subjectLabel: subjectLabel ? "ok" : needsFreeText ? "required when no member is selected" : "ok",
+          },
         },
-      });
+      );
     }
 
     if (!body.type) {
@@ -127,6 +144,7 @@ complaintsRouter.post("/", authLimiter, (req, res, next) => {
           contactPhone: body.contactPhone ?? null,
           consentAt,
           memberProfileId: member?.id ?? null,
+          subjectLabel,
           isDraft: !complete || wantDraft === true,
           status: "received",
           referenceNumber,
@@ -137,6 +155,7 @@ complaintsRouter.post("/", authLimiter, (req, res, next) => {
           type: true,
           status: true,
           description: true,
+          subjectLabel: true,
           isDraft: true,
           acknowledgedAt: true,
           memberResponseDueAt: true,
@@ -200,6 +219,7 @@ complaintsRouter.get("/:reference", async (req, res) => {
       type: true,
       status: true,
       description: true,
+      subjectLabel: true,
       isDraft: true,
       contactEmail: true,
       memberProfileId: true,
