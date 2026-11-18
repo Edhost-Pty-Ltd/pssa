@@ -740,6 +740,40 @@ memberRouter.post("/channels/:id/confirm", async (req, res) => {
   res.json({ channel });
 });
 
+const publicComplaintSelect = {
+  id: true,
+  referenceNumber: true,
+  type: true,
+  status: true,
+  description: true,
+  isDraft: true,
+  acknowledgedAt: true,
+  memberResponseDueAt: true,
+  decisionDueAt: true,
+  decidedAt: true,
+  appealDeadline: true,
+  outcome: true,
+  createdAt: true,
+  updatedAt: true,
+  member: { select: { firstName: true, lastName: true, tradingName: true } },
+  _count: { select: { evidence: true, responses: true } },
+  appeals: {
+    orderBy: { lodgedAt: "desc" as const },
+    select: { id: true, lodgedAt: true, decidedAt: true, decision: true },
+  },
+} as const;
+
+/** Cases naming this member (public-safe shape). Drafts are omitted. Newest first. */
+memberRouter.get("/complaints", async (req, res) => {
+  const member = await loadMember(req.user!.id);
+  const rows = await prisma.complaint.findMany({
+    where: { memberProfileId: member.memberProfile!.id, isDraft: false },
+    orderBy: { createdAt: "desc" },
+    select: publicComplaintSelect,
+  });
+  res.json({ complaints: rows.map((row) => serializePublicComplaint(row)) });
+});
+
 const memberComplaintResponseSchema = z.object({
   body: z.string({ error: "is required" }).trim().min(10, "must be at least 10 characters").max(5000),
 });
