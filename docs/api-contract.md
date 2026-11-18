@@ -205,7 +205,7 @@ Rules for the member portal:
 - `canSubmit` is true only when profile + required documents/channels + agreement are done and the application is still `draft` or `needs_info`.
 - Profile complete requires name, phone, **`identityType` + matching `idNumber`** (SA ID or passport), address, city and scope. **`tradingName` is optional** (members may trade under their own name).
 - Channel confirm currently accepts any 6-digit code for UI testing; verification gate V5 needs a real outbound code check before launch. Adding the same platform again updates the existing channel instead of creating a duplicate.
-- Tutorials/assessment stay locked or not started until those models and official content land.
+- Tutorials/assessment read live `TutorialVideo` / `VideoProgress` / `ExamAttempt` rows. With no active videos the tutorials step shows “Waiting for official tutorials” and assessment stays locked. Assessment unlocks only when every active tutorial is `completed`.
 
 ### 6.3 Documents
 
@@ -228,22 +228,22 @@ The official exam is **30 questions in 45 minutes**, a pass mark of **at least 8
 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
-| GET | `/api/tutorials/active` | Member or admin | **In:** cookie. **Out:** `200 { tutorials[] }` with title, duration and the member’s completion. | To build |
+| GET | `/api/tutorials/active` | Member or admin | **In:** cookie. **Out:** `200 { tutorials[] }` with title, duration and (for members) completion / watched seconds. Empty list includes a `reason` until official videos are active. | Exists |
 | GET | `/api/tutorials/:id/stream` | Member or admin | **In:** cookie. **Out:** the video stream. | To build |
 | POST | `/api/tutorials/:id/progress` | Member | **In:** `{ positionSeconds, durationSeconds? }`. **Out:** `200 { progress }`. A skip-ahead must not count as complete. | To build |
-| GET | `/api/exam/status` | Member | **In:** cookie. **Out:** `200 { open, passed, attempts, canStart, reason?, retakeOpensAt? }`. | To build |
+| GET | `/api/exam/status` | Member | **In:** cookie. **Out:** `200 { open, passed, attempts, canStart, reason?, retakeOpensAt? }`. `canStart` is true only when tutorials are complete, active questions exist, and the retake window allows it. | Exists |
 | POST | `/api/exam/start` | Member | **In:** empty, or `{ type: "entrance" \| "refresher" }`. **Out:** `201 { attempt, questions[], expiresAt }` — 30 questions, no answer key, 45-minute `expiresAt`. | To build |
 | POST | `/api/exam/attempts/:id/submit` | Member | **In:** `{ answers }`. **Out:** `200 { attempt }` with score, percent, passed, and `criticalFailed`. Late or over-time submits are scored as a fail. | To build |
-| GET | `/api/exam/attempts` | Member | **In:** cookie. **Out:** `200 { attempts[] }` (no answer key). | To build |
+| GET | `/api/exam/attempts` | Member | **In:** cookie. **Out:** `200 { attempts[] }` (no answer key). | Exists |
 | POST | `/api/exam/attempts/:id/appeal` | Member | **In:** `{ reason }`. **Out:** `201 { appeal }`. | To build |
-| GET | `/api/tutorials` | Admin | **In:** cookie. **Out:** `200 { tutorials[] }` including inactive ones. | To build |
+| GET | `/api/tutorials` | Admin | **In:** cookie. **Out:** `200 { tutorials[] }` including inactive ones. | Exists |
 | POST | `/api/tutorials` | Admin | **In:** multipart video plus title. **Out:** `201 { tutorial }`. | To build |
 | PATCH | `/api/tutorials/:id` | Admin | **In:** title, duration, active flag. **Out:** `200 { tutorial }`. | To build |
 | POST | `/api/tutorials/:id/activate` | Admin | **In:** none. **Out:** `200 { tutorial }`. | To build |
-| GET | `/api/exam/questions` | Admin | **In:** cookie. **Out:** `200 { questions[] }` including `isCritical` and the correct option (admin only). | To build |
+| GET | `/api/exam/questions` | Admin | **In:** cookie. **Out:** `200 { questions[] }` including `isCritical` and the correct option (admin only). | Exists |
 | POST | `/api/exam/attempts/:id/allow-retake` | Admin | **In:** `{ reason, conflictDeclared: true }`. **Out:** `200 { attempt }`. Used after two failed attempts. | To build |
-| GET | `/api/admin/applications/:id/tutorial` | Admin | **In:** path id. **Out:** tutorial completion for that applicant. | To build |
-| GET | `/api/admin/applications/:id/exam` | Admin | **In:** path id. **Out:** score, pass/fail, attempts used, time taken. | To build |
+| GET | `/api/admin/applications/:id/tutorial` | Admin | **In:** path id. **Out:** `{ tutorial }` with completedCount / total / lessons. | Exists |
+| GET | `/api/admin/applications/:id/exam` | Admin | **In:** path id. **Out:** `{ exam }` with passed, attemptCount, latest score/time, and attempt history. | Exists |
 
 ### 6.5 Admin applications
 
@@ -252,7 +252,7 @@ The official exam is **30 questions in 45 minutes**, a pass mark of **at least 8
 | GET | `/api/admin/summary` | Admin | **In:** none. **Out:** tiles such as awaiting review, needs information, average review time, approval rate. | Exists |
 | GET | `/api/admin/applications` | Admin | **In:** query `status?`, `q?`, `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }`. | Exists |
 | GET | `/api/admin/applications/:id` | Admin | **In:** path id. **Out:** `200 { application, activation }` with profile, documents, channels, reviews, decision history, and the four activation gates. No raw ID or bank files in the JSON — use the file endpoints. | Exists |
-| POST | `/api/admin/applications/:id/decision` | Admin | **In:** `{ decision: "approved" \| "rejected" \| "needs_info", reason, conflictDeclared: true }`. **Out:** `200 { application, activation, certificate }`. Reason (min 10 chars) and `conflictDeclared: true` are required for every decision. Approve requires verification docs accepted + agreement on file (`409` otherwise). Approve **records** the decision but sets `memberStatus: active` only when every gate passes (verification, exam, agreement, approval). Today the exam gate is still open (no exam models/content), so approve does **not** activate. `certificate` stays `null` until Active + `PSSA-YYYY-XXXXXX` issuance lands with KG. A fee flag alone must never set Active. | Exists |
+| POST | `/api/admin/applications/:id/decision` | Admin | **In:** `{ decision: "approved" \| "rejected" \| "needs_info", reason, conflictDeclared: true }`. **Out:** `200 { application, activation, certificate }`. Reason (min 10 chars) and `conflictDeclared: true` are required for every decision. Approve requires verification docs accepted + agreement on file (`409` otherwise). Approve **records** the decision but sets `memberStatus: active` only when every gate passes (verification, exam, agreement, approval). The exam gate reads a passed entrance `ExamAttempt`. `certificate` stays `null` until Active + `PSSA-YYYY-XXXXXX` issuance lands. A fee flag alone must never set Active. | Exists |
 | POST | `/api/admin/applications/:id/second-approval` | Admin | **In:** `{ accepted: true, conflictDeclared: true, reason? }`. **Out:** `200 { application, certificate }`. Use this if the team keeps a second authorised reviewer before activation. The reviewer must not be the first decision-maker. | To build |
 
 ### 6.6 Certificates and live verification
@@ -332,7 +332,7 @@ Becoming an Active member takes four separate steps, and each one has to pass on
 
 Paying a fee, or passing the exam, must never switch a profile to Active by itself. Membership then lasts **12 months** from activation, with no silent grace period.
 
-`POST /api/admin/applications/:id/decision` evaluates these gates on every approve. The application may become `approved` when verification + agreement are in place, but **Active is withheld** until every gate passes — including the entrance exam once that model/content exists.
+`POST /api/admin/applications/:id/decision` evaluates these gates on every approve. The application may become `approved` when verification + agreement are in place, but **Active is withheld** until every gate passes — including a passed entrance exam attempt.
 
 ---
 

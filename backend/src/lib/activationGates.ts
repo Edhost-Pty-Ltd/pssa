@@ -76,7 +76,7 @@ export function evaluateActivationGates(input: GateInput): ActivationEvaluation 
       passed: examPassed,
       detail: examPassed
         ? "Entrance assessment passed"
-        : "Entrance assessment is required before Active (exam models/content not available yet)",
+        : "Entrance assessment must be passed before Active",
     },
     {
       key: "agreement",

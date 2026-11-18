@@ -38,9 +38,9 @@ function addCalendarDays(dayUtc: number, days: number) {
 }
 
 /** Submitted attempts, newest first. */
-export async function attemptHistory(memberProfileId: string) {
+export async function attemptHistory(memberProfileId: string, type?: "entrance" | "refresher") {
   const attempts = await prisma.examAttempt.findMany({
-    where: { memberProfileId, submittedAt: { not: null } },
+    where: { memberProfileId, submittedAt: { not: null }, ...(type ? { type } : {}) },
     orderBy: { submittedAt: "desc" },
     select: {
       id: true,
@@ -57,9 +57,18 @@ export async function attemptHistory(memberProfileId: string) {
   return { attempts, attemptCount: attempts.length };
 }
 
-/** Whether a retake is allowed under the seven-day and two-fail rules. */
+/** True when the member has a submitted, passed entrance attempt. */
+export async function hasPassedEntranceExam(memberProfileId: string) {
+  const attempt = await prisma.examAttempt.findFirst({
+    where: { memberProfileId, type: "entrance", passed: true, submittedAt: { not: null } },
+    select: { id: true },
+  });
+  return Boolean(attempt);
+}
+
+/** Whether a retake is allowed under the seven-day and two-fail rules (entrance attempts). */
 export async function retakeWindow(memberProfileId: string, now = new Date()) {
-  const { attempts } = await attemptHistory(memberProfileId);
+  const { attempts } = await attemptHistory(memberProfileId, "entrance");
   const latestFail = attempts.find((attempt) => attempt.passed === false);
   const failedCount = attempts.filter((attempt) => attempt.passed === false).length;
   const passed = attempts.some((attempt) => attempt.passed === true);

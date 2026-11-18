@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import type { DocumentType } from "@prisma/client";
 import { z } from "zod";
+import { hasPassedEntranceExam, tutorialCompletion } from "../lib/examReviewQueries.js";
 import { badRequest, conflict, forbidden, notFound } from "../lib/http.js";
 import { isValidIdentityNumber, maskIdNumber, nextApplicationNumber } from "../lib/members.js";
 import { prisma } from "../lib/prisma.js";
@@ -225,7 +226,7 @@ function documentActions(documents: LoadedMember["documents"]): ProgressAction[]
   return actions;
 }
 
-function buildProgress(user: LoadedMember) {
+async function buildProgress(user: LoadedMember) {
   const application = user.applications[0] ?? null;
   const profileDone = profileComplete(user.memberProfile);
   const docsDone = documentsComplete(user.documents, user.memberProfile!.channels);
@@ -235,11 +236,12 @@ function buildProgress(user: LoadedMember) {
   const needsInfo = application?.status === "needs_info";
   const certified = application?.status === "approved" || user.memberProfile!.memberStatus === "active";
 
-  // Tutorials / exam are blocked until those models and official content land.
-  const tutorialsDone = false;
-  const tutorialsTotal = 4;
-  const tutorialsCompleted = 0;
-  const examDone = false;
+  const memberId = user.memberProfile!.id;
+  const tutorials = await tutorialCompletion(memberId);
+  const tutorialsDone = tutorials.complete;
+  const tutorialsTotal = tutorials.total;
+  const tutorialsCompleted = tutorials.completedCount;
+  const examDone = await hasPassedEntranceExam(memberId);
 
   const profileStep: ProgressStep = profileDone
     ? { key: "profile", label: "Profile", state: "complete", detail: "Complete" }
@@ -265,22 +267,47 @@ function buildProgress(user: LoadedMember) {
     documentsStep = { key: "documents", label: "Verification documents", state: "not_started", detail: "Not started" };
   }
 
-  const tutorialsStep: ProgressStep = !profileDone
-    ? { key: "tutorials", label: "Conduct tutorials", state: "locked", detail: "Locked" }
-    : tutorialsDone
-      ? { key: "tutorials", label: "Conduct tutorials", state: "complete", detail: `${tutorialsCompleted} of ${tutorialsTotal} complete` }
-      : {
-          key: "tutorials",
-          label: "Conduct tutorials",
-          state: "not_started",
-          detail: `${tutorialsCompleted} of ${tutorialsTotal} complete`,
-        };
+  let tutorialsStep: ProgressStep;
+  if (!profileDone) {
+    tutorialsStep = { key: "tutorials", label: "Conduct tutorials", state: "locked", detail: "Locked" };
+  } else if (tutorialsTotal === 0) {
+    tutorialsStep = {
+      key: "tutorials",
+      label: "Conduct tutorials",
+      state: "not_started",
+      detail: "Waiting for official tutorials",
+    };
+  } else if (tutorialsDone) {
+    tutorialsStep = {
+      key: "tutorials",
+      label: "Conduct tutorials",
+      state: "complete",
+      detail: `${tutorialsCompleted} of ${tutorialsTotal} complete`,
+    };
+  } else if (tutorialsCompleted > 0) {
+    tutorialsStep = {
+      key: "tutorials",
+      label: "Conduct tutorials",
+      state: "in_progress",
+      detail: `${tutorialsCompleted} of ${tutorialsTotal} complete`,
+    };
+  } else {
+    tutorialsStep = {
+      key: "tutorials",
+      label: "Conduct tutorials",
+      state: "not_started",
+      detail: `${tutorialsCompleted} of ${tutorialsTotal} complete`,
+    };
+  }
 
-  const assessmentStep: ProgressStep = !tutorialsDone
-    ? { key: "assessment", label: "Entrance assessment", state: "locked", detail: "Locked" }
-    : examDone
-      ? { key: "assessment", label: "Entrance assessment", state: "complete", detail: "Complete" }
-      : { key: "assessment", label: "Entrance assessment", state: "not_started", detail: "Not started" };
+  let assessmentStep: ProgressStep;
+  if (!tutorialsDone) {
+    assessmentStep = { key: "assessment", label: "Entrance assessment", state: "locked", detail: "Locked" };
+  } else if (examDone) {
+    assessmentStep = { key: "assessment", label: "Entrance assessment", state: "complete", detail: "Complete" };
+  } else {
+    assessmentStep = { key: "assessment", label: "Entrance assessment", state: "not_started", detail: "Not started" };
+  }
 
   let reviewStep: ProgressStep;
   if (certified || application?.status === "approved") {
@@ -452,7 +479,7 @@ memberRouter.get("/application", async (req, res) => {
   const application = member.applications[0] ?? null;
   res.json({
     application: serializeApplication(application),
-    progress: buildProgress(member),
+    progress: await buildProgress(member),
   });
 });
 
@@ -478,7 +505,7 @@ memberRouter.post("/application/agreement", async (req, res) => {
 
 memberRouter.post("/application/submit", async (req, res) => {
   const member = await loadMember(req.user!.id);
-  const progress = buildProgress(member);
+  const progress = await buildProgress(member);
 
   if (!profileComplete(member.memberProfile)) {
     throw conflict("Complete your profile before submitting.", { fields: { profile: "is incomplete" } });
