@@ -10,6 +10,7 @@ import Profile from "./pages/member/Profile";
 import SignIn from "./pages/member/SignIn";
 import Verification from "./pages/member/Verification";
 import Landing from "./pages/public/Landing";
+import VerifyCertificate from "./pages/public/VerifyCertificate";
 import ScreensReference from "./screens-reference";
 
 // Routes
@@ -22,6 +23,8 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/" element={<Landing />} />
+          <Route path="/verify" element={<VerifyCertificate />} />
+          <Route path="/verify/:number" element={<VerifyCertificate />} />
 
           <Route path="/member/sign-in" element={<SignIn />} />
           <Route path="/member" element={<RequireMember />}>
