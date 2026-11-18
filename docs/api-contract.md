@@ -315,10 +315,12 @@ Policy pages (Code of Conduct, Privacy Policy, Complaints and Appeals, Badge Rul
 
 | Job | Owner | What it must do |
 | --- | --- | --- |
-| Expiry | KG, with Ryan on mail | When `validUntil` is reached, member status becomes `expired`. The live badge and public register must not show Active, even if this job failed — compute status from the stored date as well as from a flag. |
-| Renewal reminders | Ryan, with KG on dates | Try to email the member 60, 30 and 7 calendar days before expiry, and send a confirmation when expiry happens. These are a service target, not a right that keeps a badge Active. |
-| Complaint deadline mail | Ryan | Remind reviewers when the two-business-day acknowledgement or the 30-business-day decision target is close or overdue. |
+| Expiry | KG, with Ryan on mail | When `validUntil` is reached, member status becomes `expired`. The live badge and public register must not show Active, even if this job failed — compute status from the stored date as well as from a flag. Ryan’s `npm run jobs:mails` sends an expiry confirmation email (deduped via `AuditLog`); status flag updates remain KG’s expiry job. |
+| Renewal reminders | Ryan, with KG on dates | `npm run jobs:mails` emails the member 60, 30 and 7 calendar days before expiry (Africa/Johannesburg day match), deduped via `AuditLog`. These are a service target, not a right that keeps a badge Active. |
+| Complaint deadline mail | Ryan | `npm run jobs:mails` reminds admins when the two-business-day acknowledgement or the 30-business-day decision target is within ~24 hours or overdue. |
 | Privacy and retention | Ryan, with KG on queries | Remove or archive identity and bank files according to the published retention schedule. Do not keep private evidence for ever. |
+
+**Immediate (request-time) mail** — sent after the API action when SMTP is configured; failures are logged and never fail the HTTP request: application decision → applicant; member status change → member; complaint decision / appeal decision → complainant and named member. Renewal decision helper `notifyRenewalDecision` is ready to call from the renewal decision route once that PR is on `main`. Run scheduled mail with `npm run jobs:mails` in `backend/`.
 
 ---
 

@@ -8,6 +8,7 @@ import {
 } from "../lib/adminMemberQueries.js";
 import { liveCertificateStatus } from "../lib/certificates.js";
 import { conflict, notFound } from "../lib/http.js";
+import { notifyMemberStatusChange } from "../lib/notifications.js";
 import { prisma } from "../lib/prisma.js";
 import { requireRole } from "../middleware/auth.js";
 
@@ -162,6 +163,13 @@ adminMembersRouter.post("/members/:id/status", async (req, res) => {
             : profile.certificates[0].status,
       }
     : null;
+
+  await notifyMemberStatusChange({
+    to: profile.user.email,
+    status: body.status,
+    reason: body.reason,
+    memberProfileId: profile.id,
+  });
 
   res.json({
     member: {
