@@ -12,7 +12,6 @@ export function LivingBackdrop({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Track pointer + scroll on the container using CSS variables (zero React re-renders)
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -61,7 +60,6 @@ export function LivingBackdrop({
     };
   }, []);
 
-  // Subtle lake water ripple & specular shimmer in the lower 38% region
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
@@ -100,7 +98,6 @@ export function LivingBackdrop({
         const { width, height } = canvas;
         ctx.clearRect(0, 0, width, height);
 
-        // Draw subtle horizontal water-ripple glints across the lake surface
         const lines = 22;
         for (let i = 0; i < lines; i++) {
           const depth = i / lines;
@@ -146,7 +143,6 @@ export function LivingBackdrop({
         } as React.CSSProperties
       }
     >
-      {/* Sharp, unblurred background image with gentle interactive pan/parallax */}
       <img
         src="/images/forest-river-bg.jpg"
         alt=""
@@ -158,7 +154,6 @@ export function LivingBackdrop({
         }}
       />
 
-      {/* Drifting clouds & atmospheric sky shimmer (top 42%) */}
       <div className="animate-cloud-drift absolute inset-x-[-20%] top-0 h-[44%] opacity-45 mix-blend-screen">
         <div
           className="h-full w-full"
@@ -169,7 +164,6 @@ export function LivingBackdrop({
         />
       </div>
 
-      {/* Gentle wind-in-trees foliage breeze sweep (mid band) */}
       <div
         className="animate-wind-sway absolute inset-x-[-8%] top-[24%] h-[42%] opacity-35 mix-blend-soft-light"
         style={{
@@ -178,13 +172,11 @@ export function LivingBackdrop({
         }}
       />
 
-      {/* Animated lake water shimmer (lower 42%) */}
       <canvas
         ref={canvasRef}
         className="absolute inset-x-0 bottom-0 h-[42%] w-full opacity-90"
       />
 
-      {/* Interactive light dark-overlay responding to pointer & scroll */}
       <div
         className="absolute inset-0 transition-opacity duration-300"
         style={{
@@ -195,7 +187,6 @@ export function LivingBackdrop({
         }}
       />
 
-      {/* Bottom feather blend into the next section */}
       {variant === "hero" && (
         <div
           className="absolute inset-x-0 bottom-0 h-20"

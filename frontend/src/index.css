@@ -3506,7 +3506,6 @@ td small {
   outline-offset: 3px;
 }
 
-/* Living nature motion & interactive glassmorphism for the landing page */
 @keyframes cloudDrift {
   0%,
   100% {

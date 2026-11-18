@@ -81,7 +81,6 @@ function Hero() {
 
         <RegisterSearch />
 
-        {/* MASA-inspired Core Offerings Quick Links */}
         <div className="mx-auto mt-10 grid max-w-5xl gap-4 text-left sm:grid-cols-3">
           {HERO_PILLARS.map((pillar) => (
             <a
@@ -265,7 +264,6 @@ function About() {
           </p>
         </div>
 
-        {/* Editorial Bento Grid with bespoke personal-shopping photography */}
         <div className="mt-14 grid gap-5 lg:grid-cols-12">
           <Reveal className="lg:col-span-5">
             <div className="group relative h-full min-h-[360px] overflow-hidden rounded-3xl border border-white/60 shadow-xl lg:min-h-[440px]">
@@ -378,7 +376,6 @@ function Membership() {
           </p>
         </div>
 
-        {/* Interactive Gate Selector */}
         <div className="mt-12 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" role="tablist" aria-label="Membership gates">
           {STEPS.map((item, i) => {
             const isSelected = i === activeStep;
@@ -409,7 +406,6 @@ function Membership() {
           })}
         </div>
 
-        {/* Active Gate Showcase with editorial still-life imagery */}
         <Reveal className="mt-6">
           <div className="grid overflow-hidden rounded-3xl border border-line/80 bg-white shadow-xl md:grid-cols-[0.9fr_1.1fr]">
             <div className="group relative min-h-[300px] overflow-hidden bg-navy">
@@ -558,7 +554,6 @@ function LiveStatus() {
               or is suspended, that page changes straight away.
             </p>
 
-            {/* Concierge editorial photo with floating live status pill */}
             <div className="group relative mt-8 overflow-hidden rounded-3xl border border-line/80 shadow-lg">
               <img
                 src="/images/trust-concierge.jpg"
@@ -671,7 +666,6 @@ function Complaints() {
       ref={sectionRef}
       className="relative overflow-hidden bg-gradient-to-b from-soft via-sand/40 to-white"
     >
-      {/* Subtle theme ambient glows */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute -top-24 left-1/4 h-72 w-72 rounded-full bg-green/10 blur-3xl"
@@ -693,7 +687,6 @@ function Complaints() {
           </p>
         </div>
 
-        {/* Scroll-animated timeline progress */}
         <div className="relative mt-14">
           <div
             aria-hidden="true"
