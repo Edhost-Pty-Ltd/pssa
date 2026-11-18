@@ -4,7 +4,7 @@ import { z } from "zod";
 import { evaluateActivationGates } from "../lib/activationGates.js";
 import { applicationSummary, listApplications } from "../lib/adminApplicationQueries.js";
 import { issueCertificateOnActivation, liveCertificateStatus, serializeCertificate } from "../lib/certificates.js";
-import { hasPassedEntranceExam } from "../lib/examReviewQueries.js";
+import { attemptHistory, hasPassedEntranceExam, tutorialCompletion } from "../lib/examReviewQueries.js";
 import { conflict, notFound } from "../lib/http.js";
 import { prisma } from "../lib/prisma.js";
 import { privateFilePath } from "../lib/uploads.js";
@@ -348,10 +348,59 @@ adminRouter.get("/documents/:id/file", async (req, res) => {
   res.sendFile(filePath);
 });
 
-adminRouter.get("/applications/:id/tutorial", async (_req, res) => {
-  res.json({ tutorial: null, reason: "Tutorial models are not in the Phase 1 schema yet." });
+adminRouter.get("/applications/:id/tutorial", async (req, res) => {
+  const application = await prisma.application.findUnique({
+    where: { id: String(req.params.id) },
+    select: { user: { select: { memberProfile: { select: { id: true } } } } },
+  });
+  if (!application) throw notFound("Application not found.");
+  if (!application.user.memberProfile) {
+    res.json({ tutorial: null, reason: "This application has no member profile." });
+    return;
+  }
+  const tutorial = await tutorialCompletion(application.user.memberProfile.id);
+  res.json({ tutorial });
 });
 
-adminRouter.get("/applications/:id/exam", async (_req, res) => {
-  res.json({ exam: null, reason: "Exam models are not in the Phase 1 schema yet." });
+adminRouter.get("/applications/:id/exam", async (req, res) => {
+  const application = await prisma.application.findUnique({
+    where: { id: String(req.params.id) },
+    select: { user: { select: { memberProfile: { select: { id: true } } } } },
+  });
+  if (!application) throw notFound("Application not found.");
+  if (!application.user.memberProfile) {
+    res.json({ exam: null, reason: "This application has no member profile." });
+    return;
+  }
+
+  const memberProfileId = application.user.memberProfile.id;
+  const [{ attempts, attemptCount }, passed] = await Promise.all([
+    attemptHistory(memberProfileId, "entrance"),
+    hasPassedEntranceExam(memberProfileId),
+  ]);
+  const latest = attempts[0] ?? null;
+  const timeTakenSeconds =
+    latest?.submittedAt && latest.startedAt
+      ? Math.max(0, Math.round((latest.submittedAt.getTime() - latest.startedAt.getTime()) / 1000))
+      : null;
+
+  res.json({
+    exam: {
+      passed,
+      attemptCount,
+      latest: latest
+        ? {
+            id: latest.id,
+            score: latest.score,
+            percent: latest.percent,
+            passed: latest.passed,
+            criticalFailed: latest.criticalFailed,
+            startedAt: latest.startedAt,
+            submittedAt: latest.submittedAt,
+            timeTakenSeconds,
+          }
+        : null,
+      attempts,
+    },
+  });
 });

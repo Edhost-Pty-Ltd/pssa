@@ -66,9 +66,9 @@ export async function hasPassedEntranceExam(memberProfileId: string) {
   return Boolean(attempt);
 }
 
-/** Whether a retake is allowed under the seven-day and two-fail rules. */
+/** Whether a retake is allowed under the seven-day and two-fail rules (entrance attempts). */
 export async function retakeWindow(memberProfileId: string, now = new Date()) {
-  const { attempts } = await attemptHistory(memberProfileId);
+  const { attempts } = await attemptHistory(memberProfileId, "entrance");
   const latestFail = attempts.find((attempt) => attempt.passed === false);
   const failedCount = attempts.filter((attempt) => attempt.passed === false).length;
   const passed = attempts.some((attempt) => attempt.passed === true);
