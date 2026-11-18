@@ -1,9 +1,12 @@
 import { Router } from "express";
 import { z } from "zod";
+import { existsSync } from "node:fs";
 import { getComplaintDetail, listComplaints } from "../lib/adminComplaintQueries.js";
 import { addBusinessDays } from "../lib/businessDays.js";
 import { conflict, forbidden, notFound } from "../lib/http.js";
+import { applyPrivateFileHeaders, logPrivateFileAccess } from "../lib/privateFiles.js";
 import { prisma } from "../lib/prisma.js";
+import { privateFilePath } from "../lib/uploads.js";
 import { requireRole } from "../middleware/auth.js";
 
 /**
@@ -52,6 +55,41 @@ adminComplaintsRouter.get("/complaints/:id", async (req, res) => {
   const complaint = await getComplaintDetail(String(req.params.id));
   if (!complaint) throw notFound("Complaint not found.");
   res.json({ complaint });
+});
+
+/** Private evidence download — storage paths are never returned in JSON. */
+adminComplaintsRouter.get("/complaints/:id/evidence/:evidenceId/file", async (req, res) => {
+  const evidence = await prisma.complaintEvidence.findFirst({
+    where: {
+      id: String(req.params.evidenceId),
+      complaintId: String(req.params.id),
+    },
+    select: {
+      id: true,
+      storagePath: true,
+      originalName: true,
+      mimeType: true,
+      complaintId: true,
+    },
+  });
+  if (!evidence) throw notFound("Evidence file not found.");
+
+  await logPrivateFileAccess({
+    actorId: req.user!.id,
+    action: "admin.complaint.evidence_access",
+    entityType: "complaint_evidence",
+    entityId: evidence.id,
+    reason: `complaint ${evidence.complaintId}`,
+  });
+
+  const filePath = privateFilePath(evidence.storagePath);
+  if (!existsSync(filePath)) throw notFound("That file is no longer available.");
+  applyPrivateFileHeaders(res, {
+    contentType: evidence.mimeType || "application/octet-stream",
+    filename: evidence.originalName,
+    disposition: "inline",
+  });
+  res.sendFile(filePath);
 });
 
 adminComplaintsRouter.patch("/complaints/:id", async (req, res) => {

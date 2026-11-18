@@ -306,7 +306,8 @@ Complaints are new. They are always free. Service times in Africa/Johannesburg: 
 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
-| GET | `/api/health` | Public | **Out:** `{ ok: true, database: "connected" }`, or an error if the database is down. | To build |
+| GET | `/api/health` | Public | **Out:** `{ ok: true, database: "connected" }`, or an error if the database is down. | Exists |
+| GET | `/api/admin/complaints/:id/evidence/:evidenceId/file` | Admin | **In:** cookie. **Out:** the private evidence file. Storage paths are never returned in JSON. Access is audit-logged. | Exists |
 | GET | `/api/order-template` | Public | **Out:** the blank customer order template as a PDF, or `302` to a static file. This may instead be a static file in `pssa/frontend`. | To build |
 
 Policy pages (Code of Conduct, Privacy Policy, Complaints and Appeals, Badge Rules) are static frontend routes in `pssa/frontend` and do not need an API.

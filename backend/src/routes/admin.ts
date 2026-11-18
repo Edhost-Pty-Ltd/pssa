@@ -7,6 +7,7 @@ import { ensureCertificatePdf } from "../lib/certificatePdf.js";
 import { issueCertificateOnActivation, liveCertificateStatus, serializeCertificate } from "../lib/certificates.js";
 import { attemptHistory, hasPassedEntranceExam, tutorialCompletion } from "../lib/examReviewQueries.js";
 import { conflict, notFound } from "../lib/http.js";
+import { applyPrivateFileHeaders, logPrivateFileAccess } from "../lib/privateFiles.js";
 import { prisma } from "../lib/prisma.js";
 import { privateFilePath } from "../lib/uploads.js";
 import { requireRole } from "../middleware/auth.js";
@@ -345,17 +346,29 @@ adminRouter.patch("/documents/:id", async (req, res) => {
 adminRouter.get("/documents/:id/file", async (req, res) => {
   const document = await prisma.document.findUnique({ where: { id: String(req.params.id) } });
   if (!document) throw notFound("Document not found.");
-  await prisma.auditLog.create({
-    data: {
-      actorId: req.user!.id,
-      action: "admin.document.file_access",
-      entityType: "document",
-      entityId: document.id,
-    },
+  await logPrivateFileAccess({
+    actorId: req.user!.id,
+    action: "admin.document.file_access",
+    entityType: "document",
+    entityId: document.id,
   });
   const filePath = privateFilePath(document.storagePath);
   if (!existsSync(filePath)) throw notFound("That file is no longer available.");
-  res.setHeader("Content-Disposition", `inline; filename="${document.originalName.replace(/["\r\n]/g, "")}"`);
+  const lower = document.originalName.toLowerCase();
+  const contentType = lower.endsWith(".pdf")
+    ? "application/pdf"
+    : lower.endsWith(".png")
+      ? "image/png"
+      : lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+        ? "image/jpeg"
+        : lower.endsWith(".webp")
+          ? "image/webp"
+          : "application/octet-stream";
+  applyPrivateFileHeaders(res, {
+    contentType,
+    filename: document.originalName,
+    disposition: "inline",
+  });
   res.sendFile(filePath);
 });
 
