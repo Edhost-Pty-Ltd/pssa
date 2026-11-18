@@ -4,6 +4,13 @@ Express 5 + TypeScript + Prisma + PostgreSQL. Serves the public site, the member
 **and** the admin dashboard (`pssa-admin-dashboard` repo). This is the only code that
 touches the database; both frontends call it through `/api`.
 
+## Tests
+
+Unit tests cover auth helpers, approval gates, exam scoring, live-check status, complaint
+business-day deadlines, and privacy filters (no DB required):
+
+    npm test
+
 ## First-time setup
 
 1. Create the database (PostgreSQL must be running):
