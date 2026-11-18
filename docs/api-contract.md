@@ -229,19 +229,19 @@ The official exam is **30 questions in 45 minutes**, a pass mark of **at least 8
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
 | GET | `/api/tutorials/active` | Member or admin | **In:** cookie. **Out:** `200 { tutorials[] }` with title, duration and (for members) completion / watched seconds. Empty list includes a `reason` until official videos are active. | Exists |
-| GET | `/api/tutorials/:id/stream` | Member or admin | **In:** cookie. **Out:** the video stream. | To build |
-| POST | `/api/tutorials/:id/progress` | Member | **In:** `{ positionSeconds, durationSeconds? }`. **Out:** `200 { progress }`. A skip-ahead must not count as complete. | To build |
+| GET | `/api/tutorials/:id/stream` | Member or admin | **In:** cookie. Supports HTTP Range. Inactive tutorials are admin-only. **Out:** the private video bytes. | Exists |
+| POST | `/api/tutorials/:id/progress` | Member | **In:** `{ positionSeconds, durationSeconds? }`. **Out:** `200 { progress }`. Max position advances by at most 5 seconds per report so skip-ahead cannot complete a lesson. Complete at ≥95% of duration. | Exists |
 | GET | `/api/exam/status` | Member | **In:** cookie. **Out:** `200 { open, passed, attempts, canStart, reason?, retakeOpensAt? }`. `canStart` is true only when tutorials are complete, active questions exist, and the retake window allows it. | Exists |
-| POST | `/api/exam/start` | Member | **In:** empty, or `{ type: "entrance" \| "refresher" }`. **Out:** `201 { attempt, questions[], expiresAt }` — 30 questions, no answer key, 45-minute `expiresAt`. | To build |
-| POST | `/api/exam/attempts/:id/submit` | Member | **In:** `{ answers }`. **Out:** `200 { attempt }` with score, percent, passed, and `criticalFailed`. Late or over-time submits are scored as a fail. | To build |
+| POST | `/api/exam/start` | Member | **In:** empty, or `{ type: "entrance" }` (refresher not Phase 1). **Out:** `201 { attempt, questions[], expiresAt }` — up to 30 active questions, no answer key, 45-minute `expiresAt`. Resumes an open unexpired attempt with `200`. | Exists |
+| POST | `/api/exam/attempts/:id/submit` | Member | **In:** `{ answers }` as a map of questionId→optionId, or `[{ questionId, optionId }]`. **Out:** `200 { attempt }` with score, percent, passed (≥80% and every critical correct), and `criticalFailed`. Late or over-time submits are scored as a fail. | Exists |
 | GET | `/api/exam/attempts` | Member | **In:** cookie. **Out:** `200 { attempts[] }` (no answer key). | Exists |
 | POST | `/api/exam/attempts/:id/appeal` | Member | **In:** `{ reason }`. **Out:** `201 { appeal }`. | To build |
 | GET | `/api/tutorials` | Admin | **In:** cookie. **Out:** `200 { tutorials[] }` including inactive ones. | Exists |
-| POST | `/api/tutorials` | Admin | **In:** multipart video plus title. **Out:** `201 { tutorial }`. | To build |
-| PATCH | `/api/tutorials/:id` | Admin | **In:** title, duration, active flag. **Out:** `200 { tutorial }`. | To build |
-| POST | `/api/tutorials/:id/activate` | Admin | **In:** none. **Out:** `200 { tutorial }`. | To build |
+| POST | `/api/tutorials` | Admin | **In:** multipart `file` (MP4/WebM/MOV, max 200 MB) plus `title`, optional `durationSeconds`. **Out:** `201 { tutorial }` with `isActive: false`. | Exists |
+| PATCH | `/api/tutorials/:id` | Admin | **In:** title, durationSeconds, isActive. **Out:** `200 { tutorial }`. | Exists |
+| POST | `/api/tutorials/:id/activate` | Admin | **In:** none. **Out:** `200 { tutorial }` with `isActive: true`. | Exists |
 | GET | `/api/exam/questions` | Admin | **In:** cookie. **Out:** `200 { questions[] }` including `isCritical` and the correct option (admin only). | Exists |
-| POST | `/api/exam/attempts/:id/allow-retake` | Admin | **In:** `{ reason, conflictDeclared: true }`. **Out:** `200 { attempt }`. Used after two failed attempts. | To build |
+| POST | `/api/exam/attempts/:id/allow-retake` | Admin | **In:** `{ reason, conflictDeclared: true }`. **Out:** `200 { attempt, retake }`. Used after two failed attempts; records an audit unlock for one further attempt. | Exists |
 | GET | `/api/admin/applications/:id/tutorial` | Admin | **In:** path id. **Out:** `{ tutorial }` with completedCount / total / lessons. | Exists |
 | GET | `/api/admin/applications/:id/exam` | Admin | **In:** path id. **Out:** `{ exam }` with passed, attemptCount, latest score/time, and attempt history. | Exists |
 
