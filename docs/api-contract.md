@@ -282,11 +282,11 @@ Complaints are new. They are always free. Service times in Africa/Johannesburg: 
 | GET | `/api/complaints/:reference` | Complainant (login or a one-time access token sent by email) | **In:** the `PSSA-C-YYYY-XXXX` reference. **Out:** `200 { complaint }` with status, next steps and public-safe history. No private member evidence. | To build |
 | POST | `/api/member/complaints/:id/response` | Member named in the case | **In:** `{ body, files? }`. **Out:** `200 { complaint }`. | To build |
 | POST | `/api/complaints/:id/appeal` | Complainant or member | **In:** `{ reason }`. **Out:** `201 { appeal }` if lodged within ten business days. A different person hears the appeal. | To build |
-| GET | `/api/admin/complaints` | Admin | **In:** query `status?`, `type?`, `q?`, `page`. **Out:** `200 { items, page, pageSize, total }`. | To build |
-| GET | `/api/admin/complaints/:id` | Admin | **In:** path id. **Out:** `200 { complaint }` with timeline, evidence, member response, parties and deadlines. | To build |
-| PATCH | `/api/admin/complaints/:id` | Admin | **In:** `{ status?, assigneeId?, internalNote? }`. Setting `under_review` should stamp acknowledgement if it is still empty. | To build |
-| POST | `/api/admin/complaints/:id/decision` | Admin | **In:** `{ outcome: "no_breach" \| "corrective_action" \| "suspension" \| "revocation", reasons, conflictDeclared: true }`. **Out:** `200 { complaint, member? }`. If the outcome suspends or revokes a member, the live badge and public register update immediately. | To build |
-| POST | `/api/admin/complaints/:id/appeal-decision` | Admin (a different reviewer) | **In:** `{ decision, reasons, conflictDeclared: true }`. **Out:** `200 { appeal, complaint }`. | To build |
+| GET | `/api/admin/complaints` | Admin | **In:** query `status?`, `type?`, `q?`, `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }`. | Exists |
+| GET | `/api/admin/complaints/:id` | Admin | **In:** path id. **Out:** `200 { complaint }` with evidence metadata, member responses, appeals, parties and deadlines. Storage paths are not returned. | Exists |
+| PATCH | `/api/admin/complaints/:id` | Admin | **In:** `{ status?, assigneeId?, internalNote? }`. Setting `under_review` stamps `acknowledgedAt` if empty and sets response/decision due dates (5 / 30 business days). `internalNote` is stored on the audit log (no separate note column). | Exists |
+| POST | `/api/admin/complaints/:id/decision` | Admin | **In:** `{ outcome: "no_breach" \| "corrective_action" \| "suspension" \| "revocation", reasons, conflictDeclared: true }`. **Out:** `200 { complaint, member }`. Sets appeal deadline (+10 business days). Suspension/revocation updates member status (and revokes the active certificate on revocation). | Exists |
+| POST | `/api/admin/complaints/:id/appeal-decision` | Admin (a different reviewer) | **In:** `{ decision, reasons, conflictDeclared: true }`. **Out:** `200 { appeal, complaint }`. The original decision reviewer cannot decide the appeal. | Exists |
 
 ### 6.9 Members, status and renewal
 
