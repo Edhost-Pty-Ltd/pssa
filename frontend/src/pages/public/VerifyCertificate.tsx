@@ -304,7 +304,7 @@ function SafetyAside() {
     <aside className="space-y-4">
       <div className="rounded-2xl bg-navy p-6 text-white">
         <Icon name="shield" size={26} />
-        <h2 className="mt-3 text-lg font-semibold">Only this page proves status</h2>
+        <h2 className="mt-3 text-lg font-semibold text-white">Only this page proves status</h2>
         <p className="mt-2 text-sm text-white/75">
           Screenshots, copied badges and old certificates don't prove someone is a member today. Check here every time
           before you pay.
