@@ -1,72 +1,322 @@
 import { Router } from "express";
 import { existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
-import type { SocialPlatform } from "@prisma/client";
+import type { DocumentType } from "@prisma/client";
 import { z } from "zod";
-import { badRequest, conflict, notFound } from "../lib/http.js";
+import { badRequest, conflict, forbidden, notFound } from "../lib/http.js";
+import { isValidSaIdNumber, maskIdNumber, nextApplicationNumber } from "../lib/members.js";
 import { prisma } from "../lib/prisma.js";
-import { isValidSaIdNumber, maskIdNumber, MEMBER_CATEGORIES } from "../lib/members.js";
-import { assertFileSignature, documentUpload, privateFilePath } from "../lib/uploads.js";
+import { assertFileSignature, documentUpload, privateFilePath, removePrivateFile } from "../lib/uploads.js";
 import { requireRole } from "../middleware/auth.js";
 
 /**
- * The signed-in member's own profile, address, social links and private documents.
- * Verification status is read-only. Files stay on disk; the database stores the reference only.
+ * Signed-in member profile, application tracker, documents and trading channels.
+ * Private files stay on disk; the database stores the reference only.
  */
 export const memberRouter = Router();
 memberRouter.use(requireRole("MEMBER"));
+
+const documentSelect = {
+  id: true,
+  type: true,
+  originalName: true,
+  status: true,
+  reviewerNote: true,
+  reviewedAt: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+const channelSelect = {
+  id: true,
+  kind: true,
+  value: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+const applicationSelect = {
+  id: true,
+  number: true,
+  status: true,
+  submittedAt: true,
+  agreementAcceptedAt: true,
+  agreementVersion: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
 
 const profileSelect = {
   id: true,
   email: true,
   role: true,
-  firstName: true,
-  lastName: true,
-  phone: true,
   emailVerifiedAt: true,
   phoneVerifiedAt: true,
   createdAt: true,
-  member: {
+  memberProfile: {
     select: {
       id: true,
-      businessName: true,
-      category: true,
+      firstName: true,
+      lastName: true,
+      phone: true,
+      tradingName: true,
+      scope: true,
       idNumber: true,
       physicalAddress: true,
-      verificationStatus: true,
-      isActive: true,
+      city: true,
+      memberStatus: true,
+      validFrom: true,
+      validUntil: true,
       createdAt: true,
       updatedAt: true,
-      socialAccounts: { select: { platform: true, url: true }, orderBy: { platform: "asc" as const } },
-      documents: {
-        select: {
-          id: true,
-          documentType: true,
-          originalName: true,
-          mimeType: true,
-          sizeBytes: true,
-          reviewStatus: true,
-          reviewerNote: true,
-          uploadedAt: true,
-        },
-        orderBy: { uploadedAt: "desc" as const },
-      },
+      channels: { select: channelSelect, orderBy: { createdAt: "asc" as const } },
     },
+  },
+  documents: { select: documentSelect, orderBy: { createdAt: "desc" as const } },
+  applications: {
+    select: applicationSelect,
+    orderBy: { createdAt: "desc" as const },
+    take: 1,
   },
 } as const;
 
-function serializeProfile(user: NonNullable<Awaited<ReturnType<typeof loadProfile>>>) {
-  const member = user.member!;
+type LoadedMember = NonNullable<Awaited<ReturnType<typeof loadMember>>>;
+
+async function loadMember(userId: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: profileSelect });
+  if (!user?.memberProfile) throw notFound("Member profile not found.");
+  return user;
+}
+
+function serializeProfile(user: LoadedMember) {
+  const { applications: _apps, ...rest } = user;
   return {
-    ...user,
-    member: { ...member, idNumber: maskIdNumber(member.idNumber) },
+    ...rest,
+    memberProfile: {
+      ...user.memberProfile!,
+      idNumber: maskIdNumber(user.memberProfile!.idNumber),
+    },
   };
 }
 
-async function loadProfile(userId: string) {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: profileSelect });
-  if (!user?.member) throw notFound("Member profile not found.");
-  return user;
+type StepState = "complete" | "in_progress" | "action_needed" | "not_started" | "locked";
+
+type ProgressStep = {
+  key: "profile" | "documents" | "tutorials" | "assessment" | "review" | "certified";
+  label: string;
+  state: StepState;
+  detail: string;
+};
+
+type ProgressAction = {
+  step: "documents";
+  title: string;
+  detail: string;
+  status: "needs_resubmission";
+};
+
+const EMPTY_APPLICATION = {
+  id: null,
+  number: null,
+  status: "draft" as const,
+  submittedAt: null,
+  agreementAcceptedAt: null,
+  agreementVersion: null,
+};
+
+const DOCUMENT_TITLES: Record<DocumentType, string> = {
+  id_document: "Identity document",
+  proof_of_residence: "Proof of residence",
+  bank_evidence: "Bank account evidence",
+  business_registration: "Business registration",
+  channel_evidence: "Channel evidence",
+};
+
+function serializeApplication(application: LoadedMember["applications"][number] | null) {
+  if (!application) return EMPTY_APPLICATION;
+  return {
+    id: application.id,
+    number: application.number,
+    status: application.status,
+    submittedAt: application.submittedAt,
+    agreementAcceptedAt: application.agreementAcceptedAt,
+    agreementVersion: application.agreementVersion,
+  };
+}
+
+function hasText(value: string | null | undefined) {
+  return Boolean(value && value.trim());
+}
+
+function profileComplete(profile: LoadedMember["memberProfile"]) {
+  return Boolean(
+    profile &&
+      hasText(profile.firstName) &&
+      hasText(profile.lastName) &&
+      hasText(profile.phone) &&
+      hasText(profile.idNumber) &&
+      hasText(profile.physicalAddress) &&
+      hasText(profile.city) &&
+      hasText(profile.tradingName) &&
+      hasText(profile.scope),
+  );
+}
+
+function profileStarted(profile: LoadedMember["memberProfile"]) {
+  return Boolean(
+    profile &&
+      (hasText(profile.firstName) ||
+        hasText(profile.lastName) ||
+        hasText(profile.phone) ||
+        hasText(profile.idNumber) ||
+        hasText(profile.physicalAddress) ||
+        hasText(profile.city) ||
+        hasText(profile.tradingName) ||
+        hasText(profile.scope)),
+  );
+}
+
+function latestDocsByType(documents: LoadedMember["documents"]) {
+  const latest = new Map<DocumentType, LoadedMember["documents"][number]>();
+  for (const doc of documents) {
+    if (!latest.has(doc.type)) latest.set(doc.type, doc);
+  }
+  return latest;
+}
+
+function documentsComplete(
+  documents: LoadedMember["documents"],
+  channels: NonNullable<LoadedMember["memberProfile"]>["channels"],
+) {
+  const latest = latestDocsByType(documents);
+  const usable = (type: DocumentType) => {
+    const doc = latest.get(type);
+    return Boolean(doc && doc.status !== "needs_resubmission");
+  };
+  const hasId = usable("id_document");
+  const hasAddressOrBiz = usable("proof_of_residence") || usable("business_registration");
+  const hasBank = usable("bank_evidence");
+  const hasChannel =
+    channels.some((channel: { status: string }) => channel.status === "confirmed") || usable("channel_evidence");
+  return hasId && hasAddressOrBiz && hasBank && hasChannel;
+}
+
+function documentActions(documents: LoadedMember["documents"]): ProgressAction[] {
+  const latest = latestDocsByType(documents);
+  const actions: ProgressAction[] = [];
+  for (const doc of latest.values()) {
+    if (doc.status !== "needs_resubmission") continue;
+    actions.push({
+      step: "documents",
+      title: DOCUMENT_TITLES[doc.type],
+      detail: doc.reviewerNote?.trim() || "Please replace this document.",
+      status: "needs_resubmission",
+    });
+  }
+  return actions;
+}
+
+function buildProgress(user: LoadedMember) {
+  const application = user.applications[0] ?? null;
+  const profileDone = profileComplete(user.memberProfile);
+  const docsDone = documentsComplete(user.documents, user.memberProfile!.channels);
+  const actions = documentActions(user.documents);
+  const agreementDone = Boolean(application?.agreementAcceptedAt && application.agreementVersion);
+  const submitted = Boolean(application && application.status !== "draft");
+  const needsInfo = application?.status === "needs_info";
+  const certified = application?.status === "approved" || user.memberProfile!.memberStatus === "active";
+
+  // Tutorials / exam are blocked until those models and official content land.
+  const tutorialsDone = false;
+  const tutorialsTotal = 4;
+  const tutorialsCompleted = 0;
+  const examDone = false;
+
+  const profileStep: ProgressStep = profileDone
+    ? { key: "profile", label: "Profile", state: "complete", detail: "Complete" }
+    : profileStarted(user.memberProfile)
+      ? { key: "profile", label: "Profile", state: "in_progress", detail: "In progress" }
+      : { key: "profile", label: "Profile", state: "not_started", detail: "Not started" };
+
+  let documentsStep: ProgressStep;
+  if (!profileDone) {
+    documentsStep = { key: "documents", label: "Verification documents", state: "locked", detail: "Locked" };
+  } else if (actions.length) {
+    documentsStep = {
+      key: "documents",
+      label: "Verification documents",
+      state: "action_needed",
+      detail: `${actions.length} need${actions.length === 1 ? "s" : ""} resubmission`,
+    };
+  } else if (docsDone) {
+    documentsStep = { key: "documents", label: "Verification documents", state: "complete", detail: "Complete" };
+  } else if (user.documents.length || user.memberProfile!.channels.length) {
+    documentsStep = { key: "documents", label: "Verification documents", state: "in_progress", detail: "In progress" };
+  } else {
+    documentsStep = { key: "documents", label: "Verification documents", state: "not_started", detail: "Not started" };
+  }
+
+  const tutorialsStep: ProgressStep = !profileDone
+    ? { key: "tutorials", label: "Conduct tutorials", state: "locked", detail: "Locked" }
+    : tutorialsDone
+      ? { key: "tutorials", label: "Conduct tutorials", state: "complete", detail: `${tutorialsCompleted} of ${tutorialsTotal} complete` }
+      : {
+          key: "tutorials",
+          label: "Conduct tutorials",
+          state: "not_started",
+          detail: `${tutorialsCompleted} of ${tutorialsTotal} complete`,
+        };
+
+  const assessmentStep: ProgressStep = !tutorialsDone
+    ? { key: "assessment", label: "Entrance assessment", state: "locked", detail: "Locked" }
+    : examDone
+      ? { key: "assessment", label: "Entrance assessment", state: "complete", detail: "Complete" }
+      : { key: "assessment", label: "Entrance assessment", state: "not_started", detail: "Not started" };
+
+  let reviewStep: ProgressStep;
+  if (certified || application?.status === "approved") {
+    reviewStep = { key: "review", label: "Review", state: "complete", detail: "Complete" };
+  } else if (needsInfo) {
+    reviewStep = { key: "review", label: "Review", state: "action_needed", detail: "Action needed" };
+  } else if (submitted) {
+    reviewStep = { key: "review", label: "Review", state: "in_progress", detail: "Under review" };
+  } else if (profileDone && docsDone && agreementDone) {
+    reviewStep = { key: "review", label: "Review", state: "not_started", detail: "Ready to submit" };
+  } else {
+    reviewStep = { key: "review", label: "Review", state: "locked", detail: "Locked" };
+  }
+
+  const certifiedStep: ProgressStep = certified
+    ? { key: "certified", label: "Certified", state: "complete", detail: "Certified" }
+    : { key: "certified", label: "Certified", state: "locked", detail: "Locked" };
+
+  const steps = [profileStep, documentsStep, tutorialsStep, assessmentStep, reviewStep, certifiedStep];
+  const percent = Math.round((steps.filter((step) => step.state === "complete").length / steps.length) * 100);
+  const canSubmit =
+    profileDone &&
+    docsDone &&
+    agreementDone &&
+    (!application || application.status === "draft" || application.status === "needs_info");
+
+  return { percent, steps, actions, canSubmit };
+}
+
+async function getOrCreateDraftApplication(userId: string) {
+  const existing = await prisma.application.findFirst({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    select: applicationSelect,
+  });
+  if (existing) return existing;
+
+  return prisma.$transaction(async (tx) => {
+    const number = await nextApplicationNumber(tx);
+    return tx.application.create({
+      data: { userId, number, status: "draft" },
+      select: applicationSelect,
+    });
+  });
 }
 
 const text = (max: number) => z.string().trim().min(1, "is required").max(max, `must be at most ${max} characters`);
@@ -77,54 +327,53 @@ const phoneSchema = z
   .max(30, "must be at most 30 characters")
   .refine((value) => /^\+?[\d\s()-]+$/.test(value) && value.replace(/\D/g, "").length >= 7 && value.replace(/\D/g, "").length <= 15, "must be a valid phone number");
 
-function isPlatformUrl(value: string, domains: string[]) {
+function isHttpUrl(value: string) {
   try {
     const url = new URL(value);
-    const host = url.hostname.toLowerCase();
-    return ["http:", "https:"].includes(url.protocol) && domains.some((domain) => host === domain || host.endsWith(`.${domain}`));
+    return url.protocol === "http:" || url.protocol === "https:";
   } catch {
     return false;
   }
 }
 
-function socialLink(label: string, domains: string[]) {
-  return z.union([
-    z.null(),
-    z.literal("").transform(() => null),
-    z.string().trim().refine((value) => isPlatformUrl(value, domains), `must be a valid ${label} link`),
-  ]);
-}
+const nullableText = (max: number) => z.union([z.null(), z.literal("").transform(() => null), text(max)]);
+const nullableUrl = z.union([
+  z.null(),
+  z.literal("").transform(() => null),
+  z.string().trim().refine(isHttpUrl, "must be a valid URL"),
+]);
 
-/** Omitted fields stay as they are. Null or "" clears phone, address or a social link. */
+/** Omitted fields stay as they are. Null or "" clears optional profile/channel fields. */
 const updateSchema = z
   .object({
     firstName: text(100).optional(),
     lastName: text(100).optional(),
     phone: z.union([z.null(), z.literal("").transform(() => null), phoneSchema]).optional(),
-    businessName: z.union([z.null(), z.literal("").transform(() => null), text(150)]).optional(),
-    category: z.enum(MEMBER_CATEGORIES, { error: `must be one of: ${MEMBER_CATEGORIES.join(", ")}` }).optional(),
+    tradingName: nullableText(150).optional(),
+    scope: nullableText(150).optional(),
     idNumber: z
       .string()
       .transform((value) => value.replace(/\s/g, ""))
       .refine(isValidSaIdNumber, "must be a valid 13-digit South African ID number")
       .optional(),
-    physicalAddress: z.union([z.null(), z.literal("").transform(() => null), text(300)]).optional(),
-    facebookUrl: socialLink("Facebook", ["facebook.com", "fb.com"]).optional(),
-    instagramUrl: socialLink("Instagram", ["instagram.com"]).optional(),
-    tiktokUrl: socialLink("TikTok", ["tiktok.com"]).optional(),
+    physicalAddress: nullableText(300).optional(),
+    city: nullableText(100).optional(),
+    facebookUrl: nullableUrl.optional(),
+    instagramUrl: nullableUrl.optional(),
+    tiktokUrl: nullableUrl.optional(),
   })
   .refine((body) => Object.values(body).some((value) => value !== undefined), { error: "Provide at least one field to update." });
 
 memberRouter.get("/profile", async (req, res) => {
-  res.json({ profile: serializeProfile(await loadProfile(req.user!.id)) });
+  res.json({ profile: serializeProfile(await loadMember(req.user!.id)) });
 });
 
 memberRouter.patch("/profile", async (req, res) => {
   const body = updateSchema.parse(req.body ?? {});
-  const current = await loadProfile(req.user!.id);
-  const memberId = current.member!.id;
+  const current = await loadMember(req.user!.id);
+  const memberId = current.memberProfile!.id;
 
-  if (body.idNumber && body.idNumber !== current.member!.idNumber) {
+  if (body.idNumber && body.idNumber !== current.memberProfile!.idNumber) {
     const taken = await prisma.memberProfile.findUnique({ where: { idNumber: body.idNumber }, select: { id: true } });
     if (taken) throw conflict("A member with this ID number is already registered.", { fields: { idNumber: "is already registered" } });
   }
@@ -132,77 +381,134 @@ memberRouter.patch("/profile", async (req, res) => {
   const userFields = {
     ...(body.firstName !== undefined ? { firstName: body.firstName } : {}),
     ...(body.lastName !== undefined ? { lastName: body.lastName } : {}),
-    ...(body.phone !== undefined ? { phone: body.phone } : {}),
-    // A new phone number has to be verified again.
-    ...(body.phone !== undefined && body.phone !== current.phone ? { phoneVerifiedAt: null } : {}),
+    ...(body.phone !== undefined && body.phone !== current.memberProfile!.phone ? { phoneVerifiedAt: null } : {}),
   };
   const memberFields = {
-    ...(body.businessName !== undefined ? { businessName: body.businessName } : {}),
-    ...(body.category !== undefined ? { category: body.category } : {}),
+    ...(body.firstName !== undefined ? { firstName: body.firstName } : {}),
+    ...(body.lastName !== undefined ? { lastName: body.lastName } : {}),
+    ...(body.phone !== undefined ? { phone: body.phone } : {}),
+    ...(body.tradingName !== undefined ? { tradingName: body.tradingName } : {}),
+    ...(body.scope !== undefined ? { scope: body.scope } : {}),
     ...(body.idNumber !== undefined ? { idNumber: body.idNumber } : {}),
     ...(body.physicalAddress !== undefined ? { physicalAddress: body.physicalAddress } : {}),
+    ...(body.city !== undefined ? { city: body.city } : {}),
   };
-  const socials: Array<[SocialPlatform, string | null]> = (
-    [
-      ["facebook", body.facebookUrl],
-      ["instagram", body.instagramUrl],
-      ["tiktok", body.tiktokUrl],
-    ] as const
-  ).filter((entry): entry is [SocialPlatform, string | null] => entry[1] !== undefined);
+
+  const channelUpdates: Array<[string, string | null]> = [];
+  if (body.facebookUrl !== undefined) channelUpdates.push(["facebook", body.facebookUrl]);
+  if (body.instagramUrl !== undefined) channelUpdates.push(["instagram", body.instagramUrl]);
+  if (body.tiktokUrl !== undefined) channelUpdates.push(["tiktok", body.tiktokUrl]);
 
   await prisma.$transaction(async (tx) => {
     if (Object.keys(userFields).length) await tx.user.update({ where: { id: current.id }, data: userFields });
     if (Object.keys(memberFields).length) await tx.memberProfile.update({ where: { id: memberId }, data: memberFields });
-    for (const [platform, url] of socials) {
-      if (url === null) {
-        await tx.socialAccount.deleteMany({ where: { memberProfileId: memberId, platform } });
+
+    for (const [kind, value] of channelUpdates) {
+      const existing = await tx.channel.findFirst({ where: { memberProfileId: memberId, kind }, select: { id: true } });
+      if (value === null) {
+        if (existing) await tx.channel.delete({ where: { id: existing.id } });
+      } else if (existing) {
+        await tx.channel.update({ where: { id: existing.id }, data: { value, status: "code_sent" } });
       } else {
-        await tx.socialAccount.upsert({
-          where: { memberProfileId_platform: { memberProfileId: memberId, platform } },
-          create: { memberProfileId: memberId, platform, url },
-          update: { url },
-        });
+        await tx.channel.create({ data: { memberProfileId: memberId, kind, value, status: "code_sent" } });
       }
     }
   });
 
-  res.json({ profile: serializeProfile(await loadProfile(current.id)) });
+  res.json({ profile: serializeProfile(await loadMember(current.id)) });
 });
 
-/* ---------------- Private documents ---------------- */
+/* ---------------- Application tracker ---------------- */
 
-const documentJson = {
-  id: true,
-  documentType: true,
-  originalName: true,
-  mimeType: true,
-  sizeBytes: true,
-  reviewStatus: true,
-  reviewerNote: true,
-  uploadedAt: true,
-} as const;
+memberRouter.get("/application", async (req, res) => {
+  const member = await loadMember(req.user!.id);
+  const application = member.applications[0] ?? null;
+  res.json({
+    application: serializeApplication(application),
+    progress: buildProgress(member),
+  });
+});
 
-async function storeDocument(userId: string, file: Express.Multer.File | undefined, documentType: "id_document" | "proof_of_residence") {
+const agreementSchema = z.object({
+  accepted: z.literal(true, { error: "must be true to accept the agreement" }),
+  version: text(50),
+});
+
+memberRouter.post("/application/agreement", async (req, res) => {
+  const { version } = agreementSchema.parse(req.body ?? {});
+  const application = await getOrCreateDraftApplication(req.user!.id);
+  if (application.status !== "draft" && application.status !== "needs_info") {
+    throw conflict("This application can no longer change agreement acceptance.");
+  }
+
+  const updated = await prisma.application.update({
+    where: { id: application.id },
+    data: { agreementAcceptedAt: new Date(), agreementVersion: version },
+    select: applicationSelect,
+  });
+  res.json({ application: serializeApplication(updated) });
+});
+
+memberRouter.post("/application/submit", async (req, res) => {
+  const member = await loadMember(req.user!.id);
+  const progress = buildProgress(member);
+
+  if (!profileComplete(member.memberProfile)) {
+    throw conflict("Complete your profile before submitting.", { fields: { profile: "is incomplete" } });
+  }
+  if (!documentsComplete(member.documents, member.memberProfile!.channels)) {
+    throw conflict("Upload the required verification documents and confirm a trading channel before submitting.", {
+      fields: { documents: "are incomplete" },
+    });
+  }
+
+  const existing = member.applications[0] ?? null;
+  if (existing && existing.status !== "draft" && existing.status !== "needs_info") {
+    throw conflict("This application has already been submitted.");
+  }
+  if (!existing?.agreementAcceptedAt || !existing.agreementVersion) {
+    throw conflict("Accept the membership agreement before submitting.", { fields: { agreement: "is required" } });
+  }
+  if (!progress.canSubmit) {
+    throw conflict("This application is not ready to submit yet.");
+  }
+
+  const application = existing ?? (await getOrCreateDraftApplication(req.user!.id));
+  const updated = await prisma.application.update({
+    where: { id: application.id },
+    data: {
+      status: "submitted",
+      submittedAt: new Date(),
+      agreementAcceptedAt: existing?.agreementAcceptedAt ?? application.agreementAcceptedAt,
+      agreementVersion: existing?.agreementVersion ?? application.agreementVersion,
+    },
+    select: applicationSelect,
+  });
+  res.status(existing ? 200 : 201).json({ application: serializeApplication(updated) });
+});
+
+/* ---------------- Documents ---------------- */
+
+const DOCUMENT_TYPES = ["id_document", "proof_of_residence", "bank_evidence", "business_registration", "channel_evidence"] as const;
+
+const uploadTypeSchema = z.object({
+  type: z.enum(DOCUMENT_TYPES, { error: `must be one of: ${DOCUMENT_TYPES.join(", ")}` }),
+});
+
+async function storeDocument(userId: string, file: Express.Multer.File | undefined, type: DocumentType) {
   if (!file) throw badRequest("Choose a file to upload.");
   try {
     await assertFileSignature(file);
-    const profile = await loadProfile(userId);
-    const openApplication = await prisma.application.findFirst({
-      where: { memberProfileId: profile.member!.id, status: { in: ["submitted", "under_review", "info_required"] } },
-      orderBy: { submittedAt: "desc" },
-      select: { id: true },
-    });
-    return await prisma.memberDocument.create({
+    await loadMember(userId);
+    return await prisma.document.create({
       data: {
-        memberProfileId: profile.member!.id,
-        applicationId: openApplication?.id ?? null,
-        documentType,
+        userId,
+        type,
+        storagePath: file.filename,
         originalName: file.originalname.slice(0, 180),
-        storedName: file.filename,
-        mimeType: file.mimetype,
-        sizeBytes: file.size,
+        status: "uploaded",
       },
-      select: documentJson,
+      select: documentSelect,
     });
   } catch (error) {
     await unlink(file.path).catch(() => {});
@@ -210,6 +516,13 @@ async function storeDocument(userId: string, file: Express.Multer.File | undefin
   }
 }
 
+memberRouter.post("/documents", documentUpload.single("file"), async (req, res) => {
+  const { type } = uploadTypeSchema.parse(req.body ?? {});
+  const document = await storeDocument(req.user!.id, req.file, type);
+  res.status(201).json({ document });
+});
+
+/** Aliases kept for older clients. */
 memberRouter.post("/documents/id", documentUpload.single("file"), async (req, res) => {
   const document = await storeDocument(req.user!.id, req.file, "id_document");
   res.status(201).json({ document });
@@ -221,21 +534,87 @@ memberRouter.post("/documents/proof-of-residence", documentUpload.single("file")
 });
 
 memberRouter.get("/documents", async (req, res) => {
-  const profile = await loadProfile(req.user!.id);
-  res.json({ documents: profile.member!.documents });
+  const member = await loadMember(req.user!.id);
+  res.json({ documents: member.documents });
 });
 
 memberRouter.get("/documents/:id/file", async (req, res) => {
-  const profile = await loadProfile(req.user!.id);
-  const document = await prisma.memberDocument.findFirst({
-    where: { id: String(req.params.id), memberProfileId: profile.member!.id },
+  const document = await prisma.document.findFirst({
+    where: { id: String(req.params.id), userId: req.user!.id },
   });
   if (!document) throw notFound("Document not found.");
-  const filePath = privateFilePath(document.storedName);
+  await prisma.auditLog.create({
+    data: {
+      actorId: req.user!.id,
+      action: "document.file_access",
+      entityType: "document",
+      entityId: document.id,
+    },
+  });
+  const filePath = privateFilePath(document.storagePath);
   if (!existsSync(filePath)) throw notFound("That file is no longer available.");
-  res.type(document.mimeType);
+  res.type(document.originalName.toLowerCase().endsWith(".pdf") ? "application/pdf" : "application/octet-stream");
   res.setHeader("Content-Disposition", contentDisposition(document.originalName));
   res.sendFile(filePath);
+});
+
+memberRouter.delete("/documents/:id", async (req, res) => {
+  const document = await prisma.document.findFirst({
+    where: { id: String(req.params.id), userId: req.user!.id },
+  });
+  if (!document) throw notFound("Document not found.");
+  if (document.status === "accepted") throw forbidden("Accepted documents cannot be deleted.");
+
+  await prisma.document.delete({ where: { id: document.id } });
+  await removePrivateFile(document.storagePath);
+  res.json({ ok: true });
+});
+
+/* ---------------- Trading channels ---------------- */
+
+const channelCreateSchema = z
+  .object({
+    platform: text(50),
+    handle: text(150).optional(),
+    url: z.string().trim().refine(isHttpUrl, "must be a valid URL").optional(),
+  })
+  .refine((body) => Boolean(body.handle || body.url), { error: "Provide a handle or url." });
+
+memberRouter.post("/channels", async (req, res) => {
+  const body = channelCreateSchema.parse(req.body ?? {});
+  const member = await loadMember(req.user!.id);
+  const channel = await prisma.channel.create({
+    data: {
+      memberProfileId: member.memberProfile!.id,
+      kind: body.platform.toLowerCase(),
+      value: body.url ?? body.handle!,
+      status: "code_sent",
+    },
+    select: channelSelect,
+  });
+  res.status(201).json({ channel });
+});
+
+const channelConfirmSchema = z.object({
+  code: z.string({ error: "is required" }).trim().regex(/^\d{6}$/, "must be the 6-digit code"),
+});
+
+memberRouter.post("/channels/:id/confirm", async (req, res) => {
+  channelConfirmSchema.parse(req.body ?? {});
+  const member = await loadMember(req.user!.id);
+  const existing = await prisma.channel.findFirst({
+    where: { id: String(req.params.id), memberProfileId: member.memberProfile!.id },
+    select: { id: true, status: true },
+  });
+  if (!existing) throw notFound("Channel not found.");
+
+  // SMS verification is not wired yet; a well-formed code confirms the channel for Phase 1 UI flow.
+  const channel = await prisma.channel.update({
+    where: { id: existing.id },
+    data: { status: "confirmed" },
+    select: channelSelect,
+  });
+  res.json({ channel });
 });
 
 function contentDisposition(filename: string) {

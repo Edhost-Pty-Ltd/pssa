@@ -1,11 +1,8 @@
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { conflict } from "./http.js";
 import { hashPassword, passwordSchema } from "./password.js";
 import { prisma } from "./prisma.js";
-
-/** Must match MEMBER_CATEGORIES in frontend/src/api/members.ts. */
-export const MEMBER_CATEGORIES = ["Home & Errands", "Food & Cooking", "Style & Events", "Other"] as const;
 
 const requiredText = (max: number) =>
   z
@@ -69,8 +66,8 @@ export const memberRegistrationSchema = accountSchema.extend({
       .transform((v) => v.replace(/\s/g, ""))
       .refine(isValidSaIdNumber, "must be a valid 13-digit South African ID number"),
   ),
-  businessName: optional(z.string({ error: "must be text" }).trim().max(150, "must be at most 150 characters")),
-  category: z.enum(MEMBER_CATEGORIES, { error: `must be one of: ${MEMBER_CATEGORIES.join(", ")}` }),
+  tradingName: optional(z.string({ error: "must be text" }).trim().max(150, "must be at most 150 characters")),
+  scope: optional(z.string({ error: "must be text" }).trim().max(150, "must be at most 150 characters")),
 });
 
 export type MemberRegistration = z.infer<typeof memberRegistrationSchema>;
@@ -83,38 +80,39 @@ export const userSelect = {
   tokenVersion: true,
   firstName: true,
   lastName: true,
-  phone: true,
   emailVerifiedAt: true,
   phoneVerifiedAt: true,
   createdAt: true,
-  member: { select: { id: true, businessName: true, category: true, idNumber: true, createdAt: true } },
+  memberProfile: {
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      phone: true,
+      tradingName: true,
+      scope: true,
+      idNumber: true,
+      physicalAddress: true,
+      city: true,
+      memberStatus: true,
+      validFrom: true,
+      validUntil: true,
+      createdAt: true,
+    },
+  },
 } satisfies Prisma.UserSelect;
 
 type SelectedUser = Prisma.UserGetPayload<{ select: typeof userSelect }>;
 
 /** ID numbers are never sent back in full. */
-export const maskIdNumber = (id: string | null) => (id ? `${"•".repeat(id.length - 4)}${id.slice(-4)}` : null);
+export const maskIdNumber = (id: string | null | undefined) => (id ? `${"•".repeat(Math.max(0, id.length - 4))}${id.slice(-4)}` : null);
 
 export function serializeUser({ tokenVersion: _tv, ...user }: SelectedUser) {
-  return { ...user, member: user.member ? { ...user.member, idNumber: maskIdNumber(user.member.idNumber) } : null };
-}
-
-/** The member shape the frontend already uses (frontend/src/api/members.ts → Member). */
-export function toLegacyMember(user: SelectedUser) {
   return {
-    id: user.id,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    email: user.email,
-    phone: user.phone,
-    role: "member",
-    businessName: user.member?.businessName ?? "",
-    category: user.member?.category ?? null,
-    facebookUrl: null,
-    instagramUrl: null,
-    tiktokUrl: null,
-    isVerified: false,
-    createdAt: user.member?.createdAt ?? user.createdAt,
+    ...user,
+    memberProfile: user.memberProfile
+      ? { ...user.memberProfile, idNumber: maskIdNumber(user.memberProfile.idNumber) }
+      : null,
   };
 }
 
@@ -133,7 +131,6 @@ export async function createCustomer(input: CustomerRegistration) {
       passwordHash: await hashPassword(input.password),
       firstName: input.firstName,
       lastName: input.lastName,
-      phone: input.phone ?? null,
     },
     select: userSelect,
   });
@@ -151,9 +148,63 @@ export async function createMember(input: MemberRegistration) {
       passwordHash: await hashPassword(input.password),
       firstName: input.firstName,
       lastName: input.lastName,
-      phone: input.phone ?? null,
-      member: { create: { businessName: input.businessName ?? null, category: input.category, idNumber: input.idNumber ?? null } },
+      memberProfile: {
+        create: {
+          firstName: input.firstName,
+          lastName: input.lastName,
+          phone: input.phone ?? null,
+          tradingName: input.tradingName ?? null,
+          scope: input.scope ?? null,
+          idNumber: input.idNumber ?? null,
+        },
+      },
     },
     select: userSelect,
   });
+}
+
+const passwordlessMemberSelect = { id: true, email: true, role: true } as const;
+
+/**
+ * Find a member by email, or create a passwordless MEMBER for public OTP sign-in.
+ * Profile fields are filled later on the member application steps.
+ */
+export async function findOrCreatePasswordlessMember(email: string) {
+  const existing = await prisma.user.findUnique({ where: { email }, select: passwordlessMemberSelect });
+  if (existing) return existing;
+
+  try {
+    return await prisma.user.create({
+      data: {
+        role: "MEMBER",
+        email,
+        passwordHash: null,
+        firstName: "",
+        lastName: "",
+        memberProfile: { create: { firstName: "", lastName: "" } },
+      },
+      select: passwordlessMemberSelect,
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return prisma.user.findUniqueOrThrow({ where: { email }, select: passwordlessMemberSelect });
+    }
+    throw error;
+  }
+}
+
+/** Issues APP-YYYY-XXXX numbers for applications. */
+export async function nextApplicationNumber(tx: Prisma.TransactionClient | typeof prisma = prisma) {
+  const year = new Date().getFullYear();
+  const prefix = `APP-${year}-`;
+  const latest = await tx.application.findFirst({
+    where: { number: { startsWith: prefix } },
+    orderBy: { number: "desc" },
+    select: { number: true },
+  });
+  const next = latest ? Number(latest.number.slice(-4)) + 1 : 1;
+  if (!Number.isFinite(next) || next < 1 || next > 9999) {
+    throw conflict("Could not allocate an application number. Please try again.");
+  }
+  return `${prefix}${String(next).padStart(4, "0")}`;
 }

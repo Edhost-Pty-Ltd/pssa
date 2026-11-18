@@ -30,7 +30,7 @@ then restart `npm run dev`.
 
 | Prefix            | Purpose                                              |
 |-------------------|------------------------------------------------------|
-| `/api/auth`       | register, login, logout, me, OTP send/verify         |
+| `/api/auth`       | register, login, logout, me, public OTP send/verify  |
 | `/api/member`     | the signed-in member's profile and documents         |
 | `/api/members`    | member registration                                  |
 | `/api/search`     | public member register (verified members only)       |

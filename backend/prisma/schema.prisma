@@ -7,38 +7,53 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// ADMIN accounts are only created by `npm run db:seed`; there is no public admin sign-up.
 enum Role {
   MEMBER
   CUSTOMER
   ADMIN
 }
 
-model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  passwordHash String    @map("password_hash")
-  role         Role      @default(MEMBER)
-  firstName    String    @map("first_name")
-  lastName     String    @map("last_name")
-  phone        String?
-  /// Set when the user confirms an OTP sent to that email address or phone number.
-  emailVerifiedAt DateTime? @map("email_verified_at")
-  phoneVerifiedAt DateTime? @map("phone_verified_at")
-  /// Bumped on sign-out; every JWT issued with an older value stops working.
-  tokenVersion Int       @default(0) @map("token_version")
-  lastLoginAt  DateTime? @map("last_login_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+enum MemberStatus {
+  active
+  suspended
+  expired
+  revoked
+  resigned
+}
 
-  member             MemberProfile?
-  adminReviews       AdminReview[]
-  uploadedVideos     TutorialVideo[]
-  otpCodes           OtpCode[]
-  issuedCertificates Certificate[]
+enum ApplicationStatus {
+  draft
+  submitted
+  under_review
+  needs_info
+  approved
+  rejected
+}
 
-  @@index([role])
-  @@map("users")
+enum ApplicationDecision {
+  approved
+  rejected
+  needs_info
+}
+
+enum DocumentType {
+  id_document
+  proof_of_residence
+  bank_evidence
+  business_registration
+  channel_evidence
+}
+
+enum DocumentStatus {
+  uploaded
+  under_review
+  accepted
+  needs_resubmission
+}
+
+enum ChannelStatus {
+  code_sent
+  confirmed
 }
 
 enum OtpChannel {
@@ -46,240 +61,164 @@ enum OtpChannel {
   phone
 }
 
-/// One-time verification codes. Only a bcrypt hash of the code is stored.
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  passwordHash    String?   @map("password_hash")
+  role            Role      @default(MEMBER)
+  firstName       String?   @map("first_name")
+  lastName        String?   @map("last_name")
+  tokenVersion    Int       @default(0) @map("token_version")
+  emailVerifiedAt DateTime? @map("email_verified_at")
+  phoneVerifiedAt DateTime? @map("phone_verified_at")
+  lastLoginAt     DateTime? @map("last_login_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  memberProfile MemberProfile?
+  applications  Application[]
+  documents     Document[]
+  reviewedDocs  Document[]      @relation("DocumentReviewer")
+  adminReviews  AdminReview[]
+  statusChanges StatusHistory[] @relation("StatusActor")
+  auditLogs     AuditLog[]      @relation("AuditActor")
+
+  @@index([role])
+  @@map("users")
+}
+
+model MemberProfile {
+  id              String        @id @default(cuid())
+  userId          String        @unique @map("user_id")
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName       String        @map("first_name")
+  lastName        String        @map("last_name")
+  phone           String?
+  tradingName     String?       @map("trading_name")
+  scope           String?
+  idNumber        String?       @unique @map("id_number")
+  physicalAddress String?       @map("physical_address")
+  city            String?
+  memberStatus    MemberStatus? @map("member_status")
+  validFrom       DateTime?     @map("valid_from")
+  validUntil      DateTime?     @map("valid_until")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  channels      Channel[]
+  statusHistory StatusHistory[]
+
+  @@index([memberStatus])
+  @@map("member_profiles")
+}
+
+model Application {
+  id                  String            @id @default(cuid())
+  userId              String            @map("user_id")
+  user                User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  number              String            @unique
+  status              ApplicationStatus @default(draft)
+  submittedAt         DateTime?         @map("submitted_at")
+  agreementAcceptedAt DateTime?         @map("agreement_accepted_at")
+  agreementVersion    String?           @map("agreement_version")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+
+  reviews AdminReview[]
+
+  @@index([status, submittedAt])
+  @@map("applications")
+}
+
+model Document {
+  id           String         @id @default(cuid())
+  userId       String         @map("user_id")
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         DocumentType
+  storagePath  String         @map("storage_path")
+  originalName String         @map("original_name")
+  status       DocumentStatus @default(uploaded)
+  reviewerNote String?        @map("reviewer_note")
+  reviewedAt   DateTime?      @map("reviewed_at")
+  reviewedById String?        @map("reviewed_by")
+  reviewedBy   User?          @relation("DocumentReviewer", fields: [reviewedById], references: [id])
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  @@index([userId, type])
+  @@map("documents")
+}
+
+model Channel {
+  id              String        @id @default(cuid())
+  memberProfileId String        @map("member_profile_id")
+  member          MemberProfile @relation(fields: [memberProfileId], references: [id], onDelete: Cascade)
+  kind            String
+  value           String
+  status          ChannelStatus @default(code_sent)
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  @@index([memberProfileId])
+  @@map("channels")
+}
+
 model OtpCode {
   id         String     @id @default(cuid())
-  userId     String     @map("user_id")
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  channel    OtpChannel
+  email      String
+  channel    OtpChannel @default(email)
   codeHash   String     @map("code_hash")
   attempts   Int        @default(0)
   expiresAt  DateTime   @map("expires_at")
   consumedAt DateTime?  @map("consumed_at")
   createdAt  DateTime   @default(now()) @map("created_at")
 
-  @@index([userId, channel])
+  @@index([email, channel])
   @@map("otp_codes")
 }
 
-model MemberProfile {
-  id           String   @id @default(cuid())
-  userId       String   @unique @map("user_id")
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  businessName String?  @map("business_name")
-  category     String
-  idNumber               String?            @unique @map("id_number")
-  physicalAddress        String?            @map("physical_address")
-  verificationStatus     VerificationStatus @default(pending) @map("verification_status")
-  isActive               Boolean            @default(true) @map("is_active")
-  verifiedAt             DateTime?          @map("verified_at")
-  verificationExpiresAt  DateTime?          @map("verification_expires_at")
-  createdAt              DateTime           @default(now()) @map("created_at")
-  updatedAt              DateTime           @updatedAt @map("updated_at")
-
-  socialAccounts SocialAccount[]
-  applications   Application[]
-  documents      MemberDocument[]
-  videoProgress  VideoProgress[]
-  examAttempts   ExamAttempt[]
-  certificates   Certificate[]
-
-  @@index([verificationStatus, isActive])
-  @@map("member_profiles")
-}
-
-enum VerificationStatus {
-  pending
-  under_review
-  info_required
-  verified
-  rejected
-  suspended
-}
-
-enum ApplicationStatus {
-  submitted
-  under_review
-  info_required
-  approved
-  rejected
-}
-
-enum DocumentType {
-  id_document
-  proof_of_residence
-}
-
-enum DocumentReviewStatus {
-  submitted
-  accepted
-  rejected
-}
-
-enum SocialPlatform {
-  facebook
-  instagram
-  tiktok
-}
-
-enum AdminDecision {
-  approved
-  rejected
-  info_required
-}
-
-/// Reviewing a document does not change this status.
-model Application {
-  id              String            @id @default(cuid())
-  memberProfileId String            @map("member_profile_id")
-  member          MemberProfile     @relation(fields: [memberProfileId], references: [id], onDelete: Cascade)
-  status          ApplicationStatus @default(submitted)
-  submittedAt     DateTime          @default(now()) @map("submitted_at")
-  updatedAt       DateTime          @updatedAt @map("updated_at")
-
-  documents   MemberDocument[]
-  reviews     AdminReview[]
-  certificate Certificate?
-
-  @@index([memberProfileId, status])
-  @@map("applications")
-}
-
-/// Private file reference only. The ID or proof-of-residence file stays on disk.
-model MemberDocument {
-  id              String               @id @default(cuid())
-  memberProfileId String               @map("member_profile_id")
-  member          MemberProfile        @relation(fields: [memberProfileId], references: [id], onDelete: Cascade)
-  applicationId   String?              @map("application_id")
-  application     Application?         @relation(fields: [applicationId], references: [id], onDelete: SetNull)
-  documentType    DocumentType         @map("document_type")
-  originalName    String               @map("original_name")
-  storedName      String               @unique @map("stored_name")
-  mimeType        String               @map("mime_type")
-  sizeBytes       Int                  @map("size_bytes")
-  reviewStatus    DocumentReviewStatus @default(submitted) @map("review_status")
-  reviewerNote    String?              @map("reviewer_note")
-  reviewedAt      DateTime?            @map("reviewed_at")
-  uploadedAt      DateTime             @default(now()) @map("uploaded_at")
-
-  @@index([memberProfileId])
-  @@map("member_documents")
-}
-
-model SocialAccount {
-  id              String         @id @default(cuid())
-  memberProfileId String         @map("member_profile_id")
-  member          MemberProfile  @relation(fields: [memberProfileId], references: [id], onDelete: Cascade)
-  platform        SocialPlatform
-  url             String
-  createdAt       DateTime       @default(now()) @map("created_at")
-
-  @@unique([memberProfileId, platform])
-  @@map("social_accounts")
-}
-
-model TutorialVideo {
-  id              String   @id @default(cuid())
-  title           String
-  originalName    String   @map("original_name")
-  storedName      String   @unique @map("stored_name")
-  mimeType        String   @map("mime_type")
-  durationSeconds Int?     @map("duration_seconds")
-  isActive        Boolean  @default(false) @map("is_active")
-  uploadedById    String?  @map("uploaded_by")
-  uploadedBy      User?    @relation(fields: [uploadedById], references: [id])
-  createdAt       DateTime @default(now()) @map("created_at")
-
-  progress VideoProgress[]
-
-  @@map("tutorial_videos")
-}
-
-model VideoProgress {
-  id                 String        @id @default(cuid())
-  memberProfileId    String        @map("member_profile_id")
-  member             MemberProfile @relation(fields: [memberProfileId], references: [id], onDelete: Cascade)
-  tutorialVideoId    String        @map("tutorial_video_id")
-  tutorialVideo      TutorialVideo @relation(fields: [tutorialVideoId], references: [id], onDelete: Cascade)
-  watchedSeconds     Int           @default(0) @map("watched_seconds")
-  maxPositionSeconds Int           @default(0) @map("max_position_seconds")
-  durationSeconds    Int?          @map("duration_seconds")
-  progressPercent    Int           @default(0) @map("progress_percent")
-  completed          Boolean       @default(false)
-  completedAt        DateTime?     @map("completed_at")
-  /// Where and when the player last reported; used to tell real playback apart from skipping ahead.
-  lastPositionSeconds Int?         @map("last_position_seconds")
-  lastReportedAt      DateTime?    @map("last_reported_at")
-  updatedAt          DateTime      @updatedAt @map("updated_at")
-
-  @@unique([memberProfileId, tutorialVideoId])
-  @@map("video_progress")
-}
-
-model ExamAttempt {
-  id              String        @id @default(cuid())
-  memberProfileId String        @map("member_profile_id")
-  member          MemberProfile @relation(fields: [memberProfileId], references: [id], onDelete: Cascade)
-  totalQuestions  Int?          @map("total_questions")
-  /// The questions drawn for this attempt, in the order they were shown.
-  questionIds     String[]      @default([]) @map("question_ids")
-  /// What the member chose: { "<questionId>": "<optionId>" }. score = number of correct answers.
-  answers         Json?
-  score           Int?
-  passed          Boolean?
-  startedAt       DateTime      @default(now()) @map("started_at")
-  submittedAt     DateTime?     @map("submitted_at")
-
-  @@index([memberProfileId, startedAt])
-  @@map("exam_attempts")
-}
-
-/// Examination questions. correctOptionId never leaves the server for members.
-model ExamQuestion {
-  id              String   @id @default(cuid())
-  prompt          String
-  /// [{ "id": "a", "text": "..." }, ...]
-  options         Json
-  correctOptionId String   @map("correct_option_id")
-  topic           String?
-  isActive        Boolean  @default(true) @map("is_active")
-  sortOrder       Int      @default(0) @map("sort_order")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-
-  @@index([isActive])
-  @@map("exam_questions")
-}
-
 model AdminReview {
-  id                 String        @id @default(cuid())
-  applicationId      String        @map("application_id")
-  application        Application   @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  adminId            String        @map("admin_id")
-  admin              User          @relation(fields: [adminId], references: [id])
-  decision           AdminDecision
-  reason             String?
-  documentsChecked   Boolean       @default(false) @map("documents_checked")
-  tutorialCompleted  Boolean       @default(false) @map("tutorial_completed")
-  examPassed         Boolean       @default(false) @map("exam_passed")
-  createdAt          DateTime      @default(now()) @map("created_at")
+  id               String              @id @default(cuid())
+  applicationId    String              @map("application_id")
+  application      Application         @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  reviewerId       String              @map("reviewer_id")
+  reviewer         User                @relation(fields: [reviewerId], references: [id])
+  decision         ApplicationDecision
+  reason           String
+  conflictDeclared Boolean             @map("conflict_declared")
+  createdAt        DateTime            @default(now()) @map("created_at")
 
-  @@index([applicationId, createdAt])
+  @@index([applicationId])
   @@map("admin_reviews")
 }
 
-/// Issued only after the application is approved.
-model Certificate {
-  id                 String        @id @default(cuid())
-  memberProfileId    String        @map("member_profile_id")
-  member             MemberProfile @relation(fields: [memberProfileId], references: [id], onDelete: Cascade)
-  applicationId      String        @unique @map("application_id")
-  application        Application   @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  certificateNumber  String        @unique @map("certificate_number")
-  issuedById         String        @map("issued_by")
-  issuedBy           User          @relation(fields: [issuedById], references: [id])
-  issuedAt           DateTime      @default(now()) @map("issued_at")
-  expiresAt          DateTime?     @map("expires_at")
+model StatusHistory {
+  id               String        @id @default(cuid())
+  memberProfileId  String        @map("member_profile_id")
+  member           MemberProfile @relation(fields: [memberProfileId], references: [id], onDelete: Cascade)
+  fromStatus       MemberStatus? @map("from_status")
+  toStatus         MemberStatus  @map("to_status")
+  reason           String
+  actorId          String        @map("actor_id")
+  actor            User          @relation("StatusActor", fields: [actorId], references: [id])
+  conflictDeclared Boolean       @map("conflict_declared")
+  createdAt        DateTime      @default(now()) @map("created_at")
 
-  @@map("certificates")
+  @@index([memberProfileId])
+  @@map("status_history")
+}
+
+model AuditLog {
+  id               String   @id @default(cuid())
+  actorId          String?  @map("actor_id")
+  actor            User?    @relation("AuditActor", fields: [actorId], references: [id])
+  action           String
+  entityType       String   @map("entity_type")
+  entityId         String   @map("entity_id")
+  reason           String?
+  conflictDeclared Boolean? @map("conflict_declared")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@index([entityType, entityId])
+  @@map("audit_log")
 }

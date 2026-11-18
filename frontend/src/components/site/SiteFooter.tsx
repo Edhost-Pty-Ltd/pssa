@@ -8,8 +8,8 @@ const COLUMNS = [
     links: [
       { label: "About PSSA", href: "/#about" },
       { label: "How membership works", href: "/#membership" },
-      { label: "Apply to join", href: "/apply" },
-      { label: "Member login", href: "/login" },
+      { label: "Apply to join", href: "/member" },
+      { label: "Member login", href: "/member/sign-in" },
     ],
   },
   {

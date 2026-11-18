@@ -10,9 +10,9 @@ import { HttpError } from "../lib/http.js";
  * `errors` entries start with the field name ("email must be a valid email address"),
  * which is the format the frontend's registration form already maps onto its fields.
  */
-function send(res: Response, status: number, error: string, fields?: Record<string, string>) {
+function send(res: Response, status: number, error: string, fields?: Record<string, string>, extra?: Record<string, unknown>) {
   const errors = fields && Object.keys(fields).length ? Object.entries(fields).map(([key, message]) => `${key} ${message}`) : [error];
-  res.status(status).json({ error, errors, ...(fields ? { fields } : {}) });
+  res.status(status).json({ error, errors, ...(fields ? { fields } : {}), ...extra });
 }
 
 export function notFoundHandler(req: Request, res: Response) {
@@ -22,8 +22,9 @@ export function notFoundHandler(req: Request, res: Response) {
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction) {
   if (err instanceof HttpError) {
-    const fields = (err.details as { fields?: Record<string, string> } | undefined)?.fields;
-    return send(res, err.status, err.message, fields);
+    const details = err.details as { fields?: Record<string, string>; activation?: unknown } | undefined;
+    const extra = details?.activation !== undefined ? { activation: details.activation } : undefined;
+    return send(res, err.status, err.message, details?.fields, extra);
   }
   if (err instanceof ZodError) {
     const fields: Record<string, string> = {};

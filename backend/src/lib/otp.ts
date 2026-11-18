@@ -33,7 +33,7 @@ export async function emailOtp(to: string, code: string) {
     text: `Your PSSA verification code is ${code}.\n\nIt expires in ${minutes} minutes. If you didn't request it, you can ignore this email.`,
     html: [
       `<div style="font-family:Arial,Helvetica,sans-serif;color:#1c1f1d;max-width:480px">`,
-      `<p>Your EASE &amp; CO. verification code is:</p>`,
+      `<p>Your PSSA verification code is:</p>`,
       `<p style="font-size:28px;font-weight:bold;letter-spacing:6px;margin:16px 0">${code}</p>`,
       `<p>It expires in ${minutes} minutes. If you didn't request it, you can ignore this email.</p>`,
       `</div>`,
