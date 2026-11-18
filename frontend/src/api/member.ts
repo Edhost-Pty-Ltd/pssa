@@ -22,6 +22,9 @@ export interface MemberDocument {
 }
 
 /** GET /api/member/profile → { profile } */
+/** SA ID number or a passport number (docs/api-contract.md 6.2). */
+export type IdentityType = "sa_id" | "passport";
+
 export interface MemberProfile {
   id: string;
   email: string;
@@ -35,6 +38,7 @@ export interface MemberProfile {
     phone: string | null;
     tradingName: string | null;
     scope: string | null;
+    identityType: IdentityType | null;
     idNumber: string | null; // masked by the server
     physicalAddress: string | null;
     city: string | null;
@@ -51,6 +55,8 @@ export interface ProfileChanges {
   phone?: string | null;
   tradingName?: string | null;
   scope?: string | null;
+  /** Always sent together with idNumber. */
+  identityType?: IdentityType;
   idNumber?: string;
   physicalAddress?: string | null;
   city?: string | null;

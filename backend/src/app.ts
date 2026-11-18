@@ -14,6 +14,7 @@ import { tutorialsRouter } from "./routes/tutorials.js";
 import { examRouter } from "./routes/exam.js";
 import { publicMembersRouter } from "./routes/publicMembers.js";
 import { verifyRouter } from "./routes/verify.js";
+import { complaintsRouter } from "./routes/complaints.js";
 
 export function createApp() {
   const app = express();
@@ -35,6 +36,7 @@ export function createApp() {
   });
   api.use("/search", publicMembersRouter);
   api.use("/verify", verifyRouter);
+  api.use("/complaints", complaintsRouter);
   api.use("/auth", authRouter);
   api.use("/members", membersRouter);
   api.use("/member", memberRouter);

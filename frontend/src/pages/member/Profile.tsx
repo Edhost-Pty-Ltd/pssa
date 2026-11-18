@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { getProfile, updateProfile, type Channel, type MemberProfile, type ProfileChanges } from "../../api/member";
-import { Button, ButtonLink, ErrorState, LoadingState, Notice, Panel, StatusBadge, TextArea, TextField } from "../../components/ui";
+import { getProfile, updateProfile, type Channel, type IdentityType, type MemberProfile, type ProfileChanges } from "../../api/member";
+import { Button, ButtonLink, ErrorState, LoadingState, Notice, Panel, SelectField, StatusBadge, TextArea, TextField } from "../../components/ui";
 import { useAuth } from "../../context/auth-context";
 import { ApiError, errorMessage } from "../../lib/api";
 import { fieldMessage } from "../../lib/fieldMessage";
@@ -8,6 +8,7 @@ import { isValidSaIdNumber } from "../../lib/saId";
 
 // Start an application / Profile. Uses GET and PATCH /api/member/profile (docs/api-contract.md 6.2).
 // Only fields that changed are sent. ID number and address are private: never shown publicly.
+// Identity is a South African ID or, for members without one, a passport (6-12 letters or digits).
 
 type Values = {
   firstName: string;
@@ -15,6 +16,7 @@ type Values = {
   phone: string;
   tradingName: string;
   scope: string;
+  identityType: IdentityType | "";
   idNumber: string;
   physicalAddress: string;
   city: string;
@@ -29,7 +31,8 @@ const LABELS: Record<keyof Values, string> = {
   phone: "Phone number",
   tradingName: "Trading name",
   scope: "What you source",
-  idNumber: "ID number",
+  identityType: "Identity document",
+  idNumber: "ID or passport number",
   physicalAddress: "Address",
   city: "City or town",
   facebookUrl: "Facebook",
@@ -79,6 +82,7 @@ function toValues(profile: MemberProfile): Values {
     phone: p.phone ?? "",
     tradingName: p.tradingName ?? "",
     scope: p.scope ?? "",
+    identityType: p.identityType ?? "",
     idNumber: "", // the server only returns a masked number, so a new one is typed in fresh
     physicalAddress: p.physicalAddress ?? "",
     city: p.city ?? "",
@@ -97,11 +101,29 @@ const REQUIRED: Partial<Record<keyof Values, string>> = {
   city: "Enter your city or town.",
 };
 
+const IDENTITY_OPTIONS: { value: IdentityType; label: string }[] = [
+  { value: "sa_id", label: "South African ID" },
+  { value: "passport", label: "Passport" },
+];
+
+const isValidPassport = (value: string) => /^[A-Z0-9]{6,12}$/.test(value);
+const cleanId = (value: string) => value.replace(/\s/g, "").toUpperCase();
+
+/** The member already has a number on file for the identity type that's selected now. */
+const keepsNumberOnFile = (v: Values, initial: Values, hasIdOnFile: boolean) =>
+  hasIdOnFile && v.identityType === initial.identityType;
+
 /** Checks one field. Returns an error message, or undefined when the field is fine. */
-function checkField(key: keyof Values, v: Values, hasIdOnFile: boolean): string | undefined {
+function checkField(key: keyof Values, v: Values, initial: Values, hasIdOnFile: boolean): string | undefined {
+  if (key === "identityType") return v.identityType ? undefined : "Choose South African ID or passport.";
   if (key === "idNumber") {
-    const id = v.idNumber.replace(/\s/g, "");
-    if (!id) return hasIdOnFile ? undefined : "Enter your South African ID number.";
+    const id = cleanId(v.idNumber);
+    const passport = v.identityType === "passport";
+    if (!id) {
+      if (keepsNumberOnFile(v, initial, hasIdOnFile)) return undefined;
+      return passport ? "Enter your passport number." : "Enter your South African ID number.";
+    }
+    if (passport) return isValidPassport(id) ? undefined : "Enter a valid passport number (6 to 12 letters or digits).";
     return isValidSaIdNumber(id) ? undefined : "Enter a valid 13-digit South African ID number.";
   }
   if ((LINK_FIELDS as string[]).includes(key)) {
@@ -110,13 +132,13 @@ function checkField(key: keyof Values, v: Values, hasIdOnFile: boolean): string 
     return !v[field].trim() || isLinkFor(field, v[field].trim()) ? undefined : `Enter your ${name} handle or a ${name} link.`;
   }
   const required = REQUIRED[key];
-  return required && !v[key].trim() ? required : undefined;
+  return required && !String(v[key]).trim() ? required : undefined;
 }
 
-function validate(v: Values, hasIdOnFile: boolean) {
+function validate(v: Values, initial: Values, hasIdOnFile: boolean) {
   const errors: Partial<Record<keyof Values, string>> = {};
   for (const key of Object.keys(LABELS) as (keyof Values)[]) {
-    const message = checkField(key, v, hasIdOnFile);
+    const message = checkField(key, v, initial, hasIdOnFile);
     if (message) errors[key] = message;
   }
   return errors;
@@ -125,13 +147,18 @@ function validate(v: Values, hasIdOnFile: boolean) {
 /** Only the fields that changed. Empty optional fields are sent as null so they are cleared. */
 function changes(initial: Values, v: Values): ProfileChanges {
   const out: ProfileChanges = {};
-  const t = (key: keyof Values) => v[key].trim();
+  const t = (key: keyof Values) => String(v[key]).trim();
   if (t("firstName") !== initial.firstName) out.firstName = t("firstName");
   if (t("lastName") !== initial.lastName) out.lastName = t("lastName");
   if (t("phone") !== initial.phone) out.phone = t("phone") || null;
   if (t("tradingName") !== initial.tradingName) out.tradingName = t("tradingName") || null;
   if (t("scope") !== initial.scope) out.scope = t("scope") || null;
-  if (v.idNumber.replace(/\s/g, "")) out.idNumber = v.idNumber.replace(/\s/g, "");
+  // The backend checks the number against the type, so they always travel together.
+  const id = cleanId(v.idNumber);
+  if (id || (v.identityType && v.identityType !== initial.identityType)) {
+    if (v.identityType) out.identityType = v.identityType;
+    if (id) out.idNumber = id;
+  }
   if (t("physicalAddress") !== initial.physicalAddress) out.physicalAddress = t("physicalAddress") || null;
   if (t("city") !== initial.city) out.city = t("city") || null;
   for (const field of LINK_FIELDS) if (t(field) !== initial[field]) out[field] = t(field) || null;
@@ -191,6 +218,10 @@ export default function Profile() {
 
   const p = profile.memberProfile;
   const hasIdOnFile = Boolean(p.idNumber);
+  const isPassport = values.identityType === "passport";
+  const keepsOnFile = keepsNumberOnFile(values, initial, hasIdOnFile);
+  const idName = isPassport ? "passport number" : "South African ID number";
+  const idLabel = keepsOnFile ? `New ${idName}` : idName[0].toUpperCase() + idName.slice(1);
 
   const set = (key: keyof Values) => (e: { target: { value: string } }) => {
     setValues({ ...values, [key]: e.target.value });
@@ -208,7 +239,7 @@ export default function Profile() {
         setValues(next);
       }
     }
-    setErrors((current) => ({ ...current, [key]: checkField(key, next, hasIdOnFile) }));
+    setErrors((current) => ({ ...current, [key]: checkField(key, next, initial, hasIdOnFile) }));
   };
 
   async function onSubmit(e: FormEvent) {
@@ -219,7 +250,7 @@ export default function Profile() {
     const tidied = { ...values };
     for (const key of LINK_FIELDS) tidied[key] = normalizeLink(key, values[key]);
     setValues(tidied);
-    const found = validate(tidied, hasIdOnFile);
+    const found = validate(tidied, initial, hasIdOnFile);
     setErrors(found);
     if (Object.keys(found).length) return;
 
@@ -310,18 +341,34 @@ export default function Profile() {
         </Panel>
 
         <Panel icon="lock" title="Identity and address" subtitle="Private: only you and PSSA reviewers can see these">
+          <SelectField
+            label="Identity document"
+            placeholder="Choose one"
+            options={IDENTITY_OPTIONS}
+            value={values.identityType}
+            onChange={(e) => {
+              setValues({ ...values, identityType: e.target.value as Values["identityType"], idNumber: "" });
+              setSaved(false);
+              setErrors({ ...errors, identityType: undefined, idNumber: undefined });
+            }}
+            error={errors.identityType}
+            hint="Use a passport only if you don't have a South African ID."
+            required
+          />
           <TextField
-            label={hasIdOnFile ? "New ID number" : "South African ID number"}
-            inputMode="numeric"
+            label={idLabel}
+            inputMode={isPassport ? "text" : "numeric"}
+            autoCapitalize={isPassport ? "characters" : "off"}
             autoComplete="off"
-            maxLength={16}
-            placeholder={hasIdOnFile ? (p.idNumber ?? "") : "13 digits"}
+            maxLength={isPassport ? 14 : 16}
+            placeholder={keepsOnFile ? (p.idNumber ?? "") : isPassport ? "6 to 12 letters or digits" : "13 digits"}
             value={values.idNumber}
             onChange={set("idNumber")}
             onBlur={leave("idNumber")}
             error={errors.idNumber}
-            hint={hasIdOnFile ? `On file: ${p.idNumber}. Leave empty to keep it.` : "It must match your ID document."}
-            required={!hasIdOnFile}
+            hint={keepsOnFile ? `On file: ${p.idNumber}. Leave empty to keep it.` : isPassport ? "It must match your passport." : "It must match your ID document."}
+            required={!keepsOnFile}
+            disabled={!values.identityType}
           />
           <TextArea
             label="Residential or operating address"
