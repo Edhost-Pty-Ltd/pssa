@@ -10,6 +10,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:reset": "prisma migrate reset --force",
     "db:seed": "prisma db seed",
+    "db:seed-exam": "tsx prisma/seedExamQuestions.ts",
     "build": "prisma generate && tsc -p tsconfig.json",
     "start": "node dist/src/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"

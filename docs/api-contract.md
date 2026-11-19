@@ -224,7 +224,7 @@ Uploads accept the types below, including bank and channel evidence, and allow r
 
 ### 6.4 Tutorials and exam
 
-The official exam is **30 questions in 45 minutes**, a pass mark of **at least 80 percent**, and **every critical question correct**. After a fail, one retake is allowed after at least **seven calendar days**. After two failed attempts, further training and a reviewer’s approval are required. Tutorial content is blocked until the four official videos arrive; the official paper is blocked until the senior provides the 30 questions with critical ones marked.
+The official exam is **30 questions in 45 minutes**, a pass mark of **at least 80 percent**, and **every critical question correct**. After a fail, one retake is allowed after at least **seven calendar days**. After two failed attempts, further training and a reviewer’s approval are required. Tutorial content is blocked until the four official videos are uploaded and activated. The entrance question bank is loaded with `npm run db:seed-exam` in `backend/` (reads `prisma/data/exam-questions.json`, upserts 30 active rows including critical ones). That command does **not** create sample applicants; `npm run db:seed` remains admin-account only.
 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
