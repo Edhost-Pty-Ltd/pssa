@@ -74,15 +74,19 @@ export interface ExamQuestion {
   sortOrder: number;
 }
 
-export const getExamStatus = (signal?: AbortSignal) => api<ExamStatus>("/exam/status", { signal });
+export type ExamType = "entrance" | "refresher";
+
+/** Entrance (joining) or refresher (renewal) assessment status. */
+export const getExamStatus = (signal?: AbortSignal, type: ExamType = "entrance") =>
+  api<ExamStatus>(`/exam/status?type=${type}`, { signal });
 
 export const getExamAttempts = (signal?: AbortSignal) => api<{ attempts: ExamAttempt[] }>("/exam/attempts", { signal });
 
-/** Starts the entrance assessment, or resumes an unfinished attempt with the same questions and deadline. */
-export const startExam = () =>
+/** Starts the assessment, or resumes an unfinished attempt with the same questions and deadline. */
+export const startExam = (type: ExamType = "entrance") =>
   api<{ attempt: ExamAttempt; questions: ExamQuestion[]; expiresAt: string }>("/exam/start", {
     method: "POST",
-    body: { type: "entrance" },
+    body: { type },
   });
 
 /** answers: { questionId: optionId }. Unanswered questions count as wrong; late submits are scored as a fail. */

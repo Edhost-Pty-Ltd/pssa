@@ -143,8 +143,13 @@ function CertificateView({ certificate: c, profile, now }: { certificate: Member
           <Panel icon="calendar" title={active ? `${daysLeft} days remaining` : "Membership dates"} subtitle={`Valid until ${formatDate(c.validUntil)}`}>
             <p style={{ margin: 0 }}>
               Membership is renewed every year. Renewal includes updated verification checks and a short refresher
-              assessment. We'll let you know when renewal opens.
+              assessment. Renewal opens 60 days before your membership ends.
             </p>
+            <div style={{ marginTop: 12 }}>
+              <ButtonLink to="/member/renewal" variant="outline" iconRight="arrow">
+                Go to renewal
+              </ButtonLink>
+            </div>
           </Panel>
           <ButtonLink to={`/verify/${c.number}`} variant="outline" target="_blank">
             See your public status page

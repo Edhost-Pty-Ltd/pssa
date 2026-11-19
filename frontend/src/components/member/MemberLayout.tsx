@@ -13,6 +13,7 @@ const NAV: { to: string; icon: IconName; label: string; end?: boolean }[] = [
   { to: "/member/tutorials", icon: "play", label: "Tutorials" },
   { to: "/member/assessment", icon: "book", label: "Assessment" },
   { to: "/member/certificate", icon: "badge", label: "Certificate & badge" },
+  { to: "/member/renewal", icon: "calendar", label: "Renewal" },
   { to: "/member/complaints", icon: "flag", label: "Complaints" },
 ];
 
