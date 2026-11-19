@@ -316,7 +316,16 @@ Complaints are new. They are always free. Service times in Africa/Johannesburg: 
 | GET | `/api/admin/renewals/:id` | Admin | **In:** path id. **Out:** `200 { renewal, member, checklist, declaration, refresher }` — checklist items, declaration version/statements, and refresher pass / latest attempt for this cycle. | Exists |
 | POST | `/api/admin/renewals/:id/decision` | Admin | **In:** `{ decision: "approved" \| "rejected" \| "needs_info", reason, conflictDeclared: true }`. **Out:** `200 { renewal, member, certificate? }`. On approval, `validUntil` moves forward 12 months from the later of now or current expiry, member becomes `active`, and the certificate dates are updated (same `PSSA-YYYY-XXXXXX` number when already issued). Approval never lifts a suspension. | Exists |
 
-### 6.10 Other
+### 6.10 Admin settings and notifications
+
+| Method | Path | Who | In / Out | Status |
+| --- | --- | --- | --- | --- |
+| GET | `/api/admin/settings` | Admin | **In:** cookie. **Out:** association settings object (`associationName`, `supportEmail`, `annualMembershipFeeZar`, `verificationSlaHours`, `autoPublishApprovedListings`, `requireIdVerification`). Creates defaults on first read. | Exists |
+| PUT | `/api/admin/settings` | Admin | **In:** full settings object (same fields). **Out:** saved settings object. Writes an audit row. `autoPublishApprovedListings` is stored for the admin UI; Phase 1 has no specialty listings model to publish. | Exists |
+| GET | `/api/admin/notifications` | Admin | **In:** cookie. **Out:** JSON array of `{ id, title, body, type, read, createdAt }` (not wrapped). Seeds/upserts inbox rows from open applications and non-draft open complaints so the feed is live, not mock-only. | Exists |
+| POST | `/api/admin/notifications/read-all` | Admin | **In:** none. **Out:** `200 { ok: true }`. Marks every notification as read. | Exists |
+
+### 6.11 Other
 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
@@ -326,7 +335,7 @@ Complaints are new. They are always free. Service times in Africa/Johannesburg: 
 
 Policy pages (Code of Conduct, Privacy Policy, Complaints and Appeals, Badge Rules) are static frontend routes in `pssa/frontend` and do not need an API.
 
-### 6.11 Scheduled jobs (not HTTP endpoints)
+### 6.12 Scheduled jobs (not HTTP endpoints)
 
 | Job | Owner | What it must do |
 | --- | --- | --- |

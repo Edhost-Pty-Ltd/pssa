@@ -120,6 +120,10 @@ enum ShopperListingStatus {
   PENDING
   PAUSED
   FLAGGED
+enum AdminNotificationType {
+  INFO
+  WARNING
+  SUCCESS
 }
 
 model User {
@@ -529,4 +533,30 @@ model ShopperProfileListing {
   @@index([status, createdAt])
   @@index([memberProfileId])
   @@map("shopper_profile_listings")
+/** Singleton association governance settings for the admin Settings page. */
+model AssociationSettings {
+  id                          String   @id @default("default")
+  associationName             String   @map("association_name")
+  supportEmail                String   @map("support_email")
+  annualMembershipFeeZar      Int      @map("annual_membership_fee_zar")
+  verificationSlaHours        Int      @map("verification_sla_hours")
+  autoPublishApprovedListings Boolean  @default(false) @map("auto_publish_approved_listings")
+  requireIdVerification       Boolean  @default(true) @map("require_id_verification")
+  updatedAt                   DateTime @updatedAt @map("updated_at")
+
+  @@map("association_settings")
+}
+
+/** Admin inbox items for the dashboard notification panel. */
+model AdminNotification {
+  id        String                @id @default(cuid())
+  title     String
+  body      String
+  type      AdminNotificationType @default(INFO)
+  read      Boolean               @default(false)
+  sourceKey String?               @unique @map("source_key")
+  createdAt DateTime              @default(now()) @map("created_at")
+
+  @@index([read, createdAt])
+  @@map("admin_notifications")
 }
