@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { existsSync } from "node:fs";
 import { z } from "zod";
 import { evaluateActivationGates } from "../lib/activationGates.js";
@@ -326,6 +326,78 @@ const documentReviewSchema = z
       ctx.addIssue({ code: "custom", path: ["reviewerNote"], message: "must be at least 10 characters" });
     }
   });
+
+const channelToggleSchema = z
+  .object({
+    /** When set, force the channel to this confirmation state. When omitted, toggle. */
+    confirmed: z.boolean().optional(),
+  })
+  .default({});
+
+function serializeAdminChannel(channel: { id: string; kind: string; value: string; status: string; createdAt: Date; updatedAt: Date }) {
+  return {
+    id: channel.id,
+    kind: channel.kind,
+    value: channel.value,
+    status: channel.status,
+    confirmed: channel.status === "confirmed",
+    platform: channel.kind,
+    handle: channel.value,
+    createdAt: channel.createdAt,
+    updatedAt: channel.updatedAt,
+  };
+}
+
+/**
+ * Admin toggle/confirm for a trading channel on an application.
+ * Canonical path is under /applications; /verifications is an alias for the current admin UI.
+ */
+async function toggleApplicationChannel(req: Request, res: Response) {
+  const body = channelToggleSchema.parse(req.body ?? {});
+  const applicationId = String(req.params.id);
+  const channelId = String(req.params.channelId);
+
+  const application = await prisma.application.findUnique({
+    where: { id: applicationId },
+    select: {
+      id: true,
+      user: { select: { memberProfile: { select: { id: true } } } },
+    },
+  });
+  if (!application) throw notFound("Application not found.");
+  if (!application.user.memberProfile) throw notFound("This application has no member profile.");
+
+  const existing = await prisma.channel.findFirst({
+    where: { id: channelId, memberProfileId: application.user.memberProfile.id },
+    select: { id: true, kind: true, value: true, status: true, createdAt: true, updatedAt: true },
+  });
+  if (!existing) throw notFound("Channel not found on this application.");
+
+  const nextStatus =
+    body.confirmed === true ? "confirmed" : body.confirmed === false ? "code_sent" : existing.status === "confirmed" ? "code_sent" : "confirmed";
+
+  const channel = await prisma.channel.update({
+    where: { id: existing.id },
+    data: { status: nextStatus },
+    select: { id: true, kind: true, value: true, status: true, createdAt: true, updatedAt: true },
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      actorId: req.user!.id,
+      action: nextStatus === "confirmed" ? "channel.admin_confirm" : "channel.admin_unconfirm",
+      entityType: "channel",
+      entityId: channel.id,
+      reason: `Admin set channel ${channel.kind} to ${nextStatus} on application ${application.id}`,
+      conflictDeclared: true,
+    },
+  });
+
+  res.json({ channel: serializeAdminChannel(channel) });
+}
+
+adminRouter.patch("/applications/:id/channels/:channelId", toggleApplicationChannel);
+adminRouter.patch("/verifications/:id/channels/:channelId", toggleApplicationChannel);
 
 adminRouter.patch("/documents/:id", async (req, res) => {
   const body = documentReviewSchema.parse(req.body ?? {});
