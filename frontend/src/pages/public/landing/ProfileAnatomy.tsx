@@ -9,9 +9,9 @@ export function ProfileAnatomy() {
   const current = ANATOMY.find((a) => a.id === active) ?? ANATOMY[0];
 
   return (
-    <section className="relative overflow-hidden bg-noir py-24 text-white sm:py-32">
+    <section className="relative overflow-hidden bg-gradient-to-b from-navy via-navy-2 to-navy py-24 text-white sm:py-32">
       <GrainOverlay />
-      <div aria-hidden="true" className="pointer-events-none absolute -right-40 top-20 size-[600px] rounded-full bg-gold/10 blur-[140px]" />
+      <div aria-hidden="true" className="pointer-events-none absolute -right-40 top-20 size-[600px] rounded-full bg-green/10 blur-[140px]" />
       <div className="relative z-10 mx-auto grid max-w-7xl gap-16 px-6 lg:grid-cols-2 lg:items-center">
         <div className="order-2 lg:order-1">
           <SpecimenCard active={active} onSelect={setActive} />
@@ -20,7 +20,7 @@ export function ProfileAnatomy() {
         <div className="order-1 lg:order-2">
           <Eyebrow>Read a profile like a pro</Eyebrow>
           <h2 className="mt-6 font-display text-[clamp(2.5rem,5vw,4.25rem)] font-semibold leading-[1] text-white">
-            <SplitWords text="Five things to look for" /> <span className="italic text-gold"><SplitWords text="before you pay." delay={0.2} /></span>
+            <SplitWords text="Five things to look for" /> <span className="italic text-green"><SplitWords text="before you pay." delay={0.2} /></span>
           </h2>
           <p className="mt-6 max-w-lg text-lg leading-relaxed text-white/65">
             Every member's live page tells you exactly who they are and what they're approved to do. Tap the markers on the
@@ -37,9 +37,9 @@ export function ProfileAnatomy() {
                     onClick={() => setActive(a.id)}
                     onMouseEnter={() => setActive(a.id)}
                     aria-pressed={on}
-                    className={`flex w-full items-center gap-4 rounded-2xl border px-5 py-4 text-left transition ${on ? "border-gold/40 bg-gold/10" : "border-transparent hover:bg-white/5"}`}
+                    className={`flex w-full items-center gap-4 rounded-2xl border px-5 py-4 text-left transition ${on ? "border-green/45 bg-green/10" : "border-transparent hover:bg-white/5"}`}
                   >
-                    <span className={`flex size-8 shrink-0 items-center justify-center rounded-full font-display text-sm font-semibold transition ${on ? "bg-gold text-noir" : "bg-white/10 text-white/70"}`}>
+                    <span className={`flex size-8 shrink-0 items-center justify-center rounded-full font-display text-sm font-semibold transition ${on ? "bg-green text-white" : "bg-white/10 text-white/70"}`}>
                       {a.label}
                     </span>
                     <span className={`font-semibold ${on ? "text-white" : "text-white/70"}`}>{a.title}</span>
@@ -55,7 +55,7 @@ export function ProfileAnatomy() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.35, ease: EASE }}
-              className="mt-6 min-h-[84px] rounded-2xl border-l-2 border-gold bg-white/[0.04] p-5 text-[15px] leading-relaxed text-white/80"
+              className="mt-6 min-h-[84px] rounded-2xl border-l-2 border-green bg-white/[0.04] p-5 text-[15px] leading-relaxed text-white/80"
               aria-live="polite"
             >
               {current.text}
@@ -71,17 +71,17 @@ function Marker({ id, active, onSelect, children }: { id: string; active: string
   const item = ANATOMY.find((a) => a.id === id);
   const on = active === id;
   return (
-    <div className={`relative rounded-xl transition ${on ? "bg-gold/10 ring-1 ring-gold/60" : ""}`}>
+    <div className={`relative rounded-xl transition ${on ? "bg-green/10 ring-1 ring-green/60" : ""}`}>
       {children}
       <button
         type="button"
         onClick={() => onSelect(id)}
         aria-label={`Explain: ${item?.title}`}
         className={`absolute -right-3 -top-3 flex size-7 items-center justify-center rounded-full font-display text-xs font-semibold shadow-lg transition ${
-          on ? "scale-110 bg-gold text-noir" : "bg-white text-noir hover:bg-gold"
+          on ? "scale-110 bg-green text-white" : "bg-white text-navy hover:bg-green hover:text-white"
         }`}
       >
-        {on && <span className="absolute inset-0 animate-ping rounded-full bg-gold/60" />}
+        {on && <span className="absolute inset-0 animate-ping rounded-full bg-green/60" />}
         <span className="relative">{item?.label}</span>
       </button>
     </div>
@@ -139,7 +139,7 @@ function SpecimenCard({ active, onSelect }: { active: string; onSelect: (id: str
           <Marker id="number" active={active} onSelect={onSelect}>
             <div className="p-2">
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/45">Certificate number</p>
-              <p className="mt-1 font-mono text-lg tracking-wider text-gold-light">PSSA-2026-XXXXXX</p>
+              <p className="mt-1 font-mono text-lg tracking-wider text-green-soft">PSSA-2026-XXXXXX</p>
             </div>
           </Marker>
 

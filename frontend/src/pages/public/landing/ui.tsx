@@ -2,9 +2,9 @@ import { useRef, type ReactNode } from "react";
 import { motion, useMotionValue, useReducedMotion, useSpring } from "motion/react";
 import { EASE, fadeUp } from "./motion";
 
-export function Eyebrow({ children, tone = "gold" }: { children: ReactNode; tone?: "gold" | "green" | "navy" }) {
-  const color = tone === "gold" ? "text-gold" : tone === "green" ? "text-green" : "text-navy/60";
-  const line = tone === "gold" ? "bg-gold" : tone === "green" ? "bg-green" : "bg-navy/40";
+export function Eyebrow({ children, tone = "green" }: { children: ReactNode; tone?: "green" | "navy" }) {
+  const color = tone === "green" ? "text-green" : "text-navy/60";
+  const line = tone === "green" ? "bg-green" : "bg-navy/40";
   return (
     <p className={`flex items-center gap-3 text-[11px] font-bold uppercase tracking-[0.28em] ${color}`}>
       <span className={`h-px w-8 ${line}`} aria-hidden="true" />

@@ -8,12 +8,12 @@ export function Faq() {
   const [open, setOpen] = useState<number | null>(0);
 
   return (
-    <section id="faq" className="bg-cream py-24 sm:py-32">
+    <section id="faq" className="bg-gradient-to-b from-white via-soft/50 to-white py-24 sm:py-32">
       <div className="mx-auto grid max-w-7xl gap-14 px-6 lg:grid-cols-[0.8fr_1.2fr]">
         <div className="lg:sticky lg:top-28 lg:self-start">
           <Eyebrow tone="navy">Questions, answered</Eyebrow>
-          <h2 className="mt-6 font-display text-[clamp(2.5rem,5vw,4rem)] font-semibold leading-[1] text-noir">
-            <SplitWords text="Good questions" /> <span className="italic text-gold-dark"><SplitWords text="deserve straight answers." delay={0.15} /></span>
+          <h2 className="mt-6 font-display text-[clamp(2.5rem,5vw,4rem)] font-semibold leading-[1] text-navy">
+            <SplitWords text="Good questions" /> <span className="italic text-green-dark"><SplitWords text="deserve straight answers." delay={0.15} /></span>
           </h2>
           <p className="mt-6 max-w-sm text-lg leading-relaxed text-ink/70">
             Everything customers and shoppers ask us most, in plain language.
@@ -34,10 +34,10 @@ export function Faq() {
                     onClick={() => setOpen(on ? null : i)}
                     className="group flex w-full items-center justify-between gap-6 py-6 text-left"
                   >
-                    <span className={`font-display text-xl font-semibold transition sm:text-2xl ${on ? "text-noir" : "text-noir/75 group-hover:text-noir"}`}>{f.q}</span>
+                    <span className={`font-display text-xl font-semibold transition sm:text-2xl ${on ? "text-navy" : "text-navy/75 group-hover:text-navy"}`}>{f.q}</span>
                     <span
                       className={`relative flex size-10 shrink-0 items-center justify-center rounded-full border transition duration-300 ${
-                        on ? "rotate-45 border-noir bg-noir text-gold" : "border-noir/20 text-noir group-hover:border-noir"
+                        on ? "rotate-45 border-navy bg-navy text-green" : "border-navy/20 text-navy group-hover:border-navy"
                       }`}
                       aria-hidden="true"
                     >

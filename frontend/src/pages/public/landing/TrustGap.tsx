@@ -27,7 +27,7 @@ export function TrustGap() {
   const withPssa = mode === "with";
 
   return (
-    <section className="relative overflow-hidden bg-noir py-24 text-white sm:py-32">
+    <section className="relative overflow-hidden bg-gradient-to-b from-navy via-navy-2 to-navy py-24 text-white sm:py-32">
       <GrainOverlay />
       <motion.div
         aria-hidden="true"
@@ -40,7 +40,7 @@ export function TrustGap() {
           <div className="max-w-2xl">
             <Eyebrow>The trust gap</Eyebrow>
             <h2 className="mt-6 font-display text-[clamp(2.5rem,5.5vw,4.5rem)] font-semibold leading-[1] text-white">
-              <SplitWords text="Trust shouldn't be" /> <span className="italic text-gold"><SplitWords text="a gamble." delay={0.2} /></span>
+              <SplitWords text="Trust shouldn't be" /> <span className="italic text-green"><SplitWords text="a gamble." delay={0.2} /></span>
             </h2>
             <p className="mt-6 text-lg leading-relaxed text-white/65">
               Same sneakers. Same price. Two very different conversations. Flip the switch and see what changes when your
@@ -56,12 +56,12 @@ export function TrustGap() {
                 role="radio"
                 aria-checked={mode === m}
                 onClick={() => setMode(m)}
-                className={`relative z-10 rounded-full px-5 py-3 text-sm font-semibold transition-colors sm:px-7 ${mode === m ? "text-noir" : "text-white/70 hover:text-white"}`}
+                className={`relative z-10 rounded-full px-5 py-3 text-sm font-semibold transition-colors sm:px-7 ${mode === m ? (m === "with" ? "text-white" : "text-navy") : "text-white/70 hover:text-white"}`}
               >
                 {mode === m && (
                   <motion.span
                     layoutId="gap-pill"
-                    className={`absolute inset-0 -z-10 rounded-full ${m === "with" ? "bg-gold" : "bg-white"}`}
+                    className={`absolute inset-0 -z-10 rounded-full ${m === "with" ? "bg-green" : "bg-white"}`}
                     transition={{ type: "spring", stiffness: 300, damping: 28 }}
                   />
                 )}
@@ -76,7 +76,7 @@ export function TrustGap() {
             <div className="rounded-[44px] border border-white/15 bg-gradient-to-b from-white/10 to-white/[0.02] p-3 shadow-[0_50px_120px_-30px_rgba(0,0,0,0.9)]">
               <div className="overflow-hidden rounded-[34px] bg-[#0f1a17]">
                 <div className="flex items-center gap-3 border-b border-white/10 bg-white/5 px-5 py-4">
-                  <span className={`flex size-9 items-center justify-center rounded-full text-sm font-bold transition-colors ${withPssa ? "bg-gold text-noir" : "bg-white/15 text-white"}`}>
+                  <span className={`flex size-9 items-center justify-center rounded-full text-sm font-bold transition-colors ${withPssa ? "bg-green text-navy" : "bg-white/15 text-white"}`}>
                     S
                   </span>
                   <div className="flex-1">
@@ -140,10 +140,10 @@ export function TrustGap() {
                     show: { opacity: 1, y: 0, rotateX: 0, transition: { duration: 0.6, ease: EASE } },
                     exit: { opacity: 0, y: -12, transition: { duration: 0.25 } },
                   }}
-                  className={`rounded-3xl border p-6 backdrop-blur-md ${withPssa ? "border-gold/25 bg-gold/[0.06]" : "border-white/10 bg-white/[0.04]"}`}
+                  className={`rounded-3xl border p-6 backdrop-blur-md ${withPssa ? "border-green/30 bg-green/[0.08]" : "border-white/10 bg-white/[0.04]"}`}
                 >
                   <span
-                    className={`flex size-10 items-center justify-center rounded-full ${withPssa ? "bg-gold text-noir" : "bg-[#be3c32]/20 text-[#ff8f84]"}`}
+                    className={`flex size-10 items-center justify-center rounded-full ${withPssa ? "bg-green text-white" : "bg-[#be3c32]/20 text-[#ff8f84]"}`}
                   >
                     <Icon name={withPssa ? "check" : "close"} size={18} />
                   </span>

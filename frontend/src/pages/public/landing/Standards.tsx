@@ -6,14 +6,14 @@ import { Eyebrow, GrainOverlay, Reveal, SplitWords } from "./ui";
 
 export function Standards() {
   return (
-    <section id="standards" className="relative overflow-hidden bg-noir py-24 text-white sm:py-32">
+    <section id="standards" className="relative overflow-hidden bg-gradient-to-b from-navy via-navy-2 to-navy py-24 text-white sm:py-32">
       <GrainOverlay />
       <div className="relative z-10 mx-auto max-w-7xl px-6">
         <div className="grid gap-6 lg:grid-cols-2 lg:items-end">
           <div>
             <Eyebrow>Standards and policies</Eyebrow>
             <h2 className="mt-6 font-display text-[clamp(2.5rem,5.5vw,4.5rem)] font-semibold leading-[1] text-white">
-              <SplitWords text="Published rules." /> <span className="italic text-gold"><SplitWords text="Applied to everyone." delay={0.15} /></span>
+              <SplitWords text="Published rules." /> <span className="italic text-green"><SplitWords text="Applied to everyone." delay={0.15} /></span>
             </h2>
           </div>
           <p className="text-lg leading-relaxed text-white/65">
@@ -36,7 +36,7 @@ export function Standards() {
 function PolicyCard({ slug, title, text, tag }: (typeof POLICIES)[number]) {
   const x = useMotionValue(-200);
   const y = useMotionValue(-200);
-  const spotlight = useMotionTemplate`radial-gradient(260px circle at ${x}px ${y}px, rgba(200,150,62,0.18), transparent 70%)`;
+  const spotlight = useMotionTemplate`radial-gradient(260px circle at ${x}px ${y}px, rgba(24,162,105,0.18), transparent 70%)`;
 
   return (
     <Link
@@ -50,11 +50,11 @@ function PolicyCard({ slug, title, text, tag }: (typeof POLICIES)[number]) {
         x.set(-200);
         y.set(-200);
       }}
-      className="group relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] p-6 transition duration-500 hover:-translate-y-1 hover:border-gold/40"
+      className="group relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] p-6 transition duration-500 hover:-translate-y-1 hover:border-green/45"
     >
       <motion.span aria-hidden="true" className="pointer-events-none absolute inset-0" style={{ background: spotlight }} />
       <div className="relative flex items-center justify-between">
-        <span className="flex size-10 items-center justify-center rounded-xl bg-white/5 text-gold transition group-hover:bg-gold group-hover:text-noir">
+        <span className="flex size-10 items-center justify-center rounded-xl bg-white/5 text-green transition group-hover:bg-green group-hover:text-white">
           <Icon name="file" size={18} />
         </span>
         <span className="rounded-full border border-white/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white/55">{tag}</span>
@@ -63,7 +63,7 @@ function PolicyCard({ slug, title, text, tag }: (typeof POLICIES)[number]) {
       <p className="relative mt-2 flex-1 text-sm leading-relaxed text-white/60">{text}</p>
       <div className="relative mt-6 flex items-center justify-between border-t border-white/10 pt-4">
         <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/40">Draft v1.0</span>
-        <span className="inline-flex items-center gap-1 text-xs font-bold text-gold transition group-hover:translate-x-1">
+        <span className="inline-flex items-center gap-1 text-xs font-bold text-green transition group-hover:translate-x-1">
           Read <Icon name="arrow" size={14} />
         </span>
       </div>

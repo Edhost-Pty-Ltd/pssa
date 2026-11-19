@@ -10,7 +10,7 @@ const DURATION = 6000;
 
 const TONE = {
   ok: "bg-green/10 text-green-dark",
-  info: "bg-noir/5 text-ink/70",
+  info: "bg-navy/5 text-ink/70",
   warn: "bg-[#be3c32]/10 text-[#a2332a]",
 };
 
@@ -31,13 +31,13 @@ export function CheckBeforeYouPay() {
   const step = CUSTOMER_STEPS[active];
 
   return (
-    <section ref={ref} id="buy-safely" className="relative overflow-hidden bg-cream py-24 sm:py-32">
+    <section ref={ref} id="buy-safely" className="relative overflow-hidden bg-gradient-to-b from-white via-soft/60 to-white py-24 sm:py-32">
       <div className="mx-auto max-w-7xl px-6">
         <div className="grid gap-6 lg:grid-cols-2 lg:items-end">
           <div>
             <Eyebrow tone="navy">For customers</Eyebrow>
-            <h2 className="mt-6 font-display text-[clamp(2.5rem,5.5vw,4.5rem)] font-semibold leading-[1] text-noir">
-              <SplitWords text="Four habits that" /> <span className="italic text-gold-dark"><SplitWords text="protect your money." delay={0.2} /></span>
+            <h2 className="mt-6 font-display text-[clamp(2.5rem,5.5vw,4.5rem)] font-semibold leading-[1] text-navy">
+              <SplitWords text="Four habits that" /> <span className="italic text-green-dark"><SplitWords text="protect your money." delay={0.2} /></span>
             </h2>
           </div>
           <p className="text-lg leading-relaxed text-ink/70">
@@ -58,16 +58,16 @@ export function CheckBeforeYouPay() {
                     aria-selected={on}
                     onClick={() => setActive(i)}
                     className={`relative w-full overflow-hidden rounded-3xl border p-6 text-left transition duration-500 ${
-                      on ? "border-noir bg-noir text-white shadow-[0_30px_60px_-30px_rgba(7,9,13,0.6)]" : "border-sand-dark/60 bg-white/60 hover:bg-white"
+                      on ? "border-navy bg-navy text-white shadow-[0_30px_60px_-30px_rgba(11,32,55,0.55)]" : "border-sand-dark/60 bg-white/70 hover:bg-white"
                     }`}
                   >
                     <div className="flex items-start gap-5">
-                      <span className={`flex size-12 shrink-0 items-center justify-center rounded-2xl transition ${on ? "bg-gold text-noir" : "bg-noir text-gold"}`}>
+                      <span className={`flex size-12 shrink-0 items-center justify-center rounded-2xl transition ${on ? "bg-green text-white" : "bg-navy text-green"}`}>
                         <Icon name={s.icon} size={20} />
                       </span>
                       <div className="flex-1">
-                        <p className={`text-[11px] font-bold uppercase tracking-[0.2em] ${on ? "text-gold" : "text-gold-dark"}`}>Habit {i + 1}</p>
-                        <h3 className={`mt-1 font-display text-2xl font-semibold ${on ? "text-white" : "text-noir"}`}>{s.title}</h3>
+                        <p className={`text-[11px] font-bold uppercase tracking-[0.2em] ${on ? "text-green" : "text-green-dark"}`}>Habit {i + 1}</p>
+                        <h3 className={`mt-1 font-display text-2xl font-semibold ${on ? "text-white" : "text-navy"}`}>{s.title}</h3>
                         <motion.div initial={false} animate={{ height: on ? "auto" : 0, opacity: on ? 1 : 0 }} transition={{ duration: 0.45, ease: EASE }} className="overflow-hidden">
                           <p className="pt-3 text-[15px] leading-relaxed text-white/70">{s.text}</p>
                         </motion.div>
@@ -77,7 +77,7 @@ export function CheckBeforeYouPay() {
                       <span className="absolute inset-x-0 bottom-0 h-1 bg-white/10">
                         <motion.span
                           key={`${active}-${running}`}
-                          className="block h-full origin-left bg-gold"
+                          className="block h-full origin-left bg-green"
                           initial={{ scaleX: 0 }}
                           animate={{ scaleX: running ? 1 : 0 }}
                           transition={{ duration: running ? DURATION / 1000 : 0, ease: "linear" }}
@@ -93,12 +93,12 @@ export function CheckBeforeYouPay() {
           <div className="relative mx-auto h-[560px] w-full max-w-[520px]">
             <div className="absolute right-0 top-0 h-[86%] w-[78%] overflow-hidden rounded-[36px]">
               <img src={IMG.customer} alt="A young South African woman smiling with relief as she checks her shopper on her phone" className="h-full w-full object-cover" loading="lazy" />
-              <div className="absolute inset-0 bg-gradient-to-tr from-noir/40 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-tr from-navy/40 to-transparent" />
             </div>
 
-            <div className="absolute bottom-0 left-0 w-[62%] max-w-[290px] rounded-[38px] border border-noir/10 bg-noir p-2.5 shadow-[0_50px_100px_-30px_rgba(7,9,13,0.7)]">
-              <div className="overflow-hidden rounded-[30px] bg-cream">
-                <div className="flex items-center justify-between bg-noir px-5 pb-4 pt-5 text-white">
+            <div className="absolute bottom-0 left-0 w-[62%] max-w-[290px] rounded-[38px] border border-navy/10 bg-navy p-2.5 shadow-[0_50px_100px_-30px_rgba(11,32,55,0.7)]">
+              <div className="overflow-hidden rounded-[30px] bg-white">
+                <div className="flex items-center justify-between bg-navy px-5 pb-4 pt-5 text-white">
                   <p className="font-display text-lg font-bold">
                     PSSA<span className="text-green">.</span>
                   </p>
@@ -113,7 +113,7 @@ export function CheckBeforeYouPay() {
                     transition={{ duration: 0.4, ease: EASE }}
                     className="space-y-2.5 p-4"
                   >
-                    <p className="px-1 font-display text-lg font-semibold text-noir">{step.title}</p>
+                    <p className="px-1 font-display text-lg font-semibold text-navy">{step.title}</p>
                     {step.screen.map((row, i) => (
                       <motion.div
                         key={row.label}
@@ -134,10 +134,10 @@ export function CheckBeforeYouPay() {
         </div>
 
         <div className="mt-14 flex flex-wrap gap-4">
-          <Link to="/register" className="inline-flex items-center gap-2 rounded-full bg-noir px-6 py-3.5 font-semibold text-white transition hover:bg-navy">
+          <Link to="/register" className="inline-flex items-center gap-2 rounded-full bg-green px-6 py-3.5 font-semibold text-white transition hover:bg-green-dark">
             <Icon name="search" size={17} /> Check a shopper now
           </Link>
-          <Link to="/policies/order-template" className="inline-flex items-center gap-2 rounded-full border border-noir/20 px-6 py-3.5 font-semibold text-noir transition hover:border-noir hover:bg-white">
+          <Link to="/policies/order-template" className="inline-flex items-center gap-2 rounded-full border border-navy/20 px-6 py-3.5 font-semibold text-navy transition hover:border-navy hover:bg-white">
             <Icon name="download" size={17} /> Customer order template
           </Link>
         </div>

@@ -205,9 +205,9 @@ export const STATUSES = [
     key: "suspended",
     label: "Suspended",
     text: "Approval is temporarily inactive while a review takes place. We publish a neutral status, never a label.",
-    dot: "bg-gold",
-    chip: "bg-gold/15 text-gold-light border-gold/30",
-    glow: "rgba(200,150,62,0.45)",
+    dot: "bg-green",
+    chip: "bg-green/15 text-green-soft border-green/30",
+    glow: "rgba(24,162,105,0.45)",
   },
   {
     key: "ended",

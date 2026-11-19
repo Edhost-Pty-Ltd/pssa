@@ -17,7 +17,7 @@ const PRINCIPLES: { icon: IconName; title: string; text: string }[] = [
 
 export function WhatIsShopper() {
   return (
-    <section id="about" className="relative overflow-hidden bg-cream py-24 sm:py-32">
+    <section id="about" className="relative overflow-hidden bg-gradient-to-b from-soft via-white to-white py-24 sm:py-32">
       <div className="mx-auto max-w-7xl px-6">
         <Eyebrow>What is a personal shopper?</Eyebrow>
         <ScrollStory text={STORY} />
@@ -27,8 +27,8 @@ export function WhatIsShopper() {
         <div className="mt-28 grid gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:items-end">
           <div>
             <Eyebrow tone="navy">Where PSSA comes in</Eyebrow>
-            <h2 className="mt-5 font-display text-[clamp(2.25rem,4.5vw,3.75rem)] font-semibold leading-[1.02] text-noir">
-              An association, <span className="italic text-gold-dark">not a marketplace.</span>
+            <h2 className="mt-5 font-display text-[clamp(2.25rem,4.5vw,3.75rem)] font-semibold leading-[1.02] text-navy">
+              An association, <span className="italic text-green-dark">not a marketplace.</span>
             </h2>
           </div>
           <p className="text-lg leading-relaxed text-ink/75">
@@ -40,12 +40,12 @@ export function WhatIsShopper() {
 
         <ul className="mt-14 grid gap-px overflow-hidden rounded-[28px] border border-sand-dark/60 bg-sand-dark/60 sm:grid-cols-2 lg:grid-cols-4">
           {PRINCIPLES.map((p, i) => (
-            <Reveal as="li" key={p.title} delay={i * 0.08} className="group relative bg-cream p-8 transition-colors duration-500 hover:bg-noir">
-              <span className="font-display text-sm font-semibold text-gold-dark transition group-hover:text-gold">0{i + 1}</span>
-              <span className="mt-8 flex size-12 items-center justify-center rounded-2xl bg-noir text-gold transition duration-500 group-hover:bg-gold group-hover:text-noir">
+            <Reveal as="li" key={p.title} delay={i * 0.08} className="group relative bg-white p-8 transition-colors duration-500 hover:bg-navy">
+              <span className="font-display text-sm font-semibold text-green-dark transition group-hover:text-green">0{i + 1}</span>
+              <span className="mt-8 flex size-12 items-center justify-center rounded-2xl bg-navy text-green transition duration-500 group-hover:bg-green group-hover:text-white">
                 <Icon name={p.icon} size={22} />
               </span>
-              <h3 className="mt-6 font-display text-xl font-semibold text-noir transition group-hover:text-white">{p.title}</h3>
+              <h3 className="mt-6 font-display text-xl font-semibold text-navy transition group-hover:text-white">{p.title}</h3>
               <p className="mt-3 text-sm leading-relaxed text-ink/70 transition group-hover:text-white/70">{p.text}</p>
             </Reveal>
           ))}
@@ -60,7 +60,7 @@ function ScrollStory({ text }: { text: string }) {
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start 85%", "end 45%"] });
   const words = text.split(" ");
   return (
-    <p ref={ref} className="mt-8 max-w-5xl font-display text-[clamp(1.75rem,3.6vw,3.25rem)] font-medium leading-[1.18] text-noir">
+    <p ref={ref} className="mt-8 max-w-5xl font-display text-[clamp(1.75rem,3.6vw,3.25rem)] font-medium leading-[1.18] text-navy">
       <span className="sr-only">{text}</span>
       <span aria-hidden="true">
         {words.map((w, i) => (
@@ -76,7 +76,7 @@ function ScrollStory({ text }: { text: string }) {
 function Word({ children, progress, range, highlight }: { children: string; progress: MotionValue<number>; range: [number, number]; highlight: boolean }) {
   const opacity = useTransform(progress, range, [0.14, 1]);
   return (
-    <motion.span style={{ opacity }} className={`mr-[0.25em] inline-block ${highlight ? "italic text-gold-dark" : ""}`}>
+    <motion.span style={{ opacity }} className={`mr-[0.25em] inline-block ${highlight ? "italic text-green-dark" : ""}`}>
       {children}
     </motion.span>
   );
@@ -101,10 +101,10 @@ function ShopperTypes() {
             className={`group relative h-[420px] overflow-hidden rounded-[28px] text-left lg:h-auto ${open ? "lg:flex-[2.4]" : "lg:flex-1"}`}
           >
             <img src={t.image} alt="" className={`absolute inset-0 h-full w-full object-cover transition duration-[1.2s] ${open ? "scale-100" : "scale-110"}`} loading="lazy" />
-            <div className="absolute inset-0 bg-gradient-to-t from-noir via-noir/40 to-noir/5" />
+            <div className="absolute inset-0 bg-gradient-to-t from-navy via-navy/40 to-navy/5" />
             <div className="relative flex h-full flex-col justify-between p-7 text-white">
               <div className="flex items-center justify-between">
-                <span className="rounded-full border border-white/25 bg-noir/40 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em] text-gold backdrop-blur-md">
+                <span className="rounded-full border border-white/25 bg-navy/40 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em] text-green backdrop-blur-md">
                   {t.tag}
                 </span>
                 <span className="flex size-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-md">

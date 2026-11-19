@@ -4,7 +4,7 @@ import { AnimatePresence, motion, useReducedMotion, useScroll, useSpring, useTra
 import { Icon, type IconName } from "../../../components/Icon";
 import { IMG, SAMPLE_PROFILES, TRUST_TICKER } from "./content";
 import { EASE } from "./motion";
-import { GrainOverlay, Magnetic, SplitWords } from "./ui";
+import { GrainOverlay, Magnetic } from "./ui";
 
 const RAIL: { icon: IconName; label: string; href: string }[] = [
   { icon: "search", label: "Check a shopper", href: "/register" },
@@ -31,14 +31,14 @@ export function Hero() {
   const glow = useTransform(
     [glowX, glowY],
     ([x, y]) =>
-      `radial-gradient(circle at ${x} ${y}, rgba(200,150,62,0.28), transparent 42%), radial-gradient(circle at 85% 90%, rgba(24,162,105,0.14), transparent 40%)`,
+      `radial-gradient(circle at ${x} ${y}, rgba(24,162,105,0.28), transparent 42%), radial-gradient(circle at 85% 90%, rgba(24,162,105,0.14), transparent 40%)`,
   );
 
   return (
     <section
       ref={ref}
       aria-labelledby="hero-title"
-      className="relative isolate overflow-hidden bg-noir text-white"
+      className="relative isolate overflow-hidden bg-gradient-to-b from-navy via-navy to-navy text-white"
       onPointerMove={(e) => {
         if (reduce || e.pointerType !== "mouse") return;
         const r = e.currentTarget.getBoundingClientRect();
@@ -49,7 +49,7 @@ export function Hero() {
       <motion.div aria-hidden="true" className="absolute inset-0 -z-10" style={{ y: cityY, scale: cityScale }}>
         <img src={IMG.heroCity} alt="" className="h-full w-full object-cover opacity-40" />
       </motion.div>
-      <div aria-hidden="true" className="absolute inset-0 -z-10 bg-gradient-to-b from-noir/70 via-noir/40 to-noir" />
+      <div aria-hidden="true" className="absolute inset-0 -z-10 bg-gradient-to-b from-navy/70 via-navy/40 to-navy" />
       <motion.div
         aria-hidden="true"
         className="absolute inset-0 -z-10"
@@ -65,10 +65,10 @@ export function Hero() {
                 initial={{ opacity: 0, x: -16 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 1.1 + i * 0.12, duration: 0.6, ease: EASE }}
-                className="group relative flex size-11 items-center justify-center rounded-full border border-white/15 bg-white/5 text-gold backdrop-blur-md transition hover:border-gold hover:bg-gold hover:text-noir"
+                className="group relative flex size-11 items-center justify-center rounded-full border border-white/15 bg-white/5 text-green backdrop-blur-md transition hover:border-green hover:bg-green hover:text-white"
               >
                 <Icon name={item.icon} size={18} />
-                <span className="pointer-events-none absolute left-14 whitespace-nowrap rounded-full bg-white px-3 py-1 text-xs font-semibold text-noir opacity-0 shadow-lg transition group-hover:opacity-100">
+                <span className="pointer-events-none absolute left-14 whitespace-nowrap rounded-full bg-white px-3 py-1 text-xs font-semibold text-navy opacity-0 shadow-lg transition group-hover:opacity-100">
                   {item.label}
                 </span>
               </motion.span>
@@ -86,30 +86,25 @@ export function Hero() {
         </nav>
 
         <motion.div
-          aria-hidden="true"
-          className="pointer-events-none relative z-0 col-start-1 row-start-1 order-1 lg:col-span-6 lg:col-start-7 lg:row-start-1 lg:self-start"
+          className="relative z-10 order-1 lg:col-span-5 lg:col-start-8 lg:row-start-1 lg:self-start"
           style={{ y: headlineY, opacity: fade }}
         >
-          <span className="invisible block text-center font-sans text-[clamp(3.4rem,9vw,8.75rem)] font-extrabold uppercase leading-[0.86] tracking-[-0.045em] lg:text-right">
-            Shop with
-          </span>
-          <ScriptWord />
-        </motion.div>
-
-        <motion.div
-          className="relative z-10 col-start-1 row-start-1 order-1 lg:col-span-6 lg:col-start-7 lg:row-start-1 lg:self-start"
-          style={{ y: headlineY, opacity: fade }}
-        >
-          <h1 id="hero-title" className="text-center font-sans font-extrabold uppercase text-white lg:text-right">
-            <span className="block text-[clamp(3.4rem,9vw,8.75rem)] leading-[0.86] tracking-[-0.045em]">
-              <SplitWords text="Shop with" delay={0.2} />
-            </span>
+          <h1 id="hero-title" className="text-center font-extrabold uppercase text-white lg:text-right">
+            <motion.span
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.85, ease: EASE, delay: 0.15 }}
+              className="block text-[clamp(3.2rem,6.5vw,6.25rem)] leading-[0.88] tracking-[-0.045em] text-white"
+            >
+              Shop with
+            </motion.span>
             <span className="sr-only">certainty</span>
+            <ScriptWord />
           </h1>
         </motion.div>
 
         <motion.div
-          className="pointer-events-none relative z-[5] order-2 -mt-6 h-[58svh] min-h-[380px] lg:absolute lg:inset-x-0 lg:bottom-0 lg:mt-0 lg:h-[92%]"
+          className="pointer-events-none relative z-[5] order-2 -mt-4 h-[58svh] min-h-[380px] lg:absolute lg:inset-y-0 lg:bottom-0 lg:left-[40%] lg:mt-0 lg:h-[92%] lg:w-[44%] lg:-translate-x-1/2"
           style={{ y: subjectY }}
         >
           <motion.img
@@ -133,7 +128,7 @@ export function Hero() {
             transition={{ delay: 0.9, duration: 0.8, ease: EASE }}
             className="font-display text-[clamp(1.75rem,3vw,2.5rem)] font-semibold leading-[1.12]"
           >
-            We check the shopper, so you <em className="text-gold not-italic">don't have to.</em>
+            We check the shopper, so you <em className="text-green not-italic">don't have to.</em>
           </motion.p>
           <motion.p
             initial={{ opacity: 0, y: 20 }}
@@ -154,10 +149,10 @@ export function Hero() {
             <Magnetic>
               <Link
                 to="/register"
-                className="group inline-flex items-center gap-3 rounded-full bg-gold py-3.5 pl-7 pr-3 font-semibold text-noir shadow-[0_18px_40px_-12px_rgba(200,150,62,0.7)] transition hover:bg-gold-light"
+                className="group inline-flex items-center gap-3 rounded-full bg-green py-3.5 pl-7 pr-3 font-semibold text-white shadow-[0_18px_40px_-12px_rgba(24,162,105,0.6)] transition hover:bg-green-dark"
               >
                 Check a shopper
-                <span className="flex size-8 items-center justify-center rounded-full bg-noir text-gold transition group-hover:rotate-[-45deg]">
+                <span className="flex size-8 items-center justify-center rounded-full bg-navy text-green transition group-hover:rotate-[-45deg]">
                   <Icon name="arrow" size={16} />
                 </span>
               </Link>
@@ -173,14 +168,14 @@ export function Hero() {
         </div>
       </div>
 
-      <div className="absolute inset-x-0 bottom-0 z-20 border-t border-white/10 bg-noir/70 backdrop-blur-md">
+      <div className="absolute inset-x-0 bottom-0 z-20 border-t border-white/10 bg-navy/70 backdrop-blur-md">
         <div className="marquee flex overflow-hidden py-4" aria-label="What PSSA checks">
           {[0, 1].map((dup) => (
             <ul key={dup} className="marquee-track flex shrink-0 items-center gap-10 pr-10" aria-hidden={dup === 1}>
               {TRUST_TICKER.map((item) => (
                 <li key={item} className="flex items-center gap-10 whitespace-nowrap text-xs font-semibold uppercase tracking-[0.24em] text-white/70">
                   {item}
-                  <span className="text-gold" aria-hidden="true">✦</span>
+                  <span className="text-green" aria-hidden="true">✦</span>
                 </li>
               ))}
             </ul>
@@ -194,12 +189,12 @@ export function Hero() {
 function ScriptWord() {
   const reduce = useReducedMotion();
   return (
-    <svg viewBox="0 0 1000 300" className="mx-auto -mt-[0.12em] block w-full max-w-[720px] overflow-visible lg:ml-auto lg:mr-[-2%]" aria-hidden="true">
+    <svg viewBox="0 0 1000 300" className="mx-auto -mt-[0.12em] block w-full max-w-[460px] overflow-visible lg:ml-auto lg:mr-0" aria-hidden="true">
       <defs>
-        <linearGradient id="gold-stroke" x1="0" x2="1">
-          <stop offset="0%" stopColor="#e7c27a" />
-          <stop offset="50%" stopColor="#c8963e" />
-          <stop offset="100%" stopColor="#f3dca5" />
+        <linearGradient id="certainty-stroke" x1="0" x2="1">
+          <stop offset="0%" stopColor="#6ee7b7" />
+          <stop offset="50%" stopColor="#18a269" />
+          <stop offset="100%" stopColor="#eaf8f1" />
         </linearGradient>
       </defs>
       <motion.text
@@ -207,13 +202,13 @@ function ScriptWord() {
         y="215"
         textAnchor="middle"
         className="font-script"
-        fontSize="250"
-        fill="url(#gold-stroke)"
-        stroke="url(#gold-stroke)"
-        strokeWidth="2.4"
+        fontSize="210"
+        fill="url(#certainty-stroke)"
+        stroke="url(#certainty-stroke)"
+        strokeWidth="1.6"
         strokeDasharray="2400"
         initial={reduce ? false : { strokeDashoffset: 2400, fillOpacity: 0 }}
-        animate={{ strokeDashoffset: 0, fillOpacity: 0.12 }}
+        animate={{ strokeDashoffset: 0, fillOpacity: 0.92 }}
         transition={{ strokeDashoffset: { duration: 3.2, ease: "easeInOut", delay: 0.7 }, fillOpacity: { duration: 1.2, delay: 3.2 } }}
       >
         certainty
@@ -266,7 +261,7 @@ function ProfileCarousel() {
             type="button"
             onClick={() => go(dir)}
             aria-label={dir === -1 ? "Previous sample profile" : "Next sample profile"}
-            className="flex size-11 items-center justify-center rounded-full bg-white text-noir shadow-lg transition hover:scale-110 hover:bg-gold"
+            className="flex size-11 items-center justify-center rounded-full bg-white text-navy shadow-lg transition hover:scale-110 hover:bg-green hover:text-white"
           >
             <span className={dir === -1 ? "rotate-180" : ""}>
               <Icon name="chevron" size={18} />
@@ -294,8 +289,8 @@ function ProfileCarousel() {
               >
                 <div className="relative h-36 overflow-hidden">
                   <img src={p.image} alt="" className="h-full w-full object-cover object-top" loading="lazy" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-noir/90 to-transparent" />
-                  <span className="absolute left-3 top-3 rounded-full bg-noir/70 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/80 backdrop-blur">
+                  <div className="absolute inset-0 bg-gradient-to-t from-navy/90 to-transparent" />
+                  <span className="absolute left-3 top-3 rounded-full bg-navy/70 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/80 backdrop-blur">
                     Illustrative sample
                   </span>
                   <span className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-full bg-green px-2.5 py-1 text-[11px] font-bold text-white">
@@ -314,7 +309,7 @@ function ProfileCarousel() {
                             variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0, transition: { delay: 0.15 + ci * 0.12 } } }}
                             className="flex items-center gap-2 text-[13px] text-white/85"
                           >
-                            <span className="flex size-4 items-center justify-center rounded-full bg-gold/20 text-gold">
+                            <span className="flex size-4 items-center justify-center rounded-full bg-green/20 text-green">
                               <Icon name="check" size={11} />
                             </span>
                             {c}
@@ -337,7 +332,7 @@ function ProfileCarousel() {
               aria-selected={i === index}
               aria-label={`Show ${p.role} sample`}
               onClick={() => setIndex(i)}
-              className={`h-1 rounded-full transition-all duration-500 ${i === index ? "w-10 bg-gold" : "w-4 bg-white/25 hover:bg-white/50"}`}
+              className={`h-1 rounded-full transition-all duration-500 ${i === index ? "w-10 bg-green" : "w-4 bg-white/25 hover:bg-white/50"}`}
             />
           ))}
         </div>

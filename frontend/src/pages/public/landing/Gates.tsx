@@ -11,14 +11,14 @@ export function Gates() {
   const gate = GATES[active];
 
   return (
-    <section id="membership" className="relative overflow-hidden bg-noir py-24 text-white sm:py-32">
+    <section id="membership" className="relative overflow-hidden bg-gradient-to-b from-navy via-navy-2 to-navy py-24 text-white sm:py-32">
       <GrainOverlay />
       <div className="relative z-10 mx-auto max-w-7xl px-6">
         <div className="grid gap-12 lg:grid-cols-[1fr_1fr] lg:items-end">
           <div>
             <Eyebrow>For personal shoppers and traders</Eyebrow>
             <h2 className="mt-6 font-display text-[clamp(2.5rem,5.5vw,4.5rem)] font-semibold leading-[1] text-white">
-              <SplitWords text="Four gates." /> <span className="italic text-gold"><SplitWords text="Every applicant." delay={0.15} /></span>
+              <SplitWords text="Four gates." /> <span className="italic text-green"><SplitWords text="Every applicant." delay={0.15} /></span>
             </h2>
             <p className="mt-6 max-w-lg text-lg leading-relaxed text-white/65">
               No badge or public listing is created until every gate is passed. Paying a fee or passing the exam on its own
@@ -28,7 +28,7 @@ export function Gates() {
           <ul className="grid gap-3 sm:grid-cols-2">
             {WHY_JOIN.map((w) => (
               <li key={w.text} className="flex gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm leading-relaxed text-white/75">
-                <span className="text-gold">
+                <span className="text-green">
                   <Icon name={w.icon} size={18} />
                 </span>
                 {w.text}
@@ -47,10 +47,10 @@ export function Gates() {
                 role="tab"
                 aria-selected={on}
                 onClick={() => setActive(i)}
-                className="relative bg-noir p-6 text-left transition hover:bg-white/[0.04]"
+                className="relative bg-navy-2 p-6 text-left transition hover:bg-white/[0.06]"
               >
-                {on && <motion.span layoutId="gate-active" className="absolute inset-x-0 top-0 h-1 bg-gold" transition={{ type: "spring", stiffness: 300, damping: 30 }} />}
-                <span className={`font-display text-5xl font-semibold transition ${on ? "text-gold" : "text-white/15"}`}>0{i + 1}</span>
+                {on && <motion.span layoutId="gate-active" className="absolute inset-x-0 top-0 h-1 bg-green" transition={{ type: "spring", stiffness: 300, damping: 30 }} />}
+                <span className={`font-display text-5xl font-semibold transition ${on ? "text-green" : "text-white/20"}`}>0{i + 1}</span>
                 <p className={`mt-4 font-semibold ${on ? "text-white" : "text-white/55"}`}>{g.title}</p>
               </button>
             );
@@ -71,13 +71,13 @@ export function Gates() {
                 className="absolute inset-0 h-full w-full object-cover"
               />
             </AnimatePresence>
-            <div className="absolute inset-0 bg-gradient-to-t from-noir/80 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-navy/80 to-transparent" />
             <p className="absolute bottom-6 left-6 font-display text-[7rem] font-semibold leading-none text-white/90">0{active + 1}</p>
           </div>
           <div className="bg-gradient-to-br from-white/[0.06] to-transparent p-8 sm:p-12">
             <AnimatePresence mode="wait">
               <motion.div key={active} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.45, ease: EASE }}>
-                <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-gold">Gate {active + 1} of 4</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-green">Gate {active + 1} of 4</p>
                 <h3 className="mt-3 font-display text-4xl font-semibold text-white">{gate.title}</h3>
                 <p className="mt-4 max-w-lg text-lg leading-relaxed text-white/70">{gate.text}</p>
                 <ul className="mt-8 space-y-3.5">
@@ -89,7 +89,7 @@ export function Gates() {
                       transition={{ delay: 0.15 + i * 0.07 }}
                       className="flex gap-3 text-white/90"
                     >
-                      <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-gold/15 text-gold">
+                      <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-green/15 text-green">
                         <Icon name="check" size={12} />
                       </span>
                       {p}
@@ -101,7 +101,7 @@ export function Gates() {
             </AnimatePresence>
             <div className="mt-10 flex flex-wrap items-center gap-4">
               <Magnetic>
-                <Link to="/member" className="inline-flex items-center gap-2 rounded-full bg-gold px-6 py-3.5 font-semibold text-noir transition hover:bg-gold-light">
+                <Link to="/member" className="inline-flex items-center gap-2 rounded-full bg-green px-6 py-3.5 font-semibold text-white transition hover:bg-green-dark">
                   Start your application <Icon name="arrow" size={17} />
                 </Link>
               </Magnetic>

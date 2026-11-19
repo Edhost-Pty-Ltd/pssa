@@ -11,17 +11,17 @@ export function FinalCta() {
   const scale = useTransform(scrollYProgress, [0, 1], [1.2, 1]);
 
   return (
-    <section ref={ref} className="relative isolate overflow-hidden bg-noir py-32 text-white sm:py-44">
+    <section ref={ref} className="relative isolate overflow-hidden bg-gradient-to-b from-navy to-navy-2 py-32 text-white sm:py-44">
       <motion.img src={IMG.handover} alt="" style={{ scale }} className="absolute inset-0 -z-10 h-full w-full object-cover opacity-55" loading="lazy" />
-      <div aria-hidden="true" className="absolute inset-0 -z-10 bg-gradient-to-r from-noir via-noir/80 to-noir/20" />
+      <div aria-hidden="true" className="absolute inset-0 -z-10 bg-gradient-to-r from-navy via-navy/80 to-navy/20" />
       <GrainOverlay />
       <div className="relative z-10 mx-auto max-w-7xl px-6">
         <div className="max-w-3xl">
-          <p className="font-script text-5xl text-gold sm:text-6xl">Proudly South African</p>
+          <p className="font-script text-5xl text-green sm:text-6xl">Proudly South African</p>
           <h2 className="mt-4 font-display text-[clamp(2.75rem,6vw,5.5rem)] font-semibold leading-[0.98] text-white">
             <SplitWords text="Be the shopper" />
             <br />
-            <span className="italic text-gold-light">
+            <span className="italic text-green-soft">
               <SplitWords text="customers can check." delay={0.15} />
             </span>
           </h2>
@@ -33,10 +33,10 @@ export function FinalCta() {
             <Magnetic>
               <Link
                 to="/member"
-                className="group inline-flex items-center gap-3 rounded-full bg-gold py-4 pl-8 pr-3 font-semibold text-noir shadow-[0_18px_40px_-12px_rgba(200,150,62,0.7)] transition hover:bg-gold-light"
+                className="group inline-flex items-center gap-3 rounded-full bg-green py-4 pl-8 pr-3 font-semibold text-white shadow-[0_18px_40px_-12px_rgba(24,162,105,0.6)] transition hover:bg-green-dark"
               >
                 Apply to join
-                <span className="flex size-9 items-center justify-center rounded-full bg-noir text-gold transition group-hover:rotate-[-45deg]">
+                <span className="flex size-9 items-center justify-center rounded-full bg-navy text-green transition group-hover:rotate-[-45deg]">
                   <Icon name="arrow" size={17} />
                 </span>
               </Link>

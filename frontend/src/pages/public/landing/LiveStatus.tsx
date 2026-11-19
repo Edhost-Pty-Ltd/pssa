@@ -9,7 +9,7 @@ export function LiveStatus() {
   const s = STATUSES.find((x) => x.key === key) ?? STATUSES[0];
 
   return (
-    <section className="relative overflow-hidden bg-navy py-24 text-white sm:py-32">
+    <section className="relative overflow-hidden bg-gradient-to-b from-navy via-navy-2 to-navy py-24 text-white sm:py-32">
       <motion.div
         aria-hidden="true"
         className="pointer-events-none absolute right-[10%] top-1/2 size-[560px] -translate-y-1/2 rounded-full blur-[120px]"
@@ -20,7 +20,7 @@ export function LiveStatus() {
         <div>
           <Eyebrow>Live verification</Eyebrow>
           <h2 className="mt-6 font-display text-[clamp(2.5rem,5vw,4.25rem)] font-semibold leading-[1] text-white">
-            <SplitWords text="A badge is only as good as" /> <span className="italic text-gold"><SplitWords text="its live status." delay={0.25} /></span>
+            <SplitWords text="A badge is only as good as" /> <span className="italic text-green"><SplitWords text="its live status." delay={0.25} /></span>
           </h2>
           <p className="mt-6 max-w-lg text-lg leading-relaxed text-white/70">
             Every PSSA badge must identify the member and link to their live page on PSSA.site. When membership expires or
@@ -52,7 +52,7 @@ export function LiveStatus() {
         <div className="relative mx-auto w-full max-w-md">
           <div className="absolute inset-0 -rotate-6 rounded-[36px] border border-white/10 bg-white/[0.03]" aria-hidden="true" />
           <div className="absolute inset-0 rotate-3 rounded-[36px] border border-white/10 bg-white/[0.03]" aria-hidden="true" />
-          <div className="relative rounded-[36px] border border-white/15 bg-noir/70 p-8 backdrop-blur-xl">
+          <div className="relative rounded-[36px] border border-white/15 bg-navy/70 p-8 backdrop-blur-xl">
             <div className="flex items-center justify-between">
               <p className="font-mono text-xs tracking-wider text-white/50">PSSA.site/verify/PSSA-2026-XXXXXX</p>
               <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Specimen</span>
