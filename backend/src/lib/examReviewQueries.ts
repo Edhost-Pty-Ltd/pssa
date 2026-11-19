@@ -66,9 +66,30 @@ export async function hasPassedEntranceExam(memberProfileId: string) {
   return Boolean(attempt);
 }
 
-/** Whether a retake is allowed under the seven-day and two-fail rules (entrance attempts). */
-export async function retakeWindow(memberProfileId: string, now = new Date()) {
-  const { attempts } = await attemptHistory(memberProfileId, "entrance");
+/**
+ * True when the member has a submitted, passed refresher attempt.
+ * Pass `since` (renewal startedAt / window open) so an old refresher does not count for a new cycle.
+ */
+export async function hasPassedRefresherExam(memberProfileId: string, since?: Date | null) {
+  const attempt = await prisma.examAttempt.findFirst({
+    where: {
+      memberProfileId,
+      type: "refresher",
+      passed: true,
+      submittedAt: { not: null, ...(since ? { gte: since } : {}) },
+    },
+    select: { id: true },
+  });
+  return Boolean(attempt);
+}
+
+/** Whether a retake is allowed under the seven-day and two-fail rules. */
+export async function retakeWindow(
+  memberProfileId: string,
+  now = new Date(),
+  type: "entrance" | "refresher" = "entrance",
+) {
+  const { attempts } = await attemptHistory(memberProfileId, type);
   const latestFail = attempts.find((attempt) => attempt.passed === false);
   const failedCount = attempts.filter((attempt) => attempt.passed === false).length;
   const passed = attempts.some((attempt) => attempt.passed === true);
@@ -79,7 +100,7 @@ export async function retakeWindow(memberProfileId: string, now = new Date()) {
     // Admin allow-retake unlocks one more attempt after the latest fail.
     const override = await prisma.auditLog.findFirst({
       where: {
-        action: "exam.allow_retake",
+        action: type === "refresher" ? "exam.allow_retake_refresher" : "exam.allow_retake",
         entityType: "member_profile",
         entityId: memberProfileId,
         createdAt: { gt: latestFail.submittedAt },
@@ -96,7 +117,6 @@ export async function retakeWindow(memberProfileId: string, now = new Date()) {
   const retakeOpen = johannesburgDate(now) >= opensOn.getTime();
   return { retakeOpen, failedCount, opensOn, reason: retakeOpen ? ("open" as const) : ("waiting" as const) };
 }
-
 /** Completion of the active tutorial videos for the admin review screen. */
 export async function tutorialCompletion(memberProfileId: string) {
   const videos = await prisma.tutorialVideo.findMany({
