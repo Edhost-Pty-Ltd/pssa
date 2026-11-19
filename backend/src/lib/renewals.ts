@@ -93,6 +93,121 @@ export async function findOpenRenewal(memberProfileId: string) {
   });
 }
 
+/** Most recent approved or rejected renewal (for member decision history). */
+export async function findLastDecidedRenewal(memberProfileId: string) {
+  return prisma.renewal.findFirst({
+    where: { memberProfileId, status: { in: ["approved", "rejected"] } },
+    orderBy: [{ decidedAt: "desc" }, { updatedAt: "desc" }],
+    select: renewalSelect,
+  });
+}
+
+export type AdminRenewalListQuery = {
+  status?: RenewalStatus;
+  q?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+function renewalSearchWhere(q: string): Prisma.RenewalWhereInput {
+  return {
+    OR: [
+      { id: { contains: q, mode: "insensitive" } },
+      { decisionReason: { contains: q, mode: "insensitive" } },
+      { member: { is: { firstName: { contains: q, mode: "insensitive" } } } },
+      { member: { is: { lastName: { contains: q, mode: "insensitive" } } } },
+      { member: { is: { tradingName: { contains: q, mode: "insensitive" } } } },
+      { member: { is: { user: { is: { email: { contains: q, mode: "insensitive" } } } } } },
+      { member: { is: { certificates: { some: { number: { contains: q, mode: "insensitive" } } } } } },
+    ],
+  };
+}
+
+/** Paginated admin renewal queue. */
+export async function listRenewals(query: AdminRenewalListQuery) {
+  const page = Math.max(1, query.page ?? 1);
+  const pageSize = Math.min(100, Math.max(1, query.pageSize ?? 20));
+  const q = query.q?.trim();
+  const where: Prisma.RenewalWhereInput = {
+    ...(query.status ? { status: query.status } : {}),
+    ...(q ? renewalSearchWhere(q) : {}),
+  };
+
+  const [total, rows] = await prisma.$transaction([
+    prisma.renewal.count({ where }),
+    prisma.renewal.findMany({
+      where,
+      orderBy: [{ submittedAt: "desc" }, { startedAt: "desc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      select: {
+        ...renewalSelect,
+        member: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            tradingName: true,
+            memberStatus: true,
+            validUntil: true,
+            user: { select: { email: true } },
+            certificates: {
+              orderBy: { issuedAt: "desc" },
+              take: 1,
+              select: { number: true },
+            },
+          },
+        },
+      },
+    }),
+  ]);
+
+  return {
+    items: rows.map((row) => ({
+      ...serializeRenewal(row),
+      member: {
+        id: row.member.id,
+        firstName: row.member.firstName,
+        lastName: row.member.lastName,
+        tradingName: row.member.tradingName,
+        email: row.member.user.email,
+        memberStatus: row.member.memberStatus,
+        validUntil: row.member.validUntil,
+        certificateNumber: row.member.certificates[0]?.number ?? null,
+      },
+    })),
+    page,
+    pageSize,
+    total,
+  };
+}
+
+/** Latest refresher attempt for this renewal cycle (for admin detail). */
+export async function refresherResultForRenewal(memberProfileId: string, since: Date | null) {
+  const latest = await prisma.examAttempt.findFirst({
+    where: {
+      memberProfileId,
+      type: "refresher",
+      submittedAt: { not: null, ...(since ? { gte: since } : {}) },
+    },
+    orderBy: { submittedAt: "desc" },
+    select: {
+      id: true,
+      score: true,
+      percent: true,
+      passed: true,
+      criticalFailed: true,
+      startedAt: true,
+      submittedAt: true,
+    },
+  });
+  const passed = await hasPassedRefresherExam(memberProfileId, since);
+  return {
+    passed,
+    latestAttempt: latest,
+  };
+}
+
 export async function findRenewalById(id: string) {
   return prisma.renewal.findUnique({
     where: { id },
@@ -213,12 +328,15 @@ export async function getMemberRenewalStatus(input: {
     status = "window_closed";
   }
 
-  const checklist = await buildRenewalChecklist({
-    memberProfileId: input.memberProfileId,
-    userId: input.userId,
-    renewal: open,
-    windowOpensAt,
-  });
+  const [checklist, lastDecided] = await Promise.all([
+    buildRenewalChecklist({
+      memberProfileId: input.memberProfileId,
+      userId: input.userId,
+      renewal: open,
+      windowOpensAt,
+    }),
+    findLastDecidedRenewal(input.memberProfileId),
+  ]);
 
   return {
     validUntil: input.validUntil,
@@ -227,6 +345,16 @@ export async function getMemberRenewalStatus(input: {
     checklist,
     lastReminderAt: null as string | null,
     renewal: open ? serializeRenewal(open) : null,
+    /** Last approved or rejected renewal so the member can see the decision and reason. */
+    lastDecision: lastDecided
+      ? {
+          id: lastDecided.id,
+          status: lastDecided.status,
+          decisionReason: lastDecided.decisionReason,
+          decidedAt: lastDecided.decidedAt,
+          declarationVersion: lastDecided.declarationVersion,
+        }
+      : null,
     canStart: eligibility.ok && !open,
   };
 }
