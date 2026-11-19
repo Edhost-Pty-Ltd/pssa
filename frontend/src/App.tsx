@@ -7,6 +7,7 @@ import ComponentsPreview from "./pages/dev/ComponentsPreview";
 import Assessment from "./pages/member/Assessment";
 import Certificate from "./pages/member/Certificate";
 import Dashboard from "./pages/member/Dashboard";
+import MemberComplaints from "./pages/member/MemberComplaints";
 import Profile from "./pages/member/Profile";
 import SignIn from "./pages/member/SignIn";
 import Tutorials from "./pages/member/Tutorials";
@@ -14,6 +15,8 @@ import Verification from "./pages/member/Verification";
 import Landing from "./pages/public/Landing";
 import Policy from "./pages/public/Policy";
 import Register from "./pages/public/Register";
+import RaiseConcern from "./pages/public/RaiseConcern";
+import TrackComplaint from "./pages/public/TrackComplaint";
 import VerifyCertificate from "./pages/public/VerifyCertificate";
 import ScreensReference from "./screens-reference";
 
@@ -29,6 +32,8 @@ export default function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/register" element={<Register />} />
           <Route path="/policies/:slug" element={<Policy />} />
+          <Route path="/concern" element={<RaiseConcern />} />
+          <Route path="/concern/track" element={<TrackComplaint />} />
           <Route path="/verify" element={<VerifyCertificate />} />
           <Route path="/verify/:number" element={<VerifyCertificate />} />
 
@@ -41,6 +46,7 @@ export default function App() {
               <Route path="tutorials" element={<Tutorials />} />
               <Route path="assessment" element={<Assessment />} />
               <Route path="certificate" element={<Certificate />} />
+              <Route path="complaints" element={<MemberComplaints />} />
               <Route path="*" element={<Navigate to="/member" replace />} />
             </Route>
           </Route>
