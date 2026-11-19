@@ -105,14 +105,17 @@ export default function Renewal() {
             subtitle={`Valid until ${formatDate(data.validUntil)}`}
           >
             <p style={{ margin: 0 }}>
-              {data.windowOpensAt
-                ? `Renewal opens on ${formatDate(data.windowOpensAt)}, 60 days before your membership ends.`
-                : "Renewal opens 60 days before your membership ends."}{" "}
+              {!data.windowOpensAt
+                ? "Renewal opens 60 days before your membership ends."
+                : new Date(data.windowOpensAt).getTime() <= loadedAt
+                  ? `Renewal opened on ${formatDate(data.windowOpensAt)}, 60 days before your membership ends.`
+                  : `Renewal opens on ${formatDate(data.windowOpensAt)}, 60 days before your membership ends.`}{" "}
               There's no grace period: if you don't renew in time, your public status changes to expired.
             </p>
           </Panel>
         )}
 
+        <LastDecision data={data} />
         <StateSection data={data} onChanged={refresh} />
       </div>
     </>
@@ -174,6 +177,27 @@ function StateSection({ data, onChanged }: { data: RenewalOverview; onChanged: (
         </Notice>
       );
   }
+}
+
+/**
+ * The last approved or rejected renewal. The backend only returns open renewals in `renewal`,
+ * so after a decision this is how the member sees the outcome. Hidden while a new renewal is open.
+ */
+function LastDecision({ data }: { data: RenewalOverview }) {
+  const last = data.lastDecision;
+  if (!last || data.renewal) return null;
+  if (last.status === "approved") {
+    return (
+      <Notice tone="green" title="Your last renewal was approved" icon="check">
+        Approved on {formatDate(last.decidedAt)}.{data.validUntil ? ` Your membership now runs until ${formatDate(data.validUntil)}.` : ""}
+      </Notice>
+    );
+  }
+  return (
+    <Notice tone="red" title="Your last renewal was not approved">
+      Decided on {formatDate(last.decidedAt)}. {last.decisionReason ?? "Contact PSSA for the reasons and what you can do next."}
+    </Notice>
+  );
 }
 
 function StartPanel({ canStart, onStarted }: { canStart: boolean; onStarted: () => void }) {
