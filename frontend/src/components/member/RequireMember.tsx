@@ -2,8 +2,6 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/auth-context";
 import { Button, ErrorState, LoadingState } from "../ui";
 
-// Wraps every member page: only a signed-in MEMBER gets through.
-// Anyone else is sent to sign-in, and comes back to the page they wanted afterwards.
 export function RequireMember() {
   const { user, loading, error, signedOut, refresh, signOut } = useAuth();
   const location = useLocation();

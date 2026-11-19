@@ -1,5 +1,3 @@
-// Reference: every screen from the Figma design in one file.
-// Move each screen into src/pages/... as it is built properly, then delete this file.
 import { useState } from "react";
 
 type IconName =

@@ -18,8 +18,6 @@ import {
   TextField,
 } from "../../components/ui";
 
-// Development only: every shared component in one place, at /dev/components.
-// Example text only; no member data.
 export default function ComponentsPreview() {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);

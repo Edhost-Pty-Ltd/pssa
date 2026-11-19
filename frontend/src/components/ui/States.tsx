@@ -3,9 +3,6 @@ import { Icon, type IconName } from "../Icon";
 import { Button } from "./Button";
 import "./ui.css";
 
-// Empty, error and loading states. Every list or page that loads data should use one of these
-// instead of showing nothing (see docs/api-contract.md and the phase "done when" lines).
-
 interface StateProps {
   icon?: IconName;
   title: string;
@@ -14,7 +11,6 @@ interface StateProps {
   onAction?: () => void;
 }
 
-/** Nothing to show yet, e.g. no documents uploaded or no search results. */
 export function EmptyState({ icon = "search", title, text, actionLabel, onAction }: StateProps) {
   return (
     <div className="empty-state">
@@ -28,7 +24,6 @@ export function EmptyState({ icon = "search", title, text, actionLabel, onAction
   );
 }
 
-/** Something went wrong loading data. Pass `onRetry` to offer "Try again". */
 export function ErrorState({
   title = "Something went wrong",
   text = "We couldn't load this right now. Please try again.",
@@ -54,7 +49,6 @@ export function ErrorState({
   );
 }
 
-/** Grey placeholder rows while a list loads. */
 export function LoadingState({ rows = 3, label = "Loading" }: { rows?: number; label?: string }) {
   return (
     <div role="status" aria-live="polite">

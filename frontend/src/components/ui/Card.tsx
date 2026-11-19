@@ -2,12 +2,10 @@ import type { ReactNode } from "react";
 import { Icon, type IconName } from "../Icon";
 import "./ui.css";
 
-/** A white card with a border. Set `pad` for the standard inner spacing. */
 export function Card({ pad = true, className = "", children }: { pad?: boolean; className?: string; children: ReactNode }) {
   return <section className={`ui-card ${pad ? "pad" : ""} ${className}`.trim()}>{children}</section>;
 }
 
-/** A card with a heading row (icon, title, subtitle, and an optional action on the right), as in the design's panels. */
 export function Panel({
   icon,
   title,

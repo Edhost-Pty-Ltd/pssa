@@ -15,17 +15,11 @@ import { Button, ButtonLink, ErrorState, LoadingState, Notice, Panel, StatusBadg
 import { useAuth } from "../../context/auth-context";
 import { errorMessage } from "../../lib/api";
 
-// Entrance assessment: status → take the exam → result (docs/api-contract.md 6.4).
-// 30 questions, 45 minutes, pass = at least 80% and every critical question right.
-// Starting again while an attempt is open resumes it (same questions, same deadline),
-// and answers are kept in this browser tab so a refresh doesn't lose them.
-
 type Sitting = { attempt: ExamAttempt; questions: ExamQuestion[]; expiresAt: string };
 type View = { kind: "overview" } | { kind: "taking"; sitting: Sitting } | { kind: "result"; attempt: ExamAttempt; total: number };
 
 const formatDate = (value: string) => new Date(value).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" });
 
-// Wording that differs between the entrance assessment (joining) and the refresher (renewal).
 const COPY: Record<ExamType, {
   kicker: string;
   title: string;
@@ -74,7 +68,6 @@ export default function Assessment() {
   return <ExamPage type="entrance" />;
 }
 
-/** The whole assessment flow, for either the entrance assessment or the renewal refresher. */
 export function ExamPage({ type }: { type: ExamType }) {
   const copy = COPY[type];
   const [status, setStatus] = useState<ExamStatus | null>(null);
@@ -91,7 +84,6 @@ export function ExamPage({ type }: { type: ExamType }) {
     Promise.all([getExamStatus(controller.signal, type), getExamAttempts(controller.signal)])
       .then(([s, a]) => {
         const mine = a.attempts.filter((x) => x.type === type);
-        // Only an unfinished attempt that's still within its time can be resumed.
         const loadedAt = Date.now();
         setStatus(s);
         setAttempts(mine);
@@ -146,7 +138,6 @@ export function ExamPage({ type }: { type: ExamType }) {
     );
   }
   if (!status) return <LoadingState rows={3} label="Loading the assessment" />;
-
 
   return (
     <>
@@ -224,6 +215,14 @@ function loadAnswers(attemptId: string): Record<string, string> {
   }
 }
 
+function tryStorage(action: () => void) {
+  try {
+    action();
+  } catch {
+    return;
+  }
+}
+
 function TakeExam({ sitting, onExit, onDone }: { sitting: Sitting; onExit: () => void; onDone: (attempt: ExamAttempt) => void }) {
   const { questions, attempt } = sitting;
   const deadline = new Date(sitting.expiresAt).getTime();
@@ -238,7 +237,6 @@ function TakeExam({ sitting, onExit, onDone }: { sitting: Sitting; onExit: () =>
   const remaining = Math.max(0, deadline - now);
   const answered = questions.filter((q) => answers[q.id]).length;
 
-  // Tick the clock every second.
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
@@ -251,11 +249,7 @@ function TakeExam({ sitting, onExit, onDone }: { sitting: Sitting; onExit: () =>
     setError(null);
     submitExam(attempt.id, answers)
       .then(({ attempt: result }) => {
-        try {
-          sessionStorage.removeItem(storageKey(attempt.id));
-        } catch {
-          /* storage unavailable: nothing to clear */
-        }
+        tryStorage(() => sessionStorage.removeItem(storageKey(attempt.id)));
         onDone(result);
       })
       .catch((err) => {
@@ -265,7 +259,6 @@ function TakeExam({ sitting, onExit, onDone }: { sitting: Sitting; onExit: () =>
       });
   }
 
-  // Hand in automatically when time runs out (outside render, so the clock tick triggers it).
   useEffect(() => {
     if (remaining === 0 && !submittedRef.current) {
       const t = window.setTimeout(submit, 0);
@@ -276,11 +269,7 @@ function TakeExam({ sitting, onExit, onDone }: { sitting: Sitting; onExit: () =>
   function choose(questionId: string, optionId: string) {
     const next = { ...answers, [questionId]: optionId };
     setAnswers(next);
-    try {
-      sessionStorage.setItem(storageKey(attempt.id), JSON.stringify(next));
-    } catch {
-      /* storage unavailable: answers stay in memory */
-    }
+    tryStorage(() => sessionStorage.setItem(storageKey(attempt.id), JSON.stringify(next)));
   }
 
   const minutes = Math.floor(remaining / 60000);

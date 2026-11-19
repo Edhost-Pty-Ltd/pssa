@@ -2,7 +2,6 @@ import { Link, useLocation } from "react-router-dom";
 import { SiteFooter } from "../components/site/SiteFooter";
 import { SiteHeader } from "../components/site/SiteHeader";
 
-// Shown for pages that are linked from the landing page but not built yet.
 export default function ComingSoon() {
   const { pathname } = useLocation();
   return (

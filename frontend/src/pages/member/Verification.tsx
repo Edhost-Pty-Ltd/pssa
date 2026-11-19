@@ -16,10 +16,6 @@ import { Button, ButtonLink, DOCUMENT_STATUS, ErrorState, LoadingState, Notice, 
 import { ApiError, errorMessage } from "../../lib/api";
 import { fieldMessage } from "../../lib/fieldMessage";
 
-// Verification documents (Phase 1, step 2 of 6), as in the Figma file.
-// Uses GET /api/member/profile (documents and channels), POST/DELETE /api/member/documents,
-// and POST /api/member/channels (+ /:id/confirm). Uploading is not the same as passing a check.
-
 interface Slot {
   key: string;
   title: string;
@@ -93,7 +89,6 @@ function checkFile(file: File) {
 
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString("en-ZA", { day: "numeric", month: "short", year: "numeric" });
 
-/** A button that opens the file picker. */
 function UploadButton({ label, icon = "upload", disabled, onFile }: { label: string; icon?: IconName; disabled?: boolean; onFile: (file: File) => void }) {
   const input = useRef<HTMLInputElement>(null);
   return (
@@ -108,7 +103,7 @@ function UploadButton({ label, icon = "upload", disabled, onFile }: { label: str
         hidden
         onChange={(e) => {
           const file = e.target.files?.[0];
-          e.target.value = ""; // allow choosing the same file again
+          e.target.value = "";
           if (file) onFile(file);
         }}
       />
@@ -127,7 +122,6 @@ export default function Verification() {
   const fetchAll = useCallback(async (signal?: AbortSignal) => {
     const [profileResult, applicationResult] = await Promise.allSettled([getProfile(signal), getApplication(signal)]);
     if (profileResult.status === "rejected") throw profileResult.reason;
-    // The progress endpoint may not exist on an older backend; the page still works without it.
     const application = applicationResult.status === "fulfilled" ? applicationResult.value : null;
     return { profile: profileResult.value.profile, application };
   }, []);
@@ -179,7 +173,6 @@ export default function Verification() {
     setBusySlot(slot.key);
     try {
       await uploadDocument(type, file);
-      // Replace: the old file is removed only after the new one is safely stored.
       if (replacing) await deleteDocument(replacing.id).catch(() => undefined);
       setNotice(`${slot.title}: ${file.name} uploaded. A reviewer will check it.`);
       await reload();
@@ -232,7 +225,6 @@ export default function Verification() {
                     <span>
                       <Icon name={slot.icon} />
                     </span>
-                    {/* Wrapped in a div: the design's ".doc-card-top > span" rule is meant for the icon square only. */}
                     <div>{latest ? <Status of={DOCUMENT_STATUS} value={latest.status} /> : <StatusBadge tone="grey">Not uploaded</StatusBadge>}</div>
                   </div>
                   <h3>

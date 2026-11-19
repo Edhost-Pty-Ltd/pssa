@@ -5,11 +5,6 @@ import { Icon } from "../../components/Icon";
 import { Button, COMPLAINT_STATUS, EmptyState, ErrorState, LoadingState, Notice, Panel, Status } from "../../components/ui";
 import { errorMessage } from "../../lib/api";
 
-// Complaints about you: GET /api/member/complaints, POST /api/member/complaints/:id/response,
-// POST /api/complaints/:id/appeal (docs/api-contract.md 6.8).
-// The member sees the case and can give their side. They never see the complainant's contact details
-// or the private evidence.
-
 const formatDate = (value: string) => new Date(value).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" });
 const TYPE_LABELS: Record<string, string> = { misconduct: "Misconduct", impersonation: "Impersonation", badge_misuse: "Badge misuse" };
 const CAN_RESPOND = new Set(["awaiting_member_response", "under_review"]);

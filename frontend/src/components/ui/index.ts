@@ -1,4 +1,3 @@
-// Shared UI components. Import from here: import { Button, TextField, Status } from "../components/ui";
 export { Button, ButtonLink, type ButtonVariant } from "./Button";
 export { Card, Panel } from "./Card";
 export { SelectField, TextArea, TextField } from "./Field";

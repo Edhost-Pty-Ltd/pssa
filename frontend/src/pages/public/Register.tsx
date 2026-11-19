@@ -7,10 +7,6 @@ import { SiteHeader } from "../../components/site/SiteHeader";
 import { PUBLIC_MEMBER_STATUS, Status } from "../../components/ui";
 import { errorMessage } from "../../lib/api";
 
-// Public member register: /register?q=&page= (docs/api-contract.md 6.7).
-// The search and page live in the address, so a result can be shared or bookmarked.
-// Every visit asks the server again: the register shows live status, never a saved copy.
-
 const PAGE_SIZE = 10;
 
 type Result = { key: string; data: RegisterPage } | { key: string; error: string };
