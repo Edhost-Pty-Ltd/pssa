@@ -25,6 +25,7 @@ business-day deadlines, and privacy filters (no DB required):
        npm install
        npm run db:migrate      # first time: creates the tables (answer the migration name prompt with: init)
        npm run db:seed         # creates the admin account from .env — no demo data
+       npm run db:seed-exam    # loads the 30 entrance questions (critical ones marked) — no applicants
        npm run dev             # http://localhost:5000/api/health
 
 ## After pulling schema changes
