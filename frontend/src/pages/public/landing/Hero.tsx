@@ -86,20 +86,30 @@ export function Hero() {
         </nav>
 
         <motion.div
-          className="relative z-10 order-1 lg:col-span-6 lg:col-start-7 lg:row-start-1 lg:self-start"
+          aria-hidden="true"
+          className="pointer-events-none relative z-0 col-start-1 row-start-1 order-1 lg:col-span-6 lg:col-start-7 lg:row-start-1 lg:self-start"
           style={{ y: headlineY, opacity: fade }}
         >
-          <h1 id="hero-title" className="text-center font-sans font-extrabold uppercase lg:text-right">
+          <span className="invisible block text-center font-sans text-[clamp(3.4rem,9vw,8.75rem)] font-extrabold uppercase leading-[0.86] tracking-[-0.045em] lg:text-right">
+            Shop with
+          </span>
+          <ScriptWord />
+        </motion.div>
+
+        <motion.div
+          className="relative z-10 col-start-1 row-start-1 order-1 lg:col-span-6 lg:col-start-7 lg:row-start-1 lg:self-start"
+          style={{ y: headlineY, opacity: fade }}
+        >
+          <h1 id="hero-title" className="text-center font-sans font-extrabold uppercase text-white lg:text-right">
             <span className="block text-[clamp(3.4rem,9vw,8.75rem)] leading-[0.86] tracking-[-0.045em]">
               <SplitWords text="Shop with" delay={0.2} />
             </span>
             <span className="sr-only">certainty</span>
-            <ScriptWord />
           </h1>
         </motion.div>
 
         <motion.div
-          className="pointer-events-none relative z-0 order-2 -mt-6 h-[58svh] min-h-[380px] lg:absolute lg:inset-x-0 lg:bottom-0 lg:mt-0 lg:h-[92%]"
+          className="pointer-events-none relative z-[5] order-2 -mt-6 h-[58svh] min-h-[380px] lg:absolute lg:inset-x-0 lg:bottom-0 lg:mt-0 lg:h-[92%]"
           style={{ y: subjectY }}
         >
           <motion.img

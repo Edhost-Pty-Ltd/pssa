@@ -1,7 +1,7 @@
 import type { IconName } from "../../../components/Icon";
 
 export const IMG = {
-  heroShopper: "/images/landing/hero-shopper.jpg",
+  heroShopper: "/images/landing/hero-shopper.png",
   heroCity: "/images/landing/hero-city.jpg",
   boutique: "/images/landing/shopper-boutique.jpg",
   officer: "/images/landing/verification-officer.jpg",
