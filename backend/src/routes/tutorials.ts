@@ -2,6 +2,7 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { Router } from "express";
 import { z } from "zod";
 import { badRequest, conflict, forbidden, notFound } from "../lib/http.js";
+import { applyPrivateFileHeaders, logPrivateFileAccess } from "../lib/privateFiles.js";
 import { prisma } from "../lib/prisma.js";
 import { assertVideoSignature, privateFilePath, removePrivateFile, videoUpload } from "../lib/uploads.js";
 import { requireRole } from "../middleware/auth.js";
@@ -115,6 +116,20 @@ tutorialsRouter.get("/:id/stream", requireRole("MEMBER", "ADMIN"), async (req, r
   const mime = mimeForVideo(video.storagePath);
   const range = req.headers.range;
 
+  // Log once per stream open (skip tiny mid-file range probes after the first byte).
+  const rangeStart = range ? Number(/^bytes=(\d*)-/.exec(range)?.[1] || 0) : 0;
+  if (!range || rangeStart === 0) {
+    await logPrivateFileAccess({
+      actorId: req.user!.id,
+      action: "tutorial.stream_access",
+      entityType: "tutorial_video",
+      entityId: video.id,
+      reason: video.title,
+    });
+  }
+
+  applyPrivateFileHeaders(res, { contentType: mime });
+
   if (range) {
     const match = /^bytes=(\d*)-(\d*)$/.exec(range);
     if (!match) throw badRequest("Invalid Range header.");
@@ -129,14 +144,12 @@ tutorialsRouter.get("/:id/stream", requireRole("MEMBER", "ADMIN"), async (req, r
     res.setHeader("Content-Range", `bytes ${start}-${end}/${stat.size}`);
     res.setHeader("Accept-Ranges", "bytes");
     res.setHeader("Content-Length", String(end - start + 1));
-    res.setHeader("Content-Type", mime);
     createReadStream(filePath, { start, end }).pipe(res);
     return;
   }
 
   res.setHeader("Content-Length", String(stat.size));
   res.setHeader("Accept-Ranges", "bytes");
-  res.setHeader("Content-Type", mime);
   createReadStream(filePath).pipe(res);
 });
 

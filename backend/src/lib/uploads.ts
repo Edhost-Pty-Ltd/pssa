@@ -7,6 +7,7 @@ import multer from "multer";
 import { badRequest } from "./http.js";
 
 const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+/** Private disk root — never serve via express.static; only through authenticated routes. */
 const PRIVATE_DIR = path.join(backendRoot, "storage", "private");
 mkdirSync(PRIVATE_DIR, { recursive: true });
 
