@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700;9..144,800&family=Manrope:wght@500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600;700&family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700;9..144,800&family=Manrope:wght@500;600;700;800&display=swap");
 @import "tailwindcss";
 
 :root {
@@ -20,6 +20,10 @@
 @theme {
   --font-display: "Fraunces", Georgia, serif;
   --font-body: "DM Sans", sans-serif;
+  --font-sans: "Manrope", "DM Sans", sans-serif;
+  --font-script: "Dancing Script", Georgia, cursive;
+  --color-noir: #07090d;
+  --color-noir-2: #0d121a;
   --color-navy: #0b2037;
   --color-navy-2: #102a46;
   --color-navy-3: #183a5e;
@@ -30,7 +34,12 @@
   --color-green: #18a269;
   --color-green-dark: #08764c;
   --color-green-soft: #eaf8f1;
+  --color-gold: #c8963e;
+  --color-gold-light: #e7c27a;
+  --color-gold-dark: #9a6d1f;
+  --color-cream: #faf6ee;
   --color-sand: #efe6d4;
+  --color-sand-light: #f7f1e6;
   --color-sand-dark: #d9c7a3;
 }
 
@@ -3587,4 +3596,73 @@ td small {
   -webkit-backdrop-filter: blur(14px) saturate(1.2);
   border: 1px solid rgb(255 255 255 / 0.18);
   box-shadow: 0 18px 44px -16px rgb(3 12 24 / 0.45);
+}
+
+.glass-noir {
+  background: rgb(11 32 55 / 0.78);
+  backdrop-filter: blur(18px) saturate(1.25);
+  -webkit-backdrop-filter: blur(18px) saturate(1.25);
+  border: 1px solid rgb(255 255 255 / 0.16);
+  box-shadow: 0 24px 60px -24px rgb(3 12 24 / 0.8);
+}
+
+.search-halo {
+  background: linear-gradient(135deg, rgba(24, 162, 105, 0.55), rgba(255, 255, 255, 0.2) 45%, rgba(11, 32, 55, 0.5));
+  box-shadow: 0 30px 90px -30px rgba(24, 162, 105, 0.35);
+}
+
+.grain {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.hero-subject {
+  -webkit-mask-image: linear-gradient(180deg, #000 72%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 72%, transparent 100%);
+  filter: drop-shadow(0 30px 60px rgba(0, 0, 0, 0.75));
+}
+
+.link-underline {
+  position: relative;
+  display: inline-block;
+  padding-bottom: 2px;
+}
+
+.link-underline::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0.35);
+  transform-origin: left;
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.link-underline:hover::after {
+  transform: scaleX(1);
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+.marquee-track {
+  animation: marquee 38s linear infinite;
+}
+
+.marquee:hover .marquee-track {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track {
+    animation: none;
+  }
 }

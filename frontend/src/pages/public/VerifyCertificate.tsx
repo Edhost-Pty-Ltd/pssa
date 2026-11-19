@@ -292,7 +292,7 @@ function HowItWorks() {
         </li>
         <li className="flex gap-3">
           <span className="text-green-dark"><Icon name="search" size={18} /></span>
-          Don't have a number? Search the <Link to="/#register" className="font-semibold text-green-dark underline">member register</Link> by name.
+          Don't have a number? Search the <Link to="/register" className="font-semibold text-green-dark underline">member register</Link> by name.
         </li>
       </ul>
     </section>

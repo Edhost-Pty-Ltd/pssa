@@ -27,9 +27,9 @@ export function SiteHeader({ transparent = false }: { transparent?: boolean }) {
       {/* Utility bar */}
       <div className={transparent ? "hidden border-b border-white/15 md:block" : "hidden border-b border-white/10 md:block"}>
         <div className="mx-auto flex max-w-7xl items-center justify-end gap-3 px-6 py-2 text-[13px]">
-          <a href="/#register" className="mr-auto flex items-center gap-2 text-white/70 hover:text-white">
+          <Link to="/register" className="mr-auto flex items-center gap-2 text-white/70 hover:text-white">
             <Icon name="search" size={15} /> Verify a member
-          </a>
+          </Link>
           <Link to="/member/sign-in" className="rounded-md border border-white/30 px-3 py-1.5 font-semibold hover:bg-white/10">
             Member login
           </Link>
@@ -46,9 +46,15 @@ export function SiteHeader({ transparent = false }: { transparent?: boolean }) {
           <ul className="flex items-center gap-7 text-[13px] font-semibold uppercase tracking-[0.12em]">
             {NAV.map((item) => (
               <li key={item.label}>
-                <a href={item.href} className="text-white/80 transition hover:text-green">
-                  {item.label}
-                </a>
+                {item.href.startsWith("/#") ? (
+                  <a href={item.href} className="text-white/80 transition hover:text-green">
+                    {item.label}
+                  </a>
+                ) : (
+                  <Link to={item.href} className="text-white/80 transition hover:text-green">
+                    {item.label}
+                  </Link>
+                )}
               </li>
             ))}
           </ul>
@@ -70,9 +76,15 @@ export function SiteHeader({ transparent = false }: { transparent?: boolean }) {
           <ul className="mx-auto max-w-7xl px-6 py-3">
             {NAV.map((item) => (
               <li key={item.label}>
-                <a href={item.href} onClick={() => setOpen(false)} className="block py-3 font-semibold text-white/85">
-                  {item.label}
-                </a>
+                {item.href.startsWith("/#") ? (
+                  <a href={item.href} onClick={() => setOpen(false)} className="block py-3 font-semibold text-white/85">
+                    {item.label}
+                  </a>
+                ) : (
+                  <Link to={item.href} onClick={() => setOpen(false)} className="block py-3 font-semibold text-white/85">
+                    {item.label}
+                  </Link>
+                )}
               </li>
             ))}
             <li className="flex gap-3 py-3">
