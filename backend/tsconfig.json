@@ -12,5 +12,6 @@
     "resolveJsonModule": true,
     "sourceMap": true
   },
-  "include": ["src", "scripts", "prisma/seed.ts"]
+  "include": ["src", "scripts", "prisma/seed.ts"],
+  "exclude": ["**/*.test.ts", "dist", "node_modules"]
 }
