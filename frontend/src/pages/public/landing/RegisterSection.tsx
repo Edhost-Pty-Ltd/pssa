@@ -75,8 +75,8 @@ function RegisterSearch() {
     controller.current = new AbortController();
     setState({ kind: "loading" });
     try {
-      const members = await searchRegister(q, controller.current.signal);
-      setState({ kind: "done", query: q, members });
+      const page = await searchRegister(q, controller.current.signal);
+      setState({ kind: "done", query: q, members: page.items });
     } catch (error) {
       if ((error as Error).name === "AbortError") return;
       setState({ kind: "error", message: errorMessage(error) });
@@ -219,14 +219,14 @@ function SearchResults({ query, members }: { query: string; members: RegisterMem
           className="flex items-center gap-4 p-4"
         >
           <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-noir font-semibold text-gold">
-            {m.firstName[0]}
-            {m.lastName[0]}
+            {(m.firstName?.[0] ?? m.tradingName?.[0] ?? "P").toUpperCase()}
+            {(m.lastName?.[0] ?? "").toUpperCase()}
           </span>
           <div className="min-w-0 flex-1">
             <p className="font-semibold text-ink">
-              {m.firstName} {m.lastName}
+              {[m.firstName, m.lastName].filter(Boolean).join(" ") || m.tradingName || "Verified member"}
             </p>
-            <p className="truncate text-sm text-muted">{[m.businessName, m.category].filter(Boolean).join(" · ")}</p>
+            <p className="truncate text-sm text-muted">{[m.tradingName, m.scope].filter(Boolean).join(" · ")}</p>
           </div>
           <span className="flex items-center gap-1.5 rounded-full bg-green-soft px-3 py-1 text-xs font-semibold text-green-dark">
             <Icon name="check" size={14} /> Active member

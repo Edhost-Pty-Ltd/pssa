@@ -8,9 +8,13 @@ import { authRouter } from "./routes/auth.js";
 import { membersRouter } from "./routes/members.js";
 import { memberRouter } from "./routes/member.js";
 import { adminRouter } from "./routes/admin.js";
+import { adminMembersRouter } from "./routes/adminMembers.js";
+import { adminComplaintsRouter } from "./routes/adminComplaints.js";
 import { tutorialsRouter } from "./routes/tutorials.js";
 import { examRouter } from "./routes/exam.js";
 import { publicMembersRouter } from "./routes/publicMembers.js";
+import { verifyRouter } from "./routes/verify.js";
+import { complaintsRouter } from "./routes/complaints.js";
 
 export function createApp() {
   const app = express();
@@ -31,10 +35,14 @@ export function createApp() {
     }
   });
   api.use("/search", publicMembersRouter);
+  api.use("/verify", verifyRouter);
+  api.use("/complaints", complaintsRouter);
   api.use("/auth", authRouter);
   api.use("/members", membersRouter);
   api.use("/member", memberRouter);
   api.use("/admin", adminRouter);
+  api.use("/admin", adminMembersRouter);
+  api.use("/admin", adminComplaintsRouter);
   api.use("/tutorials", tutorialsRouter);
   api.use("/exam", examRouter);
   api.use(notFoundHandler);

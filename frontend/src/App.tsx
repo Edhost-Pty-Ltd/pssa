@@ -5,9 +5,13 @@ import { AuthProvider } from "./context/AuthProvider";
 import ComingSoon from "./pages/ComingSoon";
 import ComponentsPreview from "./pages/dev/ComponentsPreview";
 import NotBuiltYet from "./pages/member/NotBuiltYet";
-import Overview from "./pages/member/Overview";
+import Certificate from "./pages/member/Certificate";
+import Dashboard from "./pages/member/Dashboard";
+import Profile from "./pages/member/Profile";
 import SignIn from "./pages/member/SignIn";
+import Verification from "./pages/member/Verification";
 import Landing from "./pages/public/Landing";
+import VerifyCertificate from "./pages/public/VerifyCertificate";
 import ScreensReference from "./screens-reference";
 
 // Routes
@@ -20,15 +24,18 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/" element={<Landing />} />
+          <Route path="/verify" element={<VerifyCertificate />} />
+          <Route path="/verify/:number" element={<VerifyCertificate />} />
 
           <Route path="/member/sign-in" element={<SignIn />} />
           <Route path="/member" element={<RequireMember />}>
             <Route element={<MemberLayout />}>
-              <Route index element={<Overview />} />
-              <Route path="verification" element={<NotBuiltYet title="Verification" when="Phase 1 (verification documents)" />} />
+              <Route index element={<Dashboard />} />
+              <Route path="profile" element={<Profile />} />
+              <Route path="verification" element={<Verification />} />
               <Route path="tutorials" element={<NotBuiltYet title="Tutorials" when="Phase 2" />} />
               <Route path="assessment" element={<NotBuiltYet title="Assessment" when="Phase 2" />} />
-              <Route path="certificate" element={<NotBuiltYet title="Certificate & badge" when="Phase 2" />} />
+              <Route path="certificate" element={<Certificate />} />
               <Route path="*" element={<Navigate to="/member" replace />} />
             </Route>
           </Route>

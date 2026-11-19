@@ -116,7 +116,7 @@ These are the records the API hangs off. KG designs a new Prisma schema from scr
 | Model | Key fields and rules |
 | --- | --- |
 | User | `id`, `email`, `passwordHash?` (required for ADMIN, not required for passwordless members), `role`, `tokenVersion`, `emailVerifiedAt`, `phoneVerifiedAt`, `lastLoginAt`, `createdAt`. A password hash is never returned. |
-| MemberProfile | Names, phone, trading name, scope, idNumber, physicalAddress, city, channels, member status, `validFrom`, `validUntil`. Private fields never go on public endpoints. Identity today is treated as a South African ID number in the API; the Verification Standard also allows an overseas passport route — KG should make identity type/number support that (nullable SA ID vs passport) so “profile complete” does not force an SA ID forever. |
+| MemberProfile | Names, phone, trading name, scope, `identityType` (`sa_id` \| `passport`), `idNumber` (unique; SA ID or passport depending on type), physicalAddress, city, channels, member status, `validFrom`, `validUntil`. Private fields never go on public endpoints. Profile complete accepts either identity route. |
 | Application | `id`, `userId`, `number` (`APP-YYYY-XXXX`), `status`, `submittedAt`, `agreementAcceptedAt`, `agreementVersion`, reviews. Created by the submit endpoint. |
 | Document | `id`, `userId`, `type`, storage path, `status`, `reviewerNote`, `reviewedAt`, `reviewedBy`. Types: `id_document`, `proof_of_residence`, `bank_evidence`, `business_registration`, `channel_evidence`. Stored privately. |
 | TutorialVideo and VideoProgress | Progress must not treat a skip-ahead as completion. Official lesson files come from the senior (four tutorial videos). |
@@ -152,7 +152,7 @@ The signed-in member API lives under `/api/member` (not `/api/seller` or `/api/a
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
 | GET | `/api/member/profile` | Member | **In:** cookie. **Out:** `200 { profile }` including status, masked ID number, address, channels and a documents summary. Never a password hash. | Exists |
-| PATCH | `/api/member/profile` | Member | **In:** partial body: name, phone, trading name, scope, idNumber, physicalAddress, city, channel URLs (`null` deletes a channel). **Out:** `200 { profile }`. `409` if the ID number belongs to someone else. | Exists |
+| PATCH | `/api/member/profile` | Member | **In:** partial body: name, phone, trading name, scope, `identityType` (`sa_id` \| `passport`), idNumber, physicalAddress, city, channel URLs (`null` deletes a channel). Setting `idNumber` requires an identity type (sent now or already stored). SA ID must be a valid 13-digit number; passport must be 6–12 letters/digits. **Out:** `200 { profile }` with `identityType` and a masked `idNumber`. `409` if the identity number belongs to someone else. | Exists |
 | GET | `/api/member/application` | Member | **In:** cookie. **Out:** `200 { application, progress }` — see **Application progress shape** below. Until the member accepts the agreement or submits, `application` may be a null draft (`id` / `number` null, `status: "draft"`). Status stays `draft` until submit. | Exists |
 | POST | `/api/member/application/submit` | Member | **In:** empty body, or `{ confirm: true }`. **Out:** `200` or `201 { application }` with status `submitted` and an `APP-YYYY-XXXX` number. `409` if required profile fields, documents or agreement acceptance are missing. | Exists |
 | POST | `/api/member/application/agreement` | Member | **In:** `{ accepted: true, version }` (the published Policy 01 version). **Out:** `200 { application }` with `agreementAcceptedAt` and version stored. Creates the draft application row (and number) if it does not exist yet. Agreement text content is blocked until the senior provides Policy 01; the API already stores acceptance + version. | Exists |
@@ -203,7 +203,9 @@ Rules for the member portal:
 - `percent` is `round(100 * completeSteps / 6)`.
 - `actions` lists document resubmission work (and later other action-needed items) for the dashboard cards.
 - `canSubmit` is true only when profile + required documents/channels + agreement are done and the application is still `draft` or `needs_info`.
-- Tutorials/assessment stay locked or not started until those models and official content land.
+- Profile complete requires name, phone, **`identityType` + matching `idNumber`** (SA ID or passport), address, city and scope. **`tradingName` is optional** (members may trade under their own name).
+- Channel confirm currently accepts any 6-digit code for UI testing; verification gate V5 needs a real outbound code check before launch. Adding the same platform again updates the existing channel instead of creating a duplicate.
+- Tutorials/assessment read live `TutorialVideo` / `VideoProgress` / `ExamAttempt` rows. With no active videos the tutorials step shows “Waiting for official tutorials” and assessment stays locked. Assessment unlocks only when every active tutorial is `completed`.
 
 ### 6.3 Documents
 
@@ -226,22 +228,22 @@ The official exam is **30 questions in 45 minutes**, a pass mark of **at least 8
 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
-| GET | `/api/tutorials/active` | Member or admin | **In:** cookie. **Out:** `200 { tutorials[] }` with title, duration and the member’s completion. | To build |
-| GET | `/api/tutorials/:id/stream` | Member or admin | **In:** cookie. **Out:** the video stream. | To build |
-| POST | `/api/tutorials/:id/progress` | Member | **In:** `{ positionSeconds, durationSeconds? }`. **Out:** `200 { progress }`. A skip-ahead must not count as complete. | To build |
-| GET | `/api/exam/status` | Member | **In:** cookie. **Out:** `200 { open, passed, attempts, canStart, reason?, retakeOpensAt? }`. | To build |
-| POST | `/api/exam/start` | Member | **In:** empty, or `{ type: "entrance" \| "refresher" }`. **Out:** `201 { attempt, questions[], expiresAt }` — 30 questions, no answer key, 45-minute `expiresAt`. | To build |
-| POST | `/api/exam/attempts/:id/submit` | Member | **In:** `{ answers }`. **Out:** `200 { attempt }` with score, percent, passed, and `criticalFailed`. Late or over-time submits are scored as a fail. | To build |
-| GET | `/api/exam/attempts` | Member | **In:** cookie. **Out:** `200 { attempts[] }` (no answer key). | To build |
+| GET | `/api/tutorials/active` | Member or admin | **In:** cookie. **Out:** `200 { tutorials[] }` with title, duration and (for members) completion / watched seconds. Empty list includes a `reason` until official videos are active. | Exists |
+| GET | `/api/tutorials/:id/stream` | Member or admin | **In:** cookie. Supports HTTP Range. Inactive tutorials are admin-only. **Out:** the private video bytes. | Exists |
+| POST | `/api/tutorials/:id/progress` | Member | **In:** `{ positionSeconds, durationSeconds? }`. **Out:** `200 { progress }`. Max position advances by at most 5 seconds per report so skip-ahead cannot complete a lesson. Complete at ≥95% of duration. | Exists |
+| GET | `/api/exam/status` | Member | **In:** cookie. **Out:** `200 { open, passed, attempts, canStart, reason?, retakeOpensAt? }`. `canStart` is true only when tutorials are complete, active questions exist, and the retake window allows it. | Exists |
+| POST | `/api/exam/start` | Member | **In:** empty, or `{ type: "entrance" }` (refresher not Phase 1). **Out:** `201 { attempt, questions[], expiresAt }` — up to 30 active questions, no answer key, 45-minute `expiresAt`. Resumes an open unexpired attempt with `200`. | Exists |
+| POST | `/api/exam/attempts/:id/submit` | Member | **In:** `{ answers }` as a map of questionId→optionId, or `[{ questionId, optionId }]`. **Out:** `200 { attempt }` with score, percent, passed (≥80% and every critical correct), and `criticalFailed`. Late or over-time submits are scored as a fail. | Exists |
+| GET | `/api/exam/attempts` | Member | **In:** cookie. **Out:** `200 { attempts[] }` (no answer key). | Exists |
 | POST | `/api/exam/attempts/:id/appeal` | Member | **In:** `{ reason }`. **Out:** `201 { appeal }`. | To build |
-| GET | `/api/tutorials` | Admin | **In:** cookie. **Out:** `200 { tutorials[] }` including inactive ones. | To build |
-| POST | `/api/tutorials` | Admin | **In:** multipart video plus title. **Out:** `201 { tutorial }`. | To build |
-| PATCH | `/api/tutorials/:id` | Admin | **In:** title, duration, active flag. **Out:** `200 { tutorial }`. | To build |
-| POST | `/api/tutorials/:id/activate` | Admin | **In:** none. **Out:** `200 { tutorial }`. | To build |
-| GET | `/api/exam/questions` | Admin | **In:** cookie. **Out:** `200 { questions[] }` including `isCritical` and the correct option (admin only). | To build |
-| POST | `/api/exam/attempts/:id/allow-retake` | Admin | **In:** `{ reason, conflictDeclared: true }`. **Out:** `200 { attempt }`. Used after two failed attempts. | To build |
-| GET | `/api/admin/applications/:id/tutorial` | Admin | **In:** path id. **Out:** tutorial completion for that applicant. | To build |
-| GET | `/api/admin/applications/:id/exam` | Admin | **In:** path id. **Out:** score, pass/fail, attempts used, time taken. | To build |
+| GET | `/api/tutorials` | Admin | **In:** cookie. **Out:** `200 { tutorials[] }` including inactive ones. | Exists |
+| POST | `/api/tutorials` | Admin | **In:** multipart `file` (MP4/WebM/MOV, max 200 MB) plus `title`, optional `durationSeconds`. **Out:** `201 { tutorial }` with `isActive: false`. | Exists |
+| PATCH | `/api/tutorials/:id` | Admin | **In:** title, durationSeconds, isActive. **Out:** `200 { tutorial }`. | Exists |
+| POST | `/api/tutorials/:id/activate` | Admin | **In:** none. **Out:** `200 { tutorial }` with `isActive: true`. | Exists |
+| GET | `/api/exam/questions` | Admin | **In:** cookie. **Out:** `200 { questions[] }` including `isCritical` and the correct option (admin only). | Exists |
+| POST | `/api/exam/attempts/:id/allow-retake` | Admin | **In:** `{ reason, conflictDeclared: true }`. **Out:** `200 { attempt, retake }`. Used after two failed attempts; records an audit unlock for one further attempt. | Exists |
+| GET | `/api/admin/applications/:id/tutorial` | Admin | **In:** path id. **Out:** `{ tutorial }` with completedCount / total / lessons. | Exists |
+| GET | `/api/admin/applications/:id/exam` | Admin | **In:** path id. **Out:** `{ exam }` with passed, attemptCount, latest score/time, and attempt history. | Exists |
 
 ### 6.5 Admin applications
 
@@ -250,18 +252,18 @@ The official exam is **30 questions in 45 minutes**, a pass mark of **at least 8
 | GET | `/api/admin/summary` | Admin | **In:** none. **Out:** tiles such as awaiting review, needs information, average review time, approval rate. | Exists |
 | GET | `/api/admin/applications` | Admin | **In:** query `status?`, `q?`, `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }`. | Exists |
 | GET | `/api/admin/applications/:id` | Admin | **In:** path id. **Out:** `200 { application, activation }` with profile, documents, channels, reviews, decision history, and the four activation gates. No raw ID or bank files in the JSON — use the file endpoints. | Exists |
-| POST | `/api/admin/applications/:id/decision` | Admin | **In:** `{ decision: "approved" \| "rejected" \| "needs_info", reason, conflictDeclared: true }`. **Out:** `200 { application, activation, certificate }`. Reason (min 10 chars) and `conflictDeclared: true` are required for every decision. Approve requires verification docs accepted + agreement on file (`409` otherwise). Approve **records** the decision but sets `memberStatus: active` only when every gate passes (verification, exam, agreement, approval). Today the exam gate is still open (no exam models/content), so approve does **not** activate. `certificate` stays `null` until Active + `PSSA-YYYY-XXXXXX` issuance lands with KG. A fee flag alone must never set Active. | Exists |
+| POST | `/api/admin/applications/:id/decision` | Admin | **In:** `{ decision: "approved" \| "rejected" \| "needs_info", reason, conflictDeclared: true }`. **Out:** `200 { application, activation, certificate }`. Reason (min 10 chars) and `conflictDeclared: true` are required for every decision. Approve requires verification docs accepted + agreement on file (`409` otherwise). Approve **records** the decision but sets `memberStatus: active` only when every gate passes (verification, exam, agreement, approval). The exam gate reads a passed entrance `ExamAttempt`. On activation a unique `PSSA-YYYY-XXXXXX` certificate is issued (`certificate` in the response); otherwise `certificate` is `null`. A fee flag alone must never set Active. | Exists |
 | POST | `/api/admin/applications/:id/second-approval` | Admin | **In:** `{ accepted: true, conflictDeclared: true, reason? }`. **Out:** `200 { application, certificate }`. Use this if the team keeps a second authorised reviewer before activation. The reviewer must not be the first decision-maker. | To build |
 
 ### 6.6 Certificates and live verification
 
-A certificate is issued only after the gates and a recorded human approval have passed. The number is `PSSA-YYYY-XXXXXX` and must be unique. A QR code on the PDF points at `/verify/PSSA-YYYY-XXXXXX`. Screenshots and old PDFs do not prove current status — only this live endpoint does.
+A certificate is issued only after the gates and a recorded human approval have passed. The number is `PSSA-YYYY-XXXXXX` and must be unique. On activation the API writes a PDF (with QR) under private storage and sets `pdfPath`. The QR encodes `{CLIENT_ORIGIN}/verify/PSSA-YYYY-XXXXXX` (frontend live-check). Screenshots and old PDFs do not prove current status — only the live endpoint does.
 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
-| GET | `/api/member/certificate` | Member | **In:** cookie. **Out:** `200 { certificate }` with number, validity, scope, live-check URL and status. An expired or revoked member still sees the record, clearly not Active. | To build |
-| GET | `/api/member/certificate/pdf` | Member | **In:** cookie. **Out:** the PDF. | To build |
-| GET | `/api/verify/:certificateNumber` | Public | **In:** path is the certificate number, for example `PSSA-2026-004821`. **Out:** `200` public payload: name, trading name, number, scope, status, `validUntil`, verified channels. `404` if the number is unknown. Never ID, bank or address fields. Status must change the moment membership expires, is suspended, is revoked or the member resigns, even if a background job failed. Use neutral public wording. | To build |
+| GET | `/api/member/certificate` | Member | **In:** cookie. **Out:** `200 { certificate }` with number, validity, scope, `qrTargetUrl` (`/verify/PSSA-YYYY-XXXXXX`), live `status`, and `storedStatus`. Live status is derived from membership + dates (expired/suspended/revoked/resigned never look Active). `certificate: null` with a reason if none issued yet. | Exists |
+| GET | `/api/member/certificate/pdf` | Member | **In:** cookie. **Out:** the membership PDF (`application/pdf`) with name, number, validity, scope, and a QR code pointing at `{CLIENT_ORIGIN}/verify/PSSA-YYYY-XXXXXX`. Generated on activation (and lazily on first download if missing). Official logo is used when present at `backend/storage/branding/logo.png` (or `.jpg`); otherwise a text PSSA mark. Screenshots of the PDF are not proof — only live-check is. | Exists |
+| GET | `/api/verify/:certificateNumber` | Public | **In:** path is the certificate number, for example `PSSA-2026-004821` (spaces ignored, case-insensitive). **Out:** `200 { certificate }` with `number`, `firstName`, `lastName`, `tradingName`, `scope`, live `status` (`active` \| `suspended` \| `expired` \| `revoked` \| `resigned`), `validFrom`, `validUntil`, `channels[]` (`{ kind, value }` confirmed only), and `checkedAt` (ISO). `404` if the number is unknown. Never ID, bank or address fields. Status is computed live from the member profile and validity dates. | Exists |
 
 ### 6.7 Public register
 
@@ -276,24 +278,25 @@ Complaints are new. They are always free. Service times in Africa/Johannesburg: 
 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
-| POST | `/api/complaints` | Public | **In:** type (`misconduct` \| `impersonation` \| `badge_misuse`), member lookup, description, evidence files, contact, privacy consent. A draft may be saved without all fields. **Out:** `201 { complaint, referenceNumber }` in the form `PSSA-C-YYYY-XXXX` when the report is complete. Never require an ID upload or a password from the complainant. | To build |
-| GET | `/api/complaints/:reference` | Complainant (login or a one-time access token sent by email) | **In:** the `PSSA-C-YYYY-XXXX` reference. **Out:** `200 { complaint }` with status, next steps and public-safe history. No private member evidence. | To build |
-| POST | `/api/member/complaints/:id/response` | Member named in the case | **In:** `{ body, files? }`. **Out:** `200 { complaint }`. | To build |
-| POST | `/api/complaints/:id/appeal` | Complainant or member | **In:** `{ reason }`. **Out:** `201 { appeal }` if lodged within ten business days. A different person hears the appeal. | To build |
-| GET | `/api/admin/complaints` | Admin | **In:** query `status?`, `type?`, `q?`, `page`. **Out:** `200 { items, page, pageSize, total }`. | To build |
-| GET | `/api/admin/complaints/:id` | Admin | **In:** path id. **Out:** `200 { complaint }` with timeline, evidence, member response, parties and deadlines. | To build |
-| PATCH | `/api/admin/complaints/:id` | Admin | **In:** `{ status?, assigneeId?, internalNote? }`. Setting `under_review` should stamp acknowledgement if it is still empty. | To build |
-| POST | `/api/admin/complaints/:id/decision` | Admin | **In:** `{ outcome: "no_breach" \| "corrective_action" \| "suspension" \| "revocation", reasons, conflictDeclared: true }`. **Out:** `200 { complaint, member? }`. If the outcome suspends or revokes a member, the live badge and public register update immediately. | To build |
-| POST | `/api/admin/complaints/:id/appeal-decision` | Admin (a different reviewer) | **In:** `{ decision, reasons, conflictDeclared: true }`. **Out:** `200 { appeal, complaint }`. | To build |
+| POST | `/api/complaints` | Public | **In:** type (`misconduct` \| `impersonation` \| `badge_misuse`), member lookup (`memberProfileId` or `certificateNumber`), description, optional `evidence` files (multipart), contact name/email/phone, `consent`, optional `draft`. A draft may be saved without all fields (type still required). **Out:** `201 { complaint, referenceNumber }` in the form `PSSA-C-YYYY-XXXX` when the report is complete. Never require an ID upload or a password from the complainant. | Exists |
+| GET | `/api/complaints/:reference` | Complainant (`?email=` matching contact email), named member, or admin | **In:** the `PSSA-C-YYYY-XXXX` reference (or complaint id). Query `email` required for anonymous complainants. **Out:** `200 { complaint }` with status, `nextSteps` and public-safe history. No private evidence files. | Exists |
+| POST | `/api/member/complaints/:id/response` | Member named in the case | **In:** `{ body }` or multipart with optional `files`. Allowed when status is `awaiting_member_response` or `under_review`. **Out:** `200 { complaint }`. Moves status to `under_review`. | Exists |
+| POST | `/api/complaints/:id/appeal` | Complainant (`email` in body/query) or named member | **In:** `{ reason, email? }`. **Out:** `201 { appeal }` if lodged within the appeal deadline while status is `decided`. Sets status to `under_appeal`. A different admin hears the appeal. | Exists |
+| GET | `/api/admin/complaints` | Admin | **In:** query `status?`, `type?`, `q?`, `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }`. | Exists |
+| GET | `/api/admin/complaints/:id` | Admin | **In:** path id. **Out:** `200 { complaint }` with evidence metadata, member responses, appeals, parties and deadlines. Storage paths are not returned. | Exists |
+| PATCH | `/api/admin/complaints/:id` | Admin | **In:** `{ status?, assigneeId?, internalNote? }`. Setting `under_review` stamps `acknowledgedAt` if empty and sets response/decision due dates (5 / 30 business days). `internalNote` is stored on the audit log (no separate note column). | Exists |
+| POST | `/api/admin/complaints/:id/decision` | Admin | **In:** `{ outcome: "no_breach" \| "corrective_action" \| "suspension" \| "revocation", reasons, conflictDeclared: true }`. **Out:** `200 { complaint, member }`. Sets appeal deadline (+10 business days). Suspension/revocation updates member status (and revokes the active certificate on revocation). | Exists |
+| POST | `/api/admin/complaints/:id/appeal-decision` | Admin (a different reviewer) | **In:** `{ decision, reasons, conflictDeclared: true }`. **Out:** `200 { appeal, complaint }`. The original decision reviewer cannot decide the appeal. | Exists |
 
 ### 6.9 Members, status and renewal
 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
-| GET | `/api/admin/members` | Admin | **In:** query `status?`, `q?`, `page`. **Out:** `200 { items, page, pageSize, total }`. | To build |
-| GET | `/api/admin/members/:id` | Admin | **In:** path id. **Out:** `200 { member }` with status, certificate (`PSSA-YYYY-XXXXXX`), history summary. | To build |
-| POST | `/api/admin/members/:id/status` | Admin | **In:** `{ status: "active" \| "suspended" \| "expired" \| "revoked" \| "resigned", reason, conflictDeclared: true }`. **Out:** `200 { member, historyEntry }`. The live badge and public register update immediately. Include `resigned`, which the Figma control does not show. | To build |
-| GET | `/api/admin/members/:id/history` | Admin | **In:** path id. **Out:** `200 { history[] }`: from, to, reason, actor, `conflictDeclared`, at. | To build |
+| GET | `/api/admin/members` | Admin | **In:** query `status?` (`active` \| `suspended` \| `expired` \| `revoked` \| `resigned`), `q?`, `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }` with profile fields and latest certificate (live status). | Exists |
+| GET | `/api/admin/members/:id` | Admin | **In:** path id (`MemberProfile.id`). **Out:** `200 { member }` with status, certificate (`PSSA-YYYY-XXXXXX`), channels, identityType, and recent history. | Exists |
+| POST | `/api/admin/members/:id/status` | Admin | **In:** `{ status: "active" \| "suspended" \| "expired" \| "revoked" \| "resigned", reason, conflictDeclared: true }`. **Out:** `200 { member, historyEntry }`. Writes `StatusHistory` + audit. Revoked/resigned/expired also updates the stored certificate status so live-check stays correct. | Exists |
+| GET | `/api/admin/members/:id/history` | Admin | **In:** path id. **Out:** `200 { history[] }`: from, to, reason, actor, `conflictDeclared`, at. | Exists |
+| GET | `/api/admin/audit` | Admin | **In:** query `q?`, `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }` from existing `AuditLog` rows (action, entity, reason, actor, at). | Exists |
 | GET | `/api/member/renewal` | Member | **In:** cookie. **Out:** `200 { validUntil, windowOpensAt, status, checklist, lastReminderAt? }`. | To build |
 | POST | `/api/member/renewal/start` | Member | **In:** empty, or `{ confirm: true }`. **Out:** `201 { renewal }` so the member can update documents and sit the refresher exam. | To build |
 | POST | `/api/member/renewal/declaration` | Member | **In:** `{ accepted: true, version, statements? }`. **Out:** `200 { renewal }`. | To build |
@@ -330,7 +333,7 @@ Becoming an Active member takes four separate steps, and each one has to pass on
 
 Paying a fee, or passing the exam, must never switch a profile to Active by itself. Membership then lasts **12 months** from activation, with no silent grace period.
 
-`POST /api/admin/applications/:id/decision` evaluates these gates on every approve. The application may become `approved` when verification + agreement are in place, but **Active is withheld** until every gate passes — including the entrance exam once that model/content exists.
+`POST /api/admin/applications/:id/decision` evaluates these gates on every approve. The application may become `approved` when verification + agreement are in place, but **Active is withheld** until every gate passes — including a passed entrance exam attempt. Activation issues `PSSA-YYYY-XXXXXX` and sets `qrTargetUrl` to `/verify/PSSA-YYYY-XXXXXX`.
 
 ---
 
@@ -344,6 +347,4 @@ These are still for the team to write down, alongside the branch rule (feature b
 - Is the customer order template a static frontend file, or served from `GET /api/order-template`?
 - The session cookie is named `ec_session` in this contract. Do we keep that name, or rename it now, before launch?
 - When will fees, if any, be introduced, and how do we make sure a payment record can never set a member to Active by itself?
-- Should `MemberProfile` store identity as SA ID and/or passport (overseas route in the Verification Standard), and how does “profile complete” treat each?
-
 This contract is for internal team planning. It is not a legal policy and does not replace the official PSSA documents.

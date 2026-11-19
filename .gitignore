@@ -3,3 +3,6 @@ dist/
 .env
 .DS_Store
 uploads/
+
+# Uploaded private files (ID documents, bank evidence). Never commit these.
+backend/storage/
