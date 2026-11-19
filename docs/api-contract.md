@@ -250,6 +250,7 @@ The official exam is **30 questions in 45 minutes**, a pass mark of **at least 8
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
 | GET | `/api/admin/summary` | Admin | **In:** none. **Out:** tiles such as awaiting review, needs information, average review time, approval rate. | Exists |
+| GET | `/api/admin/overview` | Admin | **In:** none. **Out:** dashboard aggregate over existing data: `summary` (application tiles + `activeMembers` / `openComplaints` / status breakdowns), recent `applications`, `members`, `complaints` (also as `cases`), `counts`, and empty `customers` / `listings` arrays (no Phase 1 models for those). Does not invent a second review or marketplace system. | Exists |
 | GET | `/api/admin/applications` | Admin | **In:** query `status?`, `q?`, `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }`. | Exists |
 | GET | `/api/admin/applications/:id` | Admin | **In:** path id. **Out:** `200 { application, activation }` with profile, documents, channels, reviews, decision history, and the four activation gates. No raw ID or bank files in the JSON — use the file endpoints. | Exists |
 | POST | `/api/admin/applications/:id/decision` | Admin | **In:** `{ decision: "approved" \| "rejected" \| "needs_info", reason, conflictDeclared: true }`. **Out:** `200 { application, activation, certificate }`. Reason (min 10 chars) and `conflictDeclared: true` are required for every decision. Approve requires verification docs accepted + agreement on file (`409` otherwise). Approve **records** the decision but sets `memberStatus: active` only when every gate passes (verification, exam, agreement, approval). The exam gate reads a passed entrance `ExamAttempt`. On activation a unique `PSSA-YYYY-XXXXXX` certificate is issued (`certificate` in the response); otherwise `certificate` is `null`. A fee flag alone must never set Active. | Exists |
@@ -269,8 +270,8 @@ A certificate is issued only after the gates and a recorded human approval have 
 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
-| GET | `/api/search/members` | Public | **In:** query `q` (name, trading name, member number or certificate number `PSSA-YYYY-XXXXXX`), `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }` with live status, scope, valid-until and verified channels only. Pending applicants are omitted. | To build |
-| GET | `/api/search/members/:id` | Public | **In:** path id or certificate number. **Out:** the same public payload as the live-check. `404` if the person is not publicly visible. | To build |
+| GET | `/api/search/members` | Public | **In:** query `q` (name, trading name, or certificate number `PSSA-YYYY-XXXXXX`), `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }` with `firstName`, `lastName`, `tradingName`, `scope`, certificate `number`, live `status` / `memberStatus`, `validUntil`, and confirmed `channels` only. Pending applicants (no membership / no certificate) are omitted. Status is computed live (expired dates never look Active). | Exists |
+| GET | `/api/search/members/:id` | Public | **In:** path `MemberProfile.id` or certificate number. **Out:** `200 { certificate }` — same public payload as `GET /api/verify/:certificateNumber`. `404` if the person is not publicly visible. | Exists |
 
 ### 6.8 Complaints and appeals
 
@@ -315,10 +316,12 @@ Policy pages (Code of Conduct, Privacy Policy, Complaints and Appeals, Badge Rul
 
 | Job | Owner | What it must do |
 | --- | --- | --- |
-| Expiry | KG, with Ryan on mail | When `validUntil` is reached, member status becomes `expired`. The live badge and public register must not show Active, even if this job failed — compute status from the stored date as well as from a flag. |
-| Renewal reminders | Ryan, with KG on dates | Try to email the member 60, 30 and 7 calendar days before expiry, and send a confirmation when expiry happens. These are a service target, not a right that keeps a badge Active. |
-| Complaint deadline mail | Ryan | Remind reviewers when the two-business-day acknowledgement or the 30-business-day decision target is close or overdue. |
+| Expiry | KG, with Ryan on mail | When `validUntil` is reached, member status becomes `expired`. The live badge and public register must not show Active, even if this job failed — compute status from the stored date as well as from a flag. Ryan’s `npm run jobs:mails` sends an expiry confirmation email (deduped via `AuditLog`); status flag updates remain KG’s expiry job. |
+| Renewal reminders | Ryan, with KG on dates | `npm run jobs:mails` emails the member 60, 30 and 7 calendar days before expiry (Africa/Johannesburg day match), deduped via `AuditLog`. These are a service target, not a right that keeps a badge Active. |
+| Complaint deadline mail | Ryan | `npm run jobs:mails` reminds admins when the two-business-day acknowledgement or the 30-business-day decision target is within ~24 hours or overdue. |
 | Privacy and retention | Ryan, with KG on queries | Remove or archive identity and bank files according to the published retention schedule. Do not keep private evidence for ever. |
+
+**Immediate (request-time) mail** — sent after the API action when SMTP is configured; failures are logged and never fail the HTTP request: application decision → applicant; member status change → member; complaint decision / appeal decision → complainant and named member. Renewal decision helper `notifyRenewalDecision` is ready to call from the renewal decision route once that PR is on `main`. Run scheduled mail with `npm run jobs:mails` in `backend/`.
 
 ---
 

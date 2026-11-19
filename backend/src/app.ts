@@ -12,6 +12,7 @@ import { adminRouter } from "./routes/admin.js";
 import { adminMembersRouter } from "./routes/adminMembers.js";
 import { adminComplaintsRouter } from "./routes/adminComplaints.js";
 import { adminRenewalsRouter } from "./routes/adminRenewals.js";
+import { adminOverviewRouter } from "./routes/adminOverview.js";
 import { tutorialsRouter } from "./routes/tutorials.js";
 import { examRouter } from "./routes/exam.js";
 import { publicMembersRouter } from "./routes/publicMembers.js";
@@ -44,6 +45,7 @@ export function createApp() {
   api.use("/member", memberRouter);
   api.use("/member", memberRenewalRouter);
   api.use("/admin", adminRouter);
+  api.use("/admin", adminOverviewRouter);
   api.use("/admin", adminMembersRouter);
   api.use("/admin", adminComplaintsRouter);
   api.use("/admin", adminRenewalsRouter);
