@@ -270,8 +270,8 @@ A certificate is issued only after the gates and a recorded human approval have 
 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
-| GET | `/api/search/members` | Public | **In:** query `q` (name, trading name, member number or certificate number `PSSA-YYYY-XXXXXX`), `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }` with live status, scope, valid-until and verified channels only. Pending applicants are omitted. | To build |
-| GET | `/api/search/members/:id` | Public | **In:** path id or certificate number. **Out:** the same public payload as the live-check. `404` if the person is not publicly visible. | To build |
+| GET | `/api/search/members` | Public | **In:** query `q` (name, trading name, or certificate number `PSSA-YYYY-XXXXXX`), `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }` with `firstName`, `lastName`, `tradingName`, `scope`, certificate `number`, live `status` / `memberStatus`, `validUntil`, and confirmed `channels` only. Pending applicants (no membership / no certificate) are omitted. Status is computed live (expired dates never look Active). | Exists |
+| GET | `/api/search/members/:id` | Public | **In:** path `MemberProfile.id` or certificate number. **Out:** `200 { certificate }` — same public payload as `GET /api/verify/:certificateNumber`. `404` if the person is not publicly visible. | Exists |
 
 ### 6.8 Complaints and appeals
 

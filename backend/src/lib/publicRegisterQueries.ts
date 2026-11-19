@@ -1,4 +1,5 @@
 import type { MemberStatus, Prisma } from "@prisma/client";
+import { liveCertificateStatus, serializePublicCertificate, type CertificateRow } from "./certificates.js";
 import { prisma } from "./prisma.js";
 
 export type PublicRegisterQuery = {
@@ -7,80 +8,121 @@ export type PublicRegisterQuery = {
   pageSize?: number;
 };
 
+/** Anyone with a stored membership status can appear; live status is derived (never fake Active). */
 const PUBLIC_STATUSES: MemberStatus[] = ["active", "suspended", "expired", "revoked", "resigned"];
 
-function maskPhone(value: string | null | undefined) {
-  if (!value) return null;
-  const visible = value.slice(-4);
-  return `${"•".repeat(Math.max(0, value.length - 4))}${visible}`;
+function normalizeCertificateNumber(value: string) {
+  return value.trim().toUpperCase().replace(/\s+/g, "");
 }
 
-/** Stored Active is not enough. A passed validUntil must show as expired. */
-export function liveMemberStatus(member: { memberStatus: MemberStatus | null; validUntil: Date | null }, now = new Date()): MemberStatus | null {
-  if (!member.memberStatus) return null;
-  if (member.memberStatus === "suspended" || member.memberStatus === "revoked" || member.memberStatus === "resigned") {
-    return member.memberStatus;
-  }
-  if (member.validUntil && member.validUntil.getTime() <= now.getTime()) return "expired";
-  return member.memberStatus;
-}
-
-function publicWhere(q?: string): Prisma.MemberProfileWhereInput {
-  const term = q?.trim();
+function publicVisibilityWhere(): Prisma.MemberProfileWhereInput {
   return {
     memberStatus: { in: PUBLIC_STATUSES },
-    ...(term
-      ? {
-          OR: [
-            { firstName: { contains: term, mode: "insensitive" } },
-            { lastName: { contains: term, mode: "insensitive" } },
-            { tradingName: { contains: term, mode: "insensitive" } },
-            { certificates: { some: { number: { contains: term, mode: "insensitive" } } } },
-          ],
-        }
-      : {}),
+    certificates: { some: {} },
   };
 }
 
-const publicSelect = {
+function searchWhere(q?: string): Prisma.MemberProfileWhereInput {
+  const term = q?.trim();
+  if (!term) return publicVisibilityWhere();
+
+  const cert = normalizeCertificateNumber(term);
+  const parts = term.split(/\s+/).filter(Boolean);
+  const nameClauses: Prisma.MemberProfileWhereInput[] =
+    parts.length >= 2
+      ? [
+          {
+            AND: [
+              { firstName: { contains: parts[0], mode: "insensitive" } },
+              { lastName: { contains: parts.slice(1).join(" "), mode: "insensitive" } },
+            ],
+          },
+          {
+            AND: [
+              { firstName: { contains: parts.slice(1).join(" "), mode: "insensitive" } },
+              { lastName: { contains: parts[0], mode: "insensitive" } },
+            ],
+          },
+        ]
+      : [];
+
+  return {
+    AND: [
+      publicVisibilityWhere(),
+      {
+        OR: [
+          { firstName: { contains: term, mode: "insensitive" } },
+          { lastName: { contains: term, mode: "insensitive" } },
+          { tradingName: { contains: term, mode: "insensitive" } },
+          { certificates: { some: { number: { equals: cert, mode: "insensitive" } } } },
+          { certificates: { some: { number: { contains: cert, mode: "insensitive" } } } },
+          ...nameClauses,
+        ],
+      },
+    ],
+  };
+}
+
+const listSelect = {
   id: true,
   firstName: true,
   lastName: true,
   tradingName: true,
-  phone: true,
   scope: true,
   memberStatus: true,
   validUntil: true,
   channels: { where: { status: "confirmed" as const }, select: { kind: true, value: true } },
-  certificates: { orderBy: { issuedAt: "desc" as const }, take: 1, select: { number: true, scope: true, validUntil: true, status: true } },
+  certificates: {
+    orderBy: { issuedAt: "desc" as const },
+    take: 1,
+    select: {
+      id: true,
+      number: true,
+      issuedAt: true,
+      validFrom: true,
+      validUntil: true,
+      scope: true,
+      qrTargetUrl: true,
+      status: true,
+      pdfPath: true,
+      createdAt: true,
+    },
+  },
 } satisfies Prisma.MemberProfileSelect;
 
-type PublicRow = Prisma.MemberProfileGetPayload<{ select: typeof publicSelect }>;
+type ListRow = Prisma.MemberProfileGetPayload<{ select: typeof listSelect }>;
 
-function toPublicMember(row: PublicRow) {
+function toListItem(row: ListRow, now = new Date()) {
   const certificate = row.certificates[0] ?? null;
-  const validUntil = certificate?.validUntil ?? row.validUntil;
+  if (!certificate) return null;
+  const validUntil = row.validUntil ?? certificate.validUntil;
+  const status = liveCertificateStatus(
+    { memberStatus: row.memberStatus, validUntil },
+    certificate,
+    now,
+  );
   return {
     id: row.id,
-    name: `${row.firstName} ${row.lastName}`.trim(),
+    firstName: row.firstName,
+    lastName: row.lastName,
     tradingName: row.tradingName,
-    number: certificate?.number ?? null,
-    scope: certificate?.scope ?? row.scope,
-    status: liveMemberStatus({ memberStatus: row.memberStatus, validUntil }),
+    scope: certificate.scope ?? row.scope,
+    number: certificate.number,
+    /** Live status (same rules as /api/verify). */
+    status,
+    /** Alias for older frontend RegisterMember typing. */
+    memberStatus: status,
     validUntil,
-    channels: row.channels.map((channel) => ({
-      kind: channel.kind,
-      value: /phone|mobile|sms/i.test(channel.kind) ? maskPhone(channel.value) : channel.value,
-    })),
-    phone: maskPhone(row.phone),
+    channels: row.channels.map((channel) => ({ kind: channel.kind, value: channel.value })),
   };
 }
 
-/** Public register. Pending applicants are omitted. No ID, bank, address, or email. */
+/** Public register list. Pending applicants (no membership / no certificate) are omitted. */
 export async function searchPublicMembers(query: PublicRegisterQuery) {
   const page = Math.max(1, query.page ?? 1);
-  const pageSize = Math.min(100, Math.max(1, query.pageSize ?? 20));
-  const where = publicWhere(query.q);
+  const pageSize = Math.min(50, Math.max(1, query.pageSize ?? 20));
+  const where = searchWhere(query.q);
+  const now = new Date();
 
   const [total, rows] = await prisma.$transaction([
     prisma.memberProfile.count({ where }),
@@ -89,24 +131,74 @@ export async function searchPublicMembers(query: PublicRegisterQuery) {
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
-      select: publicSelect,
+      select: listSelect,
     }),
   ]);
 
-  return { items: rows.map(toPublicMember), page, pageSize, total };
+  const items = rows.map((row) => toListItem(row, now)).filter((item): item is NonNullable<typeof item> => item !== null);
+  return { items, page, pageSize, total };
 }
 
-/** One public profile by profile id or certificate number. Null means not publicly visible. */
-export async function publicMember(ref: string) {
-  const value = ref.trim();
+const detailSelect = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  tradingName: true,
+  scope: true,
+  memberStatus: true,
+  validUntil: true,
+  channels: { where: { status: "confirmed" as const }, select: { kind: true, value: true, status: true } },
+  certificates: {
+    orderBy: { issuedAt: "desc" as const },
+    take: 1,
+    select: {
+      id: true,
+      number: true,
+      issuedAt: true,
+      validFrom: true,
+      validUntil: true,
+      scope: true,
+      qrTargetUrl: true,
+      status: true,
+      pdfPath: true,
+      createdAt: true,
+    },
+  },
+} satisfies Prisma.MemberProfileSelect;
+
+/**
+ * One public profile by MemberProfile id or certificate number.
+ * Returns the live-check `{ certificate }` payload, or null if not publicly visible.
+ */
+export async function publicMemberCertificate(ref: string) {
+  const raw = ref.trim();
+  if (!raw) return null;
+
+  const certNumber = normalizeCertificateNumber(raw);
+  const looksLikeCert = /^PSSA-\d{4}-\d{6}$/i.test(certNumber);
+
   const row = await prisma.memberProfile.findFirst({
     where: {
       AND: [
-        publicWhere(),
-        { OR: [{ id: value }, { certificates: { some: { number: { equals: value, mode: "insensitive" } } } }] },
+        publicVisibilityWhere(),
+        looksLikeCert
+          ? { certificates: { some: { number: { equals: certNumber, mode: "insensitive" } } } }
+          : {
+              OR: [
+                { id: raw },
+                { certificates: { some: { number: { equals: certNumber, mode: "insensitive" } } } },
+              ],
+            },
       ],
     },
-    select: publicSelect,
+    select: detailSelect,
   });
-  return row ? toPublicMember(row) : null;
+  if (!row?.certificates[0]) return null;
+
+  const certificate = row.certificates[0] as CertificateRow;
+  return serializePublicCertificate({
+    certificate,
+    profile: row,
+    channels: row.channels,
+  });
 }
