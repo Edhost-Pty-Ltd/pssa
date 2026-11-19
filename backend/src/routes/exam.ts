@@ -8,9 +8,16 @@ import {
   scoreAttempt,
   serializeAttempt,
 } from "../lib/exam.js";
-import { attemptHistory, hasPassedEntranceExam, retakeWindow, tutorialCompletion } from "../lib/examReviewQueries.js";
-import { badRequest, conflict, notFound } from "../lib/http.js";
+import {
+  attemptHistory,
+  hasPassedEntranceExam,
+  hasPassedRefresherExam,
+  retakeWindow,
+  tutorialCompletion,
+} from "../lib/examReviewQueries.js";
+import { conflict, notFound } from "../lib/http.js";
 import { prisma } from "../lib/prisma.js";
+import { canStartRenewal, findOpenRenewal, renewalWindowOpensAt } from "../lib/renewals.js";
 import { requireRole } from "../middleware/auth.js";
 
 /**
@@ -28,7 +35,7 @@ async function requireMemberProfileId(userId: string) {
 async function canStartEntrance(memberProfileId: string) {
   const [passed, window, tutorials, activeQuestions] = await Promise.all([
     hasPassedEntranceExam(memberProfileId),
-    retakeWindow(memberProfileId),
+    retakeWindow(memberProfileId, new Date(), "entrance"),
     tutorialCompletion(memberProfileId),
     prisma.examQuestion.count({ where: { isActive: true } }),
   ]);
@@ -55,16 +62,83 @@ async function canStartEntrance(memberProfileId: string) {
   return { ok: true as const, reason: undefined as string | undefined, window };
 }
 
+/** Refresher is for renewal: open renewal or inside the renewal window. Tutorials are not re-required. */
+async function canStartRefresher(memberProfileId: string) {
+  const [profile, openRenewal, activeQuestions] = await Promise.all([
+    prisma.memberProfile.findUnique({
+      where: { id: memberProfileId },
+      select: { memberStatus: true, validUntil: true },
+    }),
+    findOpenRenewal(memberProfileId),
+    prisma.examQuestion.count({ where: { isActive: true } }),
+  ]);
+  if (!profile) return { ok: false as const, reason: "Member profile not found." };
+
+  const since = openRenewal?.startedAt ?? openRenewal?.windowOpensAt ?? (profile.validUntil ? renewalWindowOpensAt(profile.validUntil) : null);
+  const passed = await hasPassedRefresherExam(memberProfileId, since);
+  if (passed) return { ok: false as const, reason: "Refresher assessment already passed for this renewal cycle." };
+
+  if (!openRenewal) {
+    const eligibility = canStartRenewal({
+      memberStatus: profile.memberStatus,
+      validUntil: profile.validUntil,
+    });
+    if (!eligibility.ok) {
+      return { ok: false as const, reason: eligibility.reason };
+    }
+  }
+
+  if (activeQuestions === 0) {
+    return { ok: false as const, reason: "Refresher assessment is blocked until official questions are loaded." };
+  }
+
+  const window = await retakeWindow(memberProfileId, new Date(), "refresher");
+  if (window.reason === "locked") {
+    return { ok: false as const, reason: "Two failed refresher attempts — further training and reviewer approval are required." };
+  }
+  if (window.reason === "waiting") {
+    return { ok: false as const, reason: "Refresher retake opens after the seven-day waiting period." };
+  }
+  return { ok: true as const, reason: undefined as string | undefined, window, since };
+}
+
+const statusQuerySchema = z.object({
+  type: z.enum(["entrance", "refresher"]).default("entrance"),
+});
+
 examRouter.get("/status", requireRole("MEMBER"), async (req, res) => {
+  const { type } = statusQuerySchema.parse(req.query);
   const memberProfileId = await requireMemberProfileId(req.user!.id);
+
+  if (type === "refresher") {
+    const gate = await canStartRefresher(memberProfileId);
+    const since = "since" in gate ? gate.since : null;
+    const [passed, history, window] = await Promise.all([
+      hasPassedRefresherExam(memberProfileId, since ?? undefined),
+      attemptHistory(memberProfileId, "refresher"),
+      retakeWindow(memberProfileId, new Date(), "refresher"),
+    ]);
+    res.json({
+      type: "refresher",
+      open: gate.ok,
+      passed,
+      attempts: history.attemptCount,
+      canStart: gate.ok,
+      reason: gate.reason,
+      retakeOpensAt: window.opensOn,
+    });
+    return;
+  }
+
   const [passed, history, window, gate] = await Promise.all([
     hasPassedEntranceExam(memberProfileId),
     attemptHistory(memberProfileId, "entrance"),
-    retakeWindow(memberProfileId),
+    retakeWindow(memberProfileId, new Date(), "entrance"),
     canStartEntrance(memberProfileId),
   ]);
 
   res.json({
+    type: "entrance",
     open: gate.ok,
     passed,
     attempts: history.attemptCount,
@@ -88,16 +162,14 @@ const startSchema = z
 
 examRouter.post("/start", requireRole("MEMBER"), async (req, res) => {
   const body = startSchema.parse(req.body ?? {});
-  if (body.type !== "entrance") {
-    throw badRequest("Only the entrance assessment is available in Phase 1.", { fields: { type: "must be entrance" } });
-  }
-
+  const type = body.type;
   const memberProfileId = await requireMemberProfileId(req.user!.id);
-  const gate = await canStartEntrance(memberProfileId);
+
+  const gate = type === "refresher" ? await canStartRefresher(memberProfileId) : await canStartEntrance(memberProfileId);
   if (!gate.ok) throw conflict(gate.reason);
 
   const openAttempt = await prisma.examAttempt.findFirst({
-    where: { memberProfileId, type: "entrance", submittedAt: null, expiresAt: { gt: new Date() } },
+    where: { memberProfileId, type, submittedAt: null, expiresAt: { gt: new Date() } },
     orderBy: { startedAt: "desc" },
   });
   if (openAttempt) {
@@ -116,7 +188,11 @@ examRouter.post("/start", requireRole("MEMBER"), async (req, res) => {
 
   const picked = await pickExamQuestions();
   if (picked.length === 0) {
-    throw conflict("Entrance assessment is blocked until official questions are loaded.");
+    throw conflict(
+      type === "refresher"
+        ? "Refresher assessment is blocked until official questions are loaded."
+        : "Entrance assessment is blocked until official questions are loaded.",
+    );
   }
 
   const now = new Date();
@@ -124,7 +200,7 @@ examRouter.post("/start", requireRole("MEMBER"), async (req, res) => {
   const attempt = await prisma.examAttempt.create({
     data: {
       memberProfileId,
-      type: "entrance",
+      type,
       questionIds: picked.map((question) => question.id),
       startedAt: now,
       expiresAt,
@@ -217,10 +293,11 @@ examRouter.post("/attempts/:id/allow-retake", requireRole("ADMIN"), async (req, 
     },
   });
   if (!attempt) throw notFound("Exam attempt not found.");
-  if (attempt.passed === true) throw conflict("This member has already passed the entrance assessment.");
+  if (attempt.passed === true) throw conflict("This member has already passed this assessment.");
   if (!attempt.submittedAt) throw conflict("Only a submitted failed attempt can unlock a retake.");
 
-  const window = await retakeWindow(attempt.memberProfileId);
+  const examType = attempt.type === "refresher" ? "refresher" : "entrance";
+  const window = await retakeWindow(attempt.memberProfileId, new Date(), examType);
   if (window.reason !== "locked" && window.failedCount < 2) {
     throw conflict("Allow-retake is only used after two failed attempts.");
   }
@@ -228,7 +305,7 @@ examRouter.post("/attempts/:id/allow-retake", requireRole("ADMIN"), async (req, 
   await prisma.auditLog.create({
     data: {
       actorId: req.user!.id,
-      action: "exam.allow_retake",
+      action: examType === "refresher" ? "exam.allow_retake_refresher" : "exam.allow_retake",
       entityType: "member_profile",
       entityId: attempt.memberProfileId,
       reason: body.reason,

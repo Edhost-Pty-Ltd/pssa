@@ -14,7 +14,8 @@ import { hasPassedEntranceExam, tutorialCompletion } from "../lib/examReviewQuer
 import { badRequest, conflict, forbidden, notFound } from "../lib/http.js";
 import { isValidIdentityNumber, maskIdNumber, nextApplicationNumber } from "../lib/members.js";
 import { prisma } from "../lib/prisma.js";
-import { assertFileSignature, documentUpload, privateFilePath, removePrivateFile } from "../lib/uploads.js";
+import { applyPrivateFileHeaders, logPrivateFileAccess } from "../lib/privateFiles.js";
+import { assertFileSignature, complaintUpload, documentUpload, privateFilePath, removePrivateFile } from "../lib/uploads.js";
 import { requireRole } from "../middleware/auth.js";
 
 /**
@@ -510,17 +511,18 @@ memberRouter.get("/certificate/pdf", async (req, res) => {
   const filePath = certificate.pdfPath ? certificatePdfDiskPath(certificate.pdfPath) : null;
   if (!filePath) throw notFound("Certificate PDF is not available yet.");
 
-  await prisma.auditLog.create({
-    data: {
-      actorId: req.user!.id,
-      action: "member.certificate.pdf_access",
-      entityType: "certificate",
-      entityId: certificate.id,
-    },
+  await logPrivateFileAccess({
+    actorId: req.user!.id,
+    action: "member.certificate.pdf_access",
+    entityType: "certificate",
+    entityId: certificate.id,
   });
 
-  res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `inline; filename="${certificate.number}.pdf"`);
+  applyPrivateFileHeaders(res, {
+    contentType: "application/pdf",
+    filename: `${certificate.number}.pdf`,
+    disposition: "inline",
+  });
   res.sendFile(filePath);
 });
 
@@ -650,18 +652,29 @@ memberRouter.get("/documents/:id/file", async (req, res) => {
     where: { id: String(req.params.id), userId: req.user!.id },
   });
   if (!document) throw notFound("Document not found.");
-  await prisma.auditLog.create({
-    data: {
-      actorId: req.user!.id,
-      action: "document.file_access",
-      entityType: "document",
-      entityId: document.id,
-    },
+  await logPrivateFileAccess({
+    actorId: req.user!.id,
+    action: "document.file_access",
+    entityType: "document",
+    entityId: document.id,
   });
   const filePath = privateFilePath(document.storagePath);
   if (!existsSync(filePath)) throw notFound("That file is no longer available.");
-  res.type(document.originalName.toLowerCase().endsWith(".pdf") ? "application/pdf" : "application/octet-stream");
-  res.setHeader("Content-Disposition", contentDisposition(document.originalName));
+  const lower = document.originalName.toLowerCase();
+  const contentType = lower.endsWith(".pdf")
+    ? "application/pdf"
+    : lower.endsWith(".png")
+      ? "image/png"
+      : lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+        ? "image/jpeg"
+        : lower.endsWith(".webp")
+          ? "image/webp"
+          : "application/octet-stream";
+  applyPrivateFileHeaders(res, {
+    contentType,
+    filename: document.originalName,
+    disposition: "inline",
+  });
   res.sendFile(filePath);
 });
 
@@ -740,6 +753,40 @@ memberRouter.post("/channels/:id/confirm", async (req, res) => {
   res.json({ channel });
 });
 
+const publicComplaintSelect = {
+  id: true,
+  referenceNumber: true,
+  type: true,
+  status: true,
+  description: true,
+  isDraft: true,
+  acknowledgedAt: true,
+  memberResponseDueAt: true,
+  decisionDueAt: true,
+  decidedAt: true,
+  appealDeadline: true,
+  outcome: true,
+  createdAt: true,
+  updatedAt: true,
+  member: { select: { firstName: true, lastName: true, tradingName: true } },
+  _count: { select: { evidence: true, responses: true } },
+  appeals: {
+    orderBy: { lodgedAt: "desc" as const },
+    select: { id: true, lodgedAt: true, decidedAt: true, decision: true },
+  },
+} as const;
+
+/** Cases naming this member (public-safe shape). Drafts are omitted. Newest first. */
+memberRouter.get("/complaints", async (req, res) => {
+  const member = await loadMember(req.user!.id);
+  const rows = await prisma.complaint.findMany({
+    where: { memberProfileId: member.memberProfile!.id, isDraft: false },
+    orderBy: { createdAt: "desc" },
+    select: publicComplaintSelect,
+  });
+  res.json({ complaints: rows.map((row) => serializePublicComplaint(row)) });
+});
+
 const memberComplaintResponseSchema = z.object({
   body: z.string({ error: "is required" }).trim().min(10, "must be at least 10 characters").max(5000),
 });
@@ -748,7 +795,7 @@ const memberComplaintResponseSchema = z.object({
 memberRouter.post("/complaints/:id/response", (req, res, next) => {
   const contentType = String(req.headers["content-type"] ?? "");
   if (contentType.includes("multipart/form-data")) {
-    return documentUpload.array("files", 5)(req, res, next);
+    return complaintUpload.array("files", 5)(req, res, next);
   }
   return next();
 }, async (req, res) => {
@@ -775,6 +822,7 @@ memberRouter.post("/complaints/:id/response", (req, res, next) => {
         referenceNumber: true,
         type: true,
         description: true,
+        subjectLabel: true,
         acknowledgedAt: true,
         memberResponseDueAt: true,
         decisionDueAt: true,
@@ -821,6 +869,7 @@ memberRouter.post("/complaints/:id/response", (req, res, next) => {
           type: true,
           status: true,
           description: true,
+          subjectLabel: true,
           isDraft: true,
           acknowledgedAt: true,
           memberResponseDueAt: true,
@@ -845,8 +894,3 @@ memberRouter.post("/complaints/:id/response", (req, res, next) => {
     throw error;
   }
 });
-
-function contentDisposition(filename: string) {
-  const safe = filename.replace(/["\r\n]/g, "");
-  return `inline; filename="${safe}"`;
-}

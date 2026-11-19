@@ -1,0 +1,452 @@
+import { useEffect, useRef, useState } from "react";
+import {
+  EXAM_RULES,
+  getExamAttempts,
+  getExamStatus,
+  startExam,
+  submitExam,
+  type ExamAttempt,
+  type ExamQuestion,
+  type ExamStatus,
+} from "../../api/learning";
+import { Icon } from "../../components/Icon";
+import { Button, ButtonLink, ErrorState, LoadingState, Notice, Panel, StatusBadge } from "../../components/ui";
+import { useAuth } from "../../context/auth-context";
+import { errorMessage } from "../../lib/api";
+
+// Entrance assessment: status → take the exam → result (docs/api-contract.md 6.4).
+// 30 questions, 45 minutes, pass = at least 80% and every critical question right.
+// Starting again while an attempt is open resumes it (same questions, same deadline),
+// and answers are kept in this browser tab so a refresh doesn't lose them.
+
+type Sitting = { attempt: ExamAttempt; questions: ExamQuestion[]; expiresAt: string };
+type View = { kind: "overview" } | { kind: "taking"; sitting: Sitting } | { kind: "result"; attempt: ExamAttempt; total: number };
+
+const formatDate = (value: string) => new Date(value).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" });
+
+export default function Assessment() {
+  const [status, setStatus] = useState<ExamStatus | null>(null);
+  const [attempts, setAttempts] = useState<ExamAttempt[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
+  const [view, setView] = useState<View>({ kind: "overview" });
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    Promise.all([getExamStatus(controller.signal), getExamAttempts(controller.signal)])
+      .then(([s, a]) => {
+        setStatus(s);
+        setAttempts(a.attempts);
+        setError(null);
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted) setError(errorMessage(err));
+      });
+    return () => controller.abort();
+  }, [reload]);
+
+  async function begin() {
+    setStarting(true);
+    setStartError(null);
+    try {
+      const sitting = await startExam();
+      setView({ kind: "taking", sitting });
+    } catch (err) {
+      setStartError(errorMessage(err));
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  if (view.kind === "taking") {
+    return (
+      <TakeExam
+        sitting={view.sitting}
+        onExit={() => setView({ kind: "overview" })}
+        onDone={(attempt) => {
+          setView({ kind: "result", attempt, total: view.sitting.questions.length });
+          setReload((n) => n + 1);
+        }}
+      />
+    );
+  }
+  if (view.kind === "result") {
+    return <Result attempt={view.attempt} total={view.total} status={status} onBack={() => setView({ kind: "overview" })} />;
+  }
+
+  if (error) {
+    return (
+      <ErrorState
+        title="We couldn't load the assessment"
+        text={error}
+        onRetry={() => {
+          setError(null);
+          setReload((n) => n + 1);
+        }}
+      />
+    );
+  }
+  if (!status) return <LoadingState rows={3} label="Loading the assessment" />;
+
+  const openAttempt = attempts.find((a) => !a.submittedAt && new Date(a.expiresAt).getTime() > new Date(a.startedAt).getTime());
+
+  return (
+    <>
+      <div className="workspace-title">
+        <div>
+          <span>Application · Step 4 of 6</span>
+          <h1>Entrance assessment</h1>
+          <p>A short test on the PSSA Code of Conduct. You need to pass it before your application goes to review.</p>
+        </div>
+        {status.passed && <StatusBadge tone="green">Passed</StatusBadge>}
+      </div>
+
+      <div style={{ display: "grid", gap: 18, maxWidth: 820 }}>
+        {status.passed ? (
+          <Notice tone="green" title="You've passed the entrance assessment">
+            Nothing more to do here. Your application moves on to review once every other step is complete.
+          </Notice>
+        ) : status.canStart ? (
+          <Notice tone="blue" title={openAttempt ? "You have an assessment in progress" : "You're ready to take the assessment"}>
+            {openAttempt
+              ? "Continue where you left off. The timer kept running while you were away."
+              : "Set aside 45 minutes somewhere quiet. Once you start, the timer can't be paused."}
+          </Notice>
+        ) : (
+          <Notice tone="amber" title="The assessment isn't open yet">
+            {status.reason ?? "Complete the earlier steps first."}
+            {status.retakeOpensAt ? ` You can try again from ${formatDate(status.retakeOpensAt)}.` : ""}
+          </Notice>
+        )}
+
+        <Panel icon="book" title="How the assessment works">
+          <ul style={{ margin: 0, paddingLeft: 20, display: "grid", gap: 6 }}>
+            <li>
+              {EXAM_RULES.questions} multiple-choice questions, {EXAM_RULES.minutes} minutes.
+            </li>
+            <li>
+              To pass you need at least {EXAM_RULES.passPercent}% <b>and</b> every critical question right.
+            </li>
+            <li>Answers submitted after the time runs out are scored as a fail.</li>
+            <li>If you don't pass, you can retake it once, after at least seven days.</li>
+            <li>After two failed attempts, further training and a reviewer's approval are needed.</li>
+          </ul>
+        </Panel>
+
+        {startError && <Notice tone="red" title="We couldn't start the assessment">{startError}</Notice>}
+
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          {!status.passed && (
+            <Button variant="green" onClick={begin} loading={starting} disabled={!status.canStart} iconRight="arrow">
+              {openAttempt ? "Continue assessment" : "Start assessment"}
+            </Button>
+          )}
+          {!status.canStart && !status.passed && (
+            <ButtonLink to="/member/tutorials" variant="outline">
+              Go to tutorials
+            </ButtonLink>
+          )}
+        </div>
+
+        {attempts.some((a) => a.submittedAt) && <History attempts={attempts.filter((a) => a.submittedAt)} />}
+      </div>
+    </>
+  );
+}
+
+/* Taking the exam */
+
+const storageKey = (attemptId: string) => `pssa-exam-${attemptId}`;
+
+function loadAnswers(attemptId: string): Record<string, string> {
+  try {
+    return JSON.parse(sessionStorage.getItem(storageKey(attemptId)) ?? "{}") as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+function TakeExam({ sitting, onExit, onDone }: { sitting: Sitting; onExit: () => void; onDone: (attempt: ExamAttempt) => void }) {
+  const { questions, attempt } = sitting;
+  const deadline = new Date(sitting.expiresAt).getTime();
+  const [answers, setAnswers] = useState<Record<string, string>>(() => loadAnswers(attempt.id));
+  const [index, setIndex] = useState(0);
+  const [reviewing, setReviewing] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submittedRef = useRef(false);
+
+  const remaining = Math.max(0, deadline - now);
+  const answered = questions.filter((q) => answers[q.id]).length;
+
+  // Tick the clock every second.
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  function submit() {
+    if (submittedRef.current) return;
+    submittedRef.current = true;
+    setSubmitting(true);
+    setError(null);
+    submitExam(attempt.id, answers)
+      .then(({ attempt: result }) => {
+        try {
+          sessionStorage.removeItem(storageKey(attempt.id));
+        } catch {
+          /* storage unavailable: nothing to clear */
+        }
+        onDone(result);
+      })
+      .catch((err) => {
+        submittedRef.current = false;
+        setSubmitting(false);
+        setError(errorMessage(err));
+      });
+  }
+
+  // Hand in automatically when time runs out (outside render, so the clock tick triggers it).
+  useEffect(() => {
+    if (remaining === 0 && !submittedRef.current) {
+      const t = window.setTimeout(submit, 0);
+      return () => window.clearTimeout(t);
+    }
+  });
+
+  function choose(questionId: string, optionId: string) {
+    const next = { ...answers, [questionId]: optionId };
+    setAnswers(next);
+    try {
+      sessionStorage.setItem(storageKey(attempt.id), JSON.stringify(next));
+    } catch {
+      /* storage unavailable: answers stay in memory */
+    }
+  }
+
+  const minutes = Math.floor(remaining / 60000);
+  const seconds = Math.floor((remaining % 60000) / 1000);
+  const clock = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  const lowTime = remaining < 5 * 60000;
+
+  const top = (
+    <>
+      <div className="exam-top">
+        <button type="button" onClick={onExit}>
+          ← Leave for now
+        </button>
+        <span>{reviewing ? "Review your answers" : `Question ${index + 1} of ${questions.length}`}</span>
+        <b style={lowTime ? { color: "#b42318" } : undefined} role="timer" aria-live={lowTime ? "polite" : "off"}>
+          {clock} remaining
+        </b>
+      </div>
+      <div className="exam-progress">
+        <i style={{ width: `${(answered / questions.length) * 100}%` }} />
+      </div>
+    </>
+  );
+
+  if (remaining === 0 || submitting) {
+    return (
+      <div className="exam-wrap">
+        {top}
+        <section className="exam-card">
+          <LoadingState rows={2} label={remaining === 0 ? "Time's up. Handing in your answers" : "Handing in your answers"} />
+          {error && (
+            <Notice tone="red" title="We couldn't hand in your answers">
+              {error}
+            </Notice>
+          )}
+        </section>
+      </div>
+    );
+  }
+
+  if (reviewing) {
+    const unanswered = questions.length - answered;
+    return (
+      <div className="exam-wrap">
+        {top}
+        <section className="exam-card">
+          <span className="question-no">CHECK BEFORE YOU SUBMIT</span>
+          <h1>
+            You've answered {answered} of {questions.length} questions.
+          </h1>
+          {unanswered > 0 && (
+            <Notice tone="amber" title={`${unanswered} question${unanswered === 1 ? "" : "s"} still unanswered`}>
+              Unanswered questions count as wrong. Tap a number to go back to it.
+            </Notice>
+          )}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "18px 0" }}>
+            {questions.map((q, i) => (
+              <button
+                type="button"
+                key={q.id}
+                onClick={() => {
+                  setIndex(i);
+                  setReviewing(false);
+                }}
+                aria-label={`Question ${i + 1}${answers[q.id] ? ", answered" : ", not answered"}`}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 10,
+                  border: "1px solid var(--line, #dde4e9)",
+                  background: answers[q.id] ? "var(--green-soft, #eaf8f1)" : "white",
+                  fontWeight: 700,
+                }}
+              >
+                {i + 1}
+              </button>
+            ))}
+          </div>
+          {error && <Notice tone="red" title="We couldn't hand in your answers">{error}</Notice>}
+          <div className="exam-actions">
+            <Button variant="ghost" onClick={() => setReviewing(false)}>
+              Back to questions
+            </Button>
+            <Button variant="green" onClick={submit} iconRight="check">
+              Submit assessment
+            </Button>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  const q = questions[index];
+  const last = index === questions.length - 1;
+
+  return (
+    <div className="exam-wrap">
+      {top}
+      <section className="exam-card">
+        <span className="question-no">
+          QUESTION {String(index + 1).padStart(2, "0")}
+          {q.topic ? ` · ${q.topic.toUpperCase()}` : ""}
+        </span>
+        <h1 id={`q-${q.id}`}>{q.prompt}</h1>
+        <div className="answer-list" role="radiogroup" aria-labelledby={`q-${q.id}`}>
+          {q.options.map((option, i) => {
+            const picked = answers[q.id] === option.id;
+            return (
+              <button
+                type="button"
+                role="radio"
+                aria-checked={picked}
+                className={picked ? "selected" : ""}
+                onClick={() => choose(q.id, option.id)}
+                key={option.id}
+              >
+                <span>{String.fromCharCode(65 + i)}</span>
+                {option.text}
+                <i>{picked && <Icon name="check" />}</i>
+              </button>
+            );
+          })}
+        </div>
+        <div className="exam-actions">
+          <Button variant="ghost" onClick={() => setIndex((i) => Math.max(0, i - 1))} disabled={index === 0}>
+            Previous
+          </Button>
+          {last ? (
+            <Button variant="dark" onClick={() => setReviewing(true)} iconRight="arrow">
+              Review answers
+            </Button>
+          ) : (
+            <Button variant="dark" onClick={() => setIndex((i) => i + 1)} iconRight="arrow">
+              Next question
+            </Button>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/* Result */
+
+function Result({ attempt, total, status, onBack }: { attempt: ExamAttempt; total: number; status: ExamStatus | null; onBack: () => void }) {
+  const { user } = useAuth();
+  const passed = attempt.passed === true;
+  return (
+    <div className="result-wrap">
+      <section className={`result-card ${passed ? "" : "failed"}`}>
+        <span className="result-icon">
+          <Icon name={passed ? "check" : "close"} size={36} />
+        </span>
+        <span className="kicker">{passed ? "Assessment passed" : "Not passed yet"}</span>
+        <h1>{passed ? `Well done${user?.firstName ? `, ${user.firstName}` : ""}.` : "Not this time."}</h1>
+        <p>
+          {passed
+            ? "You showed a sound understanding of the PSSA Code of Conduct."
+            : attempt.criticalFailed
+              ? "You missed at least one critical question. Those must all be right to pass, whatever the overall score."
+              : `You need at least ${EXAM_RULES.passPercent}% to pass. Go over the lessons before your next attempt.`}
+        </p>
+        <div className="score-ring">
+          <strong>{attempt.percent ?? 0}%</strong>
+          <span>Score</span>
+        </div>
+        <div className="score-meta">
+          <div>
+            <span>Pass mark</span>
+            <b>{EXAM_RULES.passPercent}%</b>
+          </div>
+          <div>
+            <span>Correct answers</span>
+            <b>
+              {attempt.score ?? 0} of {total}
+            </b>
+          </div>
+          <div>
+            <span>Critical questions</span>
+            <b>{attempt.criticalFailed ? "Missed" : "All right"}</b>
+          </div>
+        </div>
+        {passed ? (
+          <Notice tone="green" title="Your application can move to review">
+            We'll let you know once a PSSA reviewer has checked everything.
+          </Notice>
+        ) : (
+          <Notice tone="amber" title="You can try again later" icon="clock">
+            {status?.retakeOpensAt
+              ? `Your retake opens on ${formatDate(status.retakeOpensAt)}.`
+              : "A retake opens at least seven days after this attempt."}
+          </Notice>
+        )}
+        <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
+          <ButtonLink to={passed ? "/member" : "/member/tutorials"} variant="dark" full>
+            {passed ? "Return to your application" : "Review the lessons"}
+          </ButtonLink>
+          <Button variant="ghost" full onClick={onBack}>
+            Back to the assessment page
+          </Button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function History({ attempts }: { attempts: ExamAttempt[] }) {
+  return (
+    <Panel icon="file" title="Your attempts">
+      <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 10 }}>
+        {attempts.map((a, i) => (
+          <li key={a.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <span>
+              Attempt {attempts.length - i} · {a.submittedAt ? formatDate(a.submittedAt) : ""}
+            </span>
+            <span style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <b>{a.percent ?? 0}%</b>
+              <StatusBadge tone={a.passed ? "green" : "red"}>{a.passed ? "Passed" : "Not passed"}</StatusBadge>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Panel>
+  );
+}

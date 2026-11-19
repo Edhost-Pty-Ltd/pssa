@@ -7,6 +7,7 @@ import multer from "multer";
 import { badRequest } from "./http.js";
 
 const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+/** Private disk root — never serve via express.static; only through authenticated routes. */
 const PRIVATE_DIR = path.join(backendRoot, "storage", "private");
 mkdirSync(PRIVATE_DIR, { recursive: true });
 
@@ -17,16 +18,28 @@ const DOCUMENT_TYPES: Record<string, string> = {
   "image/webp": ".webp",
 };
 
+const documentDiskStorage = multer.diskStorage({
+  destination: PRIVATE_DIR,
+  filename: (_req, file, cb) => cb(null, `${randomBytes(16).toString("hex")}${DOCUMENT_TYPES[file.mimetype] ?? ""}`),
+});
+
+function documentFileFilter(_req: Express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) {
+  if (DOCUMENT_TYPES[file.mimetype]) cb(null, true);
+  else cb(badRequest("Unsupported file type. Upload a PDF, JPG, PNG or WebP file."));
+}
+
+/** Member verification documents — one file per request. */
 export const documentUpload = multer({
-  storage: multer.diskStorage({
-    destination: PRIVATE_DIR,
-    filename: (_req, file, cb) => cb(null, `${randomBytes(16).toString("hex")}${DOCUMENT_TYPES[file.mimetype] ?? ""}`),
-  }),
+  storage: documentDiskStorage,
   limits: { fileSize: 8 * 1024 * 1024, files: 1 },
-  fileFilter: (_req, file, cb) => {
-    if (DOCUMENT_TYPES[file.mimetype]) cb(null, true);
-    else cb(badRequest("Unsupported file type. Upload a PDF, JPG, PNG or WebP file."));
-  },
+  fileFilter: documentFileFilter,
+});
+
+/** Complaint evidence / member response attachments — up to five files per request. */
+export const complaintUpload = multer({
+  storage: documentDiskStorage,
+  limits: { fileSize: 8 * 1024 * 1024, files: 5 },
+  fileFilter: documentFileFilter,
 });
 
 const VIDEO_TYPES: Record<string, string> = {

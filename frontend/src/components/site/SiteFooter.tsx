@@ -15,7 +15,7 @@ const COLUMNS = [
   {
     title: "Customers",
     links: [
-      { label: "Verify a member", href: "/register" },
+      { label: "Member register", href: "/register" },
       { label: "Check a certificate", href: "/verify" },
       { label: "Buy safely", href: "/#buy-safely" },
       { label: "Customer order template", href: "/policies/order-template" },
@@ -29,6 +29,7 @@ const COLUMNS = [
       { label: "Verification Standard", href: "/policies/verification" },
       { label: "Complaints and Appeals", href: "/policies/complaints" },
       { label: "Privacy and Retention", href: "/policies/privacy" },
+      { label: "Badge Rules", href: "/policies/badge-rules" },
     ],
   },
 ];

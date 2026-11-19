@@ -19,6 +19,7 @@ function searchWhere(q: string): Prisma.ComplaintWhereInput {
       { contactName: { contains: q, mode: "insensitive" } },
       { contactEmail: { contains: q, mode: "insensitive" } },
       { description: { contains: q, mode: "insensitive" } },
+      { subjectLabel: { contains: q, mode: "insensitive" } },
       { member: { is: { firstName: { contains: q, mode: "insensitive" } } } },
       { member: { is: { lastName: { contains: q, mode: "insensitive" } } } },
       { member: { is: { tradingName: { contains: q, mode: "insensitive" } } } },
@@ -42,6 +43,7 @@ const listSelect = {
   outcome: true,
   isDraft: true,
   contactName: true,
+  subjectLabel: true,
   createdAt: true,
   acknowledgedAt: true,
   memberResponseDueAt: true,
@@ -92,6 +94,7 @@ function toListItem(row: ListRow, now: Date) {
     outcome: row.outcome,
     isDraft: row.isDraft,
     contactName: row.contactName,
+    subjectLabel: row.subjectLabel,
     createdAt: row.createdAt,
     member: member
       ? {
@@ -172,10 +175,12 @@ export async function complaintCase(id: string, now = new Date()) {
     outcome: row.outcome,
     isDraft: row.isDraft,
     description: row.description,
+    subjectLabel: row.subjectLabel,
     reasons: row.reasons,
     conflictDeclared: row.conflictDeclared,
     parties: {
       complainant: { name: row.contactName, email: row.contactEmail, phone: row.contactPhone, consentAt: row.consentAt },
+      subjectLabel: row.subjectLabel,
       member: row.member
         ? {
             id: row.member.id,
