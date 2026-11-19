@@ -385,6 +385,8 @@ model Complaint {
   referenceNumber     String?           @unique @map("reference_number")
   memberProfileId     String?           @map("member_profile_id")
   member              MemberProfile?    @relation(fields: [memberProfileId], references: [id])
+  /** Free-text name or social handle when the subject is not on the register (impersonation / badge_misuse). */
+  subjectLabel        String?           @map("subject_label")
   type                ComplaintType
   description         String?
   status              ComplaintStatus   @default(received)
