@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 
-// Icon set from the PSSA Figma design.
 export type IconName =
   | "arrow"
   | "badge"

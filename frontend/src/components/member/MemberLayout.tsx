@@ -5,7 +5,6 @@ import { Icon, type IconName } from "../Icon";
 import { Logo } from "../Logo";
 import "./member.css";
 
-// The member portal shell from the Figma design: navy sidebar, top bar, page content.
 const NAV: { to: string; icon: IconName; label: string; end?: boolean }[] = [
   { to: "/member", icon: "home", label: "Overview", end: true },
   { to: "/member/profile", icon: "user", label: "Profile" },
@@ -27,12 +26,12 @@ export function MemberLayout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
-  if (!user) return null; // RequireMember already handles this case.
+  if (!user) return null;
   const name = [user.firstName, user.lastName].filter(Boolean).join(" ");
 
   async function handleSignOut() {
     setSigningOut(true);
-    await signOut(); // RequireMember then shows sign-in with "You're signed out."
+    await signOut();
   }
 
   return (

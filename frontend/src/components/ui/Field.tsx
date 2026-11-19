@@ -2,9 +2,6 @@ import { useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttribu
 import { Icon, type IconName } from "../Icon";
 import "./ui.css";
 
-// Form fields: a label, the control, and a hint or an error message underneath.
-// The error is linked to the control (aria-describedby) so screen readers announce it.
-
 interface FieldShell {
   label: string;
   hint?: ReactNode;
@@ -55,7 +52,6 @@ export function TextField({ label, hint, error, required, icon, id, disabled, ..
 
 type TextAreaProps = FieldShell & TextareaHTMLAttributes<HTMLTextAreaElement>;
 
-/** A multi-line field. With `maxLength` set, it shows a "0 / 2,000 characters" counter like the design. */
 export function TextArea({ label, hint, error, required, id, maxLength, value, disabled, rows = 5, ...textarea }: TextAreaProps) {
   const autoId = useId();
   const fieldId = id ?? autoId;

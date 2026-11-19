@@ -10,10 +10,6 @@ import { ApiError, errorMessage } from "../../lib/api";
 import { fieldMessage } from "../../lib/fieldMessage";
 import { safeNext } from "../../lib/safeNext";
 
-// Member sign-in, as in the Figma file: email → one-time code → signed in. No password.
-// New members use the same flow: verifying a new email starts their application.
-// API: POST /api/auth/otp/send and POST /api/auth/otp/verify (docs/api-contract.md 6.1).
-
 const RESEND_SECONDS = 30;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -40,14 +36,12 @@ export default function SignIn() {
   const [fieldError, setFieldError] = useState<{ email?: string; code?: string }>({});
   const [cooldown, setCooldown] = useState(0);
 
-  // Count down the resend wait.
   useEffect(() => {
     if (cooldown <= 0) return;
     const timer = setTimeout(() => setCooldown((s) => s - 1), 1000);
     return () => clearTimeout(timer);
   }, [cooldown]);
 
-  // Already signed in as a member: go straight to the portal.
   if (user?.role === "MEMBER") return <Navigate to={next} replace />;
 
   async function requestCode(e?: FormEvent) {

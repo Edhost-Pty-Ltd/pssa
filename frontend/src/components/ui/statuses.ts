@@ -1,5 +1,3 @@
-// Status values from docs/api-contract.md (section 4), with the label and colour shown on screen.
-// Always send and receive the enum value (e.g. "needs_resubmission"); only the label is friendlier.
 import type { StatusTone } from "./StatusBadge";
 
 export type StatusMap = Record<string, { label: string; tone: StatusTone }>;
@@ -28,8 +26,6 @@ export const MEMBER_STATUS: StatusMap = {
   resigned: { label: "Resigned", tone: "grey" },
 };
 
-// What the public sees on the live check. Neutral wording: we say a member is not active,
-// never why (suspended, revoked, ...), so the public page doesn't make accusations.
 export const PUBLIC_MEMBER_STATUS: StatusMap = {
   active: { label: "Active member", tone: "green" },
   suspended: { label: "Not currently active", tone: "red" },

@@ -3,14 +3,9 @@ import { Icon, type IconName } from "../../components/Icon";
 import { SiteFooter } from "../../components/site/SiteFooter";
 import { SiteHeader } from "../../components/site/SiteHeader";
 
-// Policy pages: /policies/:slug (docs/api-contract.md 6.10: static pages, no API).
-// The approved wording comes from the PSSA senior. Until it arrives each page says what the
-// policy covers and that the official text is being finalised. No made-up policy wording.
-
 interface PolicyInfo {
   title: string;
   icon: IconName;
-  /** One line on what the document covers. */
   covers: string;
 }
 

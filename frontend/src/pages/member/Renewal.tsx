@@ -4,10 +4,6 @@ import { Icon, type IconName } from "../../components/Icon";
 import { Button, ButtonLink, ErrorState, LoadingState, Notice, Panel, StatusBadge, type StatusTone } from "../../components/ui";
 import { errorMessage } from "../../lib/api";
 
-// Annual renewal: GET /api/member/renewal, POST /start, POST /declaration (docs/api-contract.md 6.9).
-// Steps: keep documents accepted → pass the refresher assessment → accept the annual declaration,
-// which submits the renewal for a PSSA reviewer. Paying a fee never renews membership by itself.
-
 const DAY = 24 * 60 * 60 * 1000;
 const formatDate = (value: string) => new Date(value).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" });
 
@@ -22,7 +18,6 @@ const STATE_BADGE: Record<RenewalOverview["status"], { label: string; tone: Stat
   rejected: { label: "Not approved", tone: "red" },
 };
 
-/** Where each checklist step is done, with the member's own wording (not the backend's notes). */
 const STEPS: Record<ChecklistItem["key"], { icon: IconName; title: string; todo: string; done: string; link?: { to: string; label: string } }> = {
   documents: {
     icon: "shield",
@@ -179,10 +174,6 @@ function StateSection({ data, onChanged }: { data: RenewalOverview; onChanged: (
   }
 }
 
-/**
- * The last approved or rejected renewal. The backend only returns open renewals in `renewal`,
- * so after a decision this is how the member sees the outcome. Hidden while a new renewal is open.
- */
 function LastDecision({ data }: { data: RenewalOverview }) {
   const last = data.lastDecision;
   if (!last || data.renewal) return null;

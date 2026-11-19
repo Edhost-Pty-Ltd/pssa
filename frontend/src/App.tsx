@@ -22,9 +22,6 @@ import VerifyCertificate from "./pages/public/VerifyCertificate";
 import ScreensReference from "./screens-reference";
 
 // Routes
-// Public pages go in src/pages/public, member portal pages in src/pages/member.
-// Everything under /member needs a signed-in MEMBER (RequireMember).
-// /design shows the full Figma reference; pages that aren't built yet show "Coming soon".
 export default function App() {
   return (
     <BrowserRouter>

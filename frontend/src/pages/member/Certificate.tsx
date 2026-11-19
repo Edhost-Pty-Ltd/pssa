@@ -7,10 +7,6 @@ import { Logo } from "../../components/Logo";
 import { ButtonLink, EmptyState, ErrorState, LoadingState, Notice, Panel, PUBLIC_MEMBER_STATUS, Status } from "../../components/ui";
 import { errorMessage } from "../../lib/api";
 
-// Certificate & badge: GET /api/member/certificate (docs/api-contract.md 6.6).
-// The PDF (with the live-check QR code) comes from GET /api/member/certificate/pdf.
-// The badge link is the public live check, so anyone who clicks it sees the current status.
-
 type Loaded = { certificate: MemberCertificate | null; reason?: string; profile: MemberProfile; loadedAt: number };
 
 const DAY = 24 * 60 * 60 * 1000;

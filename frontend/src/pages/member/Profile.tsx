@@ -6,10 +6,6 @@ import { ApiError, errorMessage } from "../../lib/api";
 import { fieldMessage } from "../../lib/fieldMessage";
 import { isValidSaIdNumber } from "../../lib/saId";
 
-// Start an application / Profile. Uses GET and PATCH /api/member/profile (docs/api-contract.md 6.2).
-// Only fields that changed are sent. ID number and address are private: never shown publicly.
-// Identity is a South African ID or, for members without one, a passport (6-12 letters or digits).
-
 type Values = {
   firstName: string;
   lastName: string;
@@ -40,8 +36,6 @@ const LABELS: Record<keyof Values, string> = {
   tiktokUrl: "TikTok",
 };
 
-// People often type a handle ("nba.naledi", "@nba.naledi") or a link without https://.
-// Turn either into the full link the backend expects.
 const LINK_BASE = {
   facebookUrl: { kind: "facebook", domains: ["facebook.com", "fb.com"], prefix: "https://www.facebook.com/" },
   instagramUrl: { kind: "instagram", domains: ["instagram.com"], prefix: "https://www.instagram.com/" },
@@ -57,7 +51,7 @@ function normalizeLink(field: LinkField, raw: string) {
   if (/^https?:\/\//i.test(value)) return value;
   if (domains.some((d) => value.toLowerCase().replace(/^www\./, "").startsWith(d))) return `https://${value}`;
   if (/^@?[\w.-]+$/.test(value)) return prefix + value.replace(/^@/, "");
-  return value; // leave anything else for the check below to flag
+  return value;
 }
 
 function isLinkFor(field: LinkField, value: string) {
@@ -83,7 +77,7 @@ function toValues(profile: MemberProfile): Values {
     tradingName: p.tradingName ?? "",
     scope: p.scope ?? "",
     identityType: p.identityType ?? "",
-    idNumber: "", // the server only returns a masked number, so a new one is typed in fresh
+    idNumber: "",
     physicalAddress: p.physicalAddress ?? "",
     city: p.city ?? "",
     facebookUrl: channelFor(profile, "facebookUrl")?.value ?? "",
@@ -109,11 +103,9 @@ const IDENTITY_OPTIONS: { value: IdentityType; label: string }[] = [
 const isValidPassport = (value: string) => /^[A-Z0-9]{6,12}$/.test(value);
 const cleanId = (value: string) => value.replace(/\s/g, "").toUpperCase();
 
-/** The member already has a number on file for the identity type that's selected now. */
 const keepsNumberOnFile = (v: Values, initial: Values, hasIdOnFile: boolean) =>
   hasIdOnFile && v.identityType === initial.identityType;
 
-/** Checks one field. Returns an error message, or undefined when the field is fine. */
 function checkField(key: keyof Values, v: Values, initial: Values, hasIdOnFile: boolean): string | undefined {
   if (key === "identityType") return v.identityType ? undefined : "Choose South African ID or passport.";
   if (key === "idNumber") {
@@ -144,7 +136,6 @@ function validate(v: Values, initial: Values, hasIdOnFile: boolean) {
   return errors;
 }
 
-/** Only the fields that changed. Empty optional fields are sent as null so they are cleared. */
 function changes(initial: Values, v: Values): ProfileChanges {
   const out: ProfileChanges = {};
   const t = (key: keyof Values) => String(v[key]).trim();
@@ -153,7 +144,6 @@ function changes(initial: Values, v: Values): ProfileChanges {
   if (t("phone") !== initial.phone) out.phone = t("phone") || null;
   if (t("tradingName") !== initial.tradingName) out.tradingName = t("tradingName") || null;
   if (t("scope") !== initial.scope) out.scope = t("scope") || null;
-  // The backend checks the number against the type, so they always travel together.
   const id = cleanId(v.idNumber);
   if (id || (v.identityType && v.identityType !== initial.identityType)) {
     if (v.identityType) out.identityType = v.identityType;
@@ -229,7 +219,6 @@ export default function Profile() {
     if (errors[key]) setErrors({ ...errors, [key]: undefined });
   };
 
-  // When the member leaves a field: tidy a link, then check just that field.
   const leave = (key: keyof Values) => () => {
     let next = values;
     if ((LINK_FIELDS as string[]).includes(key)) {
@@ -267,7 +256,6 @@ export default function Profile() {
       setInitial(v);
       setValues(v);
       setSaved(true);
-      // Update the signed-in user so the sidebar shows the new name straight away.
       if (user) setUser({ ...user, firstName: profile.memberProfile.firstName, lastName: profile.memberProfile.lastName });
     } catch (err) {
       if (err instanceof ApiError && Object.keys(err.fields).length) {

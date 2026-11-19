@@ -4,12 +4,7 @@ import { Icon } from "../../components/Icon";
 import { ButtonLink, EmptyState, ErrorState, LoadingState, Notice } from "../../components/ui";
 import { errorMessage } from "../../lib/api";
 
-// Conduct tutorials: GET /api/tutorials/active, stream each video, and report progress
-// (docs/api-contract.md 6.4). A lesson is complete at 95% watched. The player won't let the
-// member drag ahead of what they've watched, and the backend ignores skips anyway.
-
 const REPORT_EVERY_SECONDS = 4;
-/** A little slack so small seeks backwards and forwards within what was watched are fine. */
 const SEEK_SLACK_SECONDS = 2;
 
 const formatTime = (seconds: number | null) => {
@@ -55,7 +50,6 @@ export default function Tutorials() {
 
   const doneCount = tutorials.filter((t) => t.completed).length;
   const allDone = tutorials.length > 0 && doneCount === tutorials.length;
-  // Default to the first lesson that isn't finished yet.
   const selected = tutorials.find((t) => t.id === selectedId) ?? tutorials.find((t) => !t.completed) ?? tutorials[0];
 
   const updateTutorial = (id: string, change: Partial<Tutorial>) =>
@@ -164,7 +158,6 @@ function Player({ tutorial, onProgress }: { tutorial: Tutorial; onProgress: (cha
         playsInline
         style={{ width: "100%", display: "block", background: "#0a2035", aspectRatio: "16 / 9" }}
         onLoadedMetadata={(e) => {
-          // Pick up where they left off, unless the lesson is already done.
           if (!tutorial.completed && maxRef.current > 0) e.currentTarget.currentTime = maxRef.current;
         }}
         onSeeking={(e) => {

@@ -1,13 +1,6 @@
 import { api, qs } from "../lib/api";
 import type { PublicMemberStatus } from "./verify";
 
-// Public member register: GET /api/search/members?q=&page=&pageSize= (docs/api-contract.md 6.7).
-// Only professional details: never ID numbers, banking, home addresses or email.
-//
-// The backend is moving from its first response shape (firstName/lastName/memberStatus) to the
-// fuller one in lib/publicRegisterQueries.ts (name/status/number). This file accepts both and
-// hands the pages one shape, so the switch-over doesn't break the site.
-
 export interface RegisterChannel {
   kind: string;
   value: string;
@@ -20,7 +13,6 @@ export interface RegisterMember {
   scope: string | null;
   status: PublicMemberStatus;
   validUntil: string | null;
-  /** Certificate number (PSSA-YYYY-XXXXXX), when the backend sends it. */
   number: string | null;
   channels: RegisterChannel[];
 }
@@ -32,7 +24,6 @@ export interface RegisterPage {
   total: number;
 }
 
-/** Either backend shape for one member. */
 interface RawMember {
   id: string;
   name?: string;

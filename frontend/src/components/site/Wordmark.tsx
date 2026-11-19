@@ -1,8 +1,5 @@
 import { Link } from "react-router-dom";
 
-// Placeholder wordmark until the team decides on a logo.
-// The Badge and Certificate Rules say not to invent a seal before artwork is approved,
-// so this is text only. Swap this one file when the logo is ready.
 export function Wordmark({ tone = "light" }: { tone?: "light" | "dark" }) {
   const main = tone === "light" ? "text-white" : "text-navy";
   const sub = tone === "light" ? "text-white/60" : "text-muted";

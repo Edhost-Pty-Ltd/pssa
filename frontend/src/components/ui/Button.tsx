@@ -3,7 +3,6 @@ import { Link, type LinkProps } from "react-router-dom";
 import { Icon, type IconName } from "../Icon";
 import "./ui.css";
 
-// Buttons use the design's .btn classes from index.css.
 export type ButtonVariant = "dark" | "green" | "light" | "ghost" | "outline";
 
 interface Common {
@@ -30,7 +29,6 @@ function Content({ icon, iconRight, loading, children }: Pick<Common, "icon" | "
 
 type ButtonProps = Common & ButtonHTMLAttributes<HTMLButtonElement> & { loading?: boolean };
 
-/** A button. Pass `loading` while a request is running: it shows a spinner and disables the button. */
 export function Button({ variant = "dark", full, icon, iconRight, loading, disabled, className, children, type = "button", ...rest }: ButtonProps) {
   return (
     <button
@@ -49,7 +47,6 @@ export function Button({ variant = "dark", full, icon, iconRight, loading, disab
 
 type ButtonLinkProps = Common & Omit<LinkProps, "children">;
 
-/** A link that looks like a button, for moving to another page. */
 export function ButtonLink({ variant = "dark", full, icon, iconRight, className, children, ...rest }: ButtonLinkProps) {
   return (
     <Link className={classes(variant, full, className)} {...rest}>

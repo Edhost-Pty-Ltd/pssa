@@ -9,10 +9,6 @@ import { SiteFooter } from "../../components/site/SiteFooter";
 import { SiteHeader } from "../../components/site/SiteHeader";
 import { ApiError, errorMessage } from "../../lib/api";
 
-// Raise a concern: POST /api/complaints (docs/api-contract.md 6.8). Always free.
-// The complainant never needs an account, a password or an ID upload.
-// The member is chosen from the live register, or identified by a certificate number.
-
 const TYPE_ICONS: Record<ComplaintType, IconName> = { misconduct: "flag", impersonation: "user", badge_misuse: "badge" };
 const MAX_DESCRIPTION = 5000;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

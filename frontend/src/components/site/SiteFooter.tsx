@@ -1,7 +1,6 @@
 import { Link } from "react-router-dom";
 import { Wordmark } from "./Wordmark";
 
-// Public site footer.
 const COLUMNS = [
   {
     title: "Association",

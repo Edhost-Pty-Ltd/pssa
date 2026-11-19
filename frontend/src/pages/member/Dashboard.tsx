@@ -6,10 +6,6 @@ import { APPLICATION_STATUS, Button, ButtonLink, Card, DOCUMENT_STATUS, ErrorSta
 import { useAuth } from "../../context/auth-context";
 import { ApiError, errorMessage } from "../../lib/api";
 
-// Application dashboard: six steps, overall progress and action-needed items, as in the Figma file.
-// Progress comes from GET /api/member/application; the server decides which gates have passed,
-// so this page never marks a step complete by itself.
-
 const STEP_ICON: Record<StepKey, IconName> = {
   profile: "user",
   documents: "shield",
@@ -27,7 +23,6 @@ const STEP_LINK: Partial<Record<StepKey, string>> = {
   certified: "/member/certificate",
 };
 
-// Action items can carry an application or a document status, plus "in_progress" for unfinished steps.
 const ACTION_STATUS: StatusMap = {
   ...APPLICATION_STATUS,
   ...DOCUMENT_STATUS,
@@ -55,7 +50,6 @@ export default function Dashboard() {
       .then((data) => setState({ kind: "ready", data }))
       .catch((err) => {
         if (controller.signal.aborted) return;
-        // 404: the progress endpoint hasn't been built on the backend yet.
         if (err instanceof ApiError && err.status === 404) setState({ kind: "not_available" });
         else setState({ kind: "error", message: errorMessage(err) });
       });
@@ -173,7 +167,6 @@ function Progress({ data }: { data: ApplicationOverview }) {
 function ActionNeeded({ data }: { data: ApplicationOverview }) {
   const { actions, steps } = data.progress;
 
-  // Nothing to fix: point to the next step that's open, if there is one.
   if (actions.length === 0) {
     const next = steps.find((s) => s.state === "in_progress" || s.state === "not_started" || s.state === "action_needed");
     const link = next && STEP_LINK[next.key];

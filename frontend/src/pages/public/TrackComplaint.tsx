@@ -7,10 +7,6 @@ import { SiteHeader } from "../../components/site/SiteHeader";
 import { COMPLAINT_STATUS, Status } from "../../components/ui";
 import { errorMessage } from "../../lib/api";
 
-// Track a complaint: GET /api/complaints/:reference?email= and POST /api/complaints/:id/appeal
-// (docs/api-contract.md 6.8). The complainant proves the report is theirs with the email they used.
-// The email is never put in the page address.
-
 const REFERENCE = /^PSSA-C-\d{4}-\d{4,}$/;
 const formatDate = (value: string) => new Date(value).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" });
 const TYPE_LABELS: Record<string, string> = { misconduct: "Misconduct", impersonation: "Impersonation", badge_misuse: "Badge misuse" };

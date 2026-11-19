@@ -1,6 +1,5 @@
 import { EmptyState } from "../../components/ui";
 
-// Placeholder for member sections planned in later tasks or phases.
 export default function NotBuiltYet({ title, when }: { title: string; when: string }) {
   return (
     <>
