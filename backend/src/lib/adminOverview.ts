@@ -1,5 +1,6 @@
 import { applicationSummary, listApplications } from "./adminApplicationQueries.js";
 import { listComplaints } from "./adminComplaintQueries.js";
+import { listListings } from "./adminListings.js";
 import { listMembers } from "./adminMemberQueries.js";
 import { prisma } from "./prisma.js";
 
@@ -7,7 +8,7 @@ const RECENT = 8;
 
 /**
  * Dashboard overview: aggregates existing admin list/summary queries.
- * customers/listings stay empty — Phase 1 has no those models (KG).
+ * customers stay empty (no CustomerMember model). Listings come from ShopperProfileListing.
  * cases maps to Complaint rows so the admin UI can keep a “cases” key.
  */
 export async function adminOverview() {
@@ -16,6 +17,7 @@ export async function adminOverview() {
     applications,
     members,
     complaints,
+    listings,
     memberStatusGroups,
     complaintStatusGroups,
     activeMembers,
@@ -25,6 +27,7 @@ export async function adminOverview() {
     listApplications({ page: 1, pageSize: RECENT, status: undefined }),
     listMembers({ page: 1, pageSize: RECENT }),
     listComplaints({ page: 1, pageSize: RECENT }),
+    listListings(),
     prisma.memberProfile.groupBy({ by: ["memberStatus"], _count: { _all: true } }),
     prisma.complaint.groupBy({
       by: ["status"],
@@ -61,9 +64,9 @@ export async function adminOverview() {
     /** Alias for complaints — Naledi’s overview used “cases”. */
     cases: complaints.items,
     complaints: complaints.items,
-    /** Out of Phase 1 scope (no CustomerMember / ShopperProfileListing models). */
+    /** Still no CustomerMember model — keep empty. */
     customers: [] as const,
-    listings: [] as const,
+    listings: listings.slice(0, RECENT),
     counts: {
       applications: applications.total,
       members: members.total,
@@ -71,7 +74,7 @@ export async function adminOverview() {
       openComplaints,
       activeMembers,
       customers: 0,
-      listings: 0,
+      listings: listings.length,
     },
   };
 }

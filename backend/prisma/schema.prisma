@@ -114,6 +114,12 @@ enum ReminderKind {
   expiry_confirmation
 }
 
+/** Admin specialty-profile moderation statuses (Shopper Profiles screen). */
+enum ShopperListingStatus {
+  ACTIVE
+  PENDING
+  PAUSED
+  FLAGGED
 enum AdminNotificationType {
   INFO
   WARNING
@@ -182,6 +188,7 @@ model MemberProfile {
   certificates       Certificate[]
   complaints         Complaint[]
   complaintResponses ComplaintResponse[]
+  specialtyListings  ShopperProfileListing[]
 
   @@index([memberStatus])
   @@map("member_profiles")
@@ -505,6 +512,27 @@ model ReminderPoint {
   @@map("reminder_points")
 }
 
+/**
+ * Admin-moderated specialty shopper profile cards (not a marketplace catalog).
+ * Optional link to MemberProfile; customers / public browse stay out of scope.
+ */
+model ShopperProfileListing {
+  id               String               @id @default(cuid())
+  title            String
+  shopperName      String               @map("shopper_name")
+  categoryId       String               @map("category_id")
+  categoryName     String               @map("category_name")
+  city             String
+  specialtySummary String               @map("specialty_summary")
+  status           ShopperListingStatus @default(PENDING)
+  memberProfileId  String?              @map("member_profile_id")
+  member           MemberProfile?       @relation(fields: [memberProfileId], references: [id], onDelete: SetNull)
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  @@index([status, createdAt])
+  @@index([memberProfileId])
+  @@map("shopper_profile_listings")
 /** Singleton association governance settings for the admin Settings page. */
 model AssociationSettings {
   id                          String   @id @default("default")
