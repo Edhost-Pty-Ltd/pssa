@@ -33,6 +33,15 @@ export interface ChecklistItem {
   detail: string;
 }
 
+/** The member's most recent approved or rejected renewal (null until there is one). */
+export interface RenewalDecision {
+  id: string;
+  status: "approved" | "rejected";
+  decisionReason: string | null;
+  decidedAt: string;
+  declarationVersion: string | null;
+}
+
 export interface RenewalOverview {
   validUntil: string | null;
   windowOpensAt: string | null;
@@ -41,6 +50,8 @@ export interface RenewalOverview {
   lastReminderAt: string | null;
   renewal: RenewalRecord | null;
   canStart: boolean;
+  /** Optional so the page still works against a backend without it. */
+  lastDecision?: RenewalDecision | null;
 }
 
 export const getRenewal = (signal?: AbortSignal) => api<RenewalOverview>("/member/renewal", { signal });
