@@ -5,6 +5,7 @@ import { getComplaintDetail, listComplaints } from "../lib/adminComplaintQueries
 import { addBusinessDays } from "../lib/businessDays.js";
 import { conflict, forbidden, notFound } from "../lib/http.js";
 import { applyPrivateFileHeaders, logPrivateFileAccess } from "../lib/privateFiles.js";
+import { notifyComplaintAppealDecision, notifyComplaintDecision, notifyMemberStatusChange } from "../lib/notifications.js";
 import { prisma } from "../lib/prisma.js";
 import { privateFilePath } from "../lib/uploads.js";
 import { requireRole } from "../middleware/auth.js";
@@ -170,11 +171,19 @@ adminComplaintsRouter.post("/complaints/:id/decision", async (req, res) => {
     where: { id: String(req.params.id) },
     select: {
       id: true,
+      referenceNumber: true,
       status: true,
       isDraft: true,
       outcome: true,
+      contactEmail: true,
       memberProfileId: true,
-      member: { select: { id: true, memberStatus: true } },
+      member: {
+        select: {
+          id: true,
+          memberStatus: true,
+          user: { select: { email: true } },
+        },
+      },
     },
   });
   if (!existing) throw notFound("Complaint not found.");
@@ -250,6 +259,27 @@ adminComplaintsRouter.post("/complaints/:id/decision", async (req, res) => {
     return member;
   });
 
+  await notifyComplaintDecision({
+    complainantEmail: existing.contactEmail,
+    memberEmail: existing.member?.user.email ?? null,
+    referenceNumber: existing.referenceNumber,
+    outcome: body.outcome,
+    reasons: body.reasons,
+    appealDeadline,
+    complaintId: existing.id,
+  });
+  if (memberUpdate?.memberStatus === "suspended" || memberUpdate?.memberStatus === "revoked") {
+    const memberEmail = existing.member?.user.email;
+    if (memberEmail) {
+      await notifyMemberStatusChange({
+        to: memberEmail,
+        status: memberUpdate.memberStatus,
+        reason: body.reasons,
+        memberProfileId: existing.memberProfileId!,
+      });
+    }
+  }
+
   res.json({
     complaint: await getComplaintDetail(existing.id),
     member: memberUpdate,
@@ -262,8 +292,11 @@ adminComplaintsRouter.post("/complaints/:id/appeal-decision", async (req, res) =
     where: { id: String(req.params.id) },
     select: {
       id: true,
+      referenceNumber: true,
+      contactEmail: true,
       status: true,
       reviewerId: true,
+      member: { select: { user: { select: { email: true } } } },
       appeals: {
         where: { decidedAt: null },
         orderBy: { lodgedAt: "desc" },
@@ -326,6 +359,15 @@ adminComplaintsRouter.post("/complaints/:id/appeal-decision", async (req, res) =
     });
 
     return decided;
+  });
+
+  await notifyComplaintAppealDecision({
+    complainantEmail: existing.contactEmail,
+    memberEmail: existing.member?.user.email ?? null,
+    referenceNumber: existing.referenceNumber,
+    decision: body.decision,
+    reasons: body.reasons,
+    complaintId: existing.id,
   });
 
   res.json({

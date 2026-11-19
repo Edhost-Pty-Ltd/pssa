@@ -8,6 +8,7 @@ import { issueCertificateOnActivation, liveCertificateStatus, serializeCertifica
 import { attemptHistory, hasPassedEntranceExam, tutorialCompletion } from "../lib/examReviewQueries.js";
 import { conflict, notFound } from "../lib/http.js";
 import { applyPrivateFileHeaders, logPrivateFileAccess } from "../lib/privateFiles.js";
+import { notifyApplicationDecision } from "../lib/notifications.js";
 import { prisma } from "../lib/prisma.js";
 import { privateFilePath } from "../lib/uploads.js";
 import { requireRole } from "../middleware/auth.js";
@@ -35,6 +36,7 @@ async function loadDecisionContext(applicationId: string) {
       user: {
         select: {
           id: true,
+          email: true,
           memberProfile: {
             select: { id: true, memberStatus: true, scope: true, firstName: true, lastName: true, tradingName: true },
           },
@@ -301,6 +303,15 @@ adminRouter.post("/applications/:id/decision", async (req, res) => {
     activated: result.activated,
     certificate: certificateOut,
   };
+
+  await notifyApplicationDecision({
+    to: application.user.email,
+    decision: body.decision,
+    applicationNumber: result.application.number,
+    activated: result.activated,
+    reason: body.reason,
+    applicationId: application.id,
+  });
 
   res.json({ application: result.application, activation: activationOut, certificate: certificateOut });
 });

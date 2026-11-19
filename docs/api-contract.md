@@ -231,8 +231,8 @@ The official exam is **30 questions in 45 minutes**, a pass mark of **at least 8
 | GET | `/api/tutorials/active` | Member or admin | **In:** cookie. **Out:** `200 { tutorials[] }` with title, duration and (for members) completion / watched seconds. Empty list includes a `reason` until official videos are active. | Exists |
 | GET | `/api/tutorials/:id/stream` | Member or admin | **In:** cookie. Supports HTTP Range. Inactive tutorials are admin-only. **Out:** the private video bytes. | Exists |
 | POST | `/api/tutorials/:id/progress` | Member | **In:** `{ positionSeconds, durationSeconds? }`. **Out:** `200 { progress }`. Max position advances by at most 5 seconds per report so skip-ahead cannot complete a lesson. Complete at ≥95% of duration. | Exists |
-| GET | `/api/exam/status` | Member | **In:** cookie. **Out:** `200 { open, passed, attempts, canStart, reason?, retakeOpensAt? }`. `canStart` is true only when tutorials are complete, active questions exist, and the retake window allows it. | Exists |
-| POST | `/api/exam/start` | Member | **In:** empty, or `{ type: "entrance" }` (refresher not Phase 1). **Out:** `201 { attempt, questions[], expiresAt }` — up to 30 active questions, no answer key, 45-minute `expiresAt`. Resumes an open unexpired attempt with `200`. | Exists |
+| GET | `/api/exam/status` | Member | **In:** query `type?` (`entrance` default, or `refresher`). **Out:** `200 { type, open, passed, attempts, canStart, reason?, retakeOpensAt? }`. Entrance still requires tutorials complete. Refresher requires an open renewal or an open renewal window (tutorials not re-required). | Exists |
+| POST | `/api/exam/start` | Member | **In:** empty, or `{ type: "entrance" \| "refresher" }` (default `entrance`). **Out:** `201 { attempt, questions[], expiresAt }` — up to 30 active questions, no answer key, 45-minute `expiresAt`. Resumes an open unexpired attempt with `200`. Refresher uses the same scoring rules; tutorials are not re-required. | Exists |
 | POST | `/api/exam/attempts/:id/submit` | Member | **In:** `{ answers }` as a map of questionId→optionId, or `[{ questionId, optionId }]`. **Out:** `200 { attempt }` with score, percent, passed (≥80% and every critical correct), and `criticalFailed`. Late or over-time submits are scored as a fail. | Exists |
 | GET | `/api/exam/attempts` | Member | **In:** cookie. **Out:** `200 { attempts[] }` (no answer key). | Exists |
 | POST | `/api/exam/attempts/:id/appeal` | Member | **In:** `{ reason }`. **Out:** `201 { appeal }`. | To build |
@@ -250,6 +250,7 @@ The official exam is **30 questions in 45 minutes**, a pass mark of **at least 8
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
 | GET | `/api/admin/summary` | Admin | **In:** none. **Out:** tiles such as awaiting review, needs information, average review time, approval rate. | Exists |
+| GET | `/api/admin/overview` | Admin | **In:** none. **Out:** dashboard aggregate over existing data: `summary` (application tiles + `activeMembers` / `openComplaints` / status breakdowns), recent `applications`, `members`, `complaints` (also as `cases`), `counts`, and empty `customers` / `listings` arrays (no Phase 1 models for those). Does not invent a second review or marketplace system. | Exists |
 | GET | `/api/admin/applications` | Admin | **In:** query `status?`, `q?`, `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }`. | Exists |
 | GET | `/api/admin/applications/:id` | Admin | **In:** path id. **Out:** `200 { application, activation }` with profile, documents, channels, reviews, decision history, and the four activation gates. No raw ID or bank files in the JSON — use the file endpoints. | Exists |
 | POST | `/api/admin/applications/:id/decision` | Admin | **In:** `{ decision: "approved" \| "rejected" \| "needs_info", reason, conflictDeclared: true }`. **Out:** `200 { application, activation, certificate }`. Reason (min 10 chars) and `conflictDeclared: true` are required for every decision. Approve requires verification docs accepted + agreement on file (`409` otherwise). Approve **records** the decision but sets `memberStatus: active` only when every gate passes (verification, exam, agreement, approval). The exam gate reads a passed entrance `ExamAttempt`. On activation a unique `PSSA-YYYY-XXXXXX` certificate is issued (`certificate` in the response); otherwise `certificate` is `null`. A fee flag alone must never set Active. | Exists |
@@ -269,8 +270,8 @@ A certificate is issued only after the gates and a recorded human approval have 
 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
-| GET | `/api/search/members` | Public | **In:** query `q` (name, trading name, member number or certificate number `PSSA-YYYY-XXXXXX`), `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }` with live status, scope, valid-until and verified channels only. Pending applicants are omitted. | To build |
-| GET | `/api/search/members/:id` | Public | **In:** path id or certificate number. **Out:** the same public payload as the live-check. `404` if the person is not publicly visible. | To build |
+| GET | `/api/search/members` | Public | **In:** query `q` (name, trading name, or certificate number `PSSA-YYYY-XXXXXX`), `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }` with `firstName`, `lastName`, `tradingName`, `scope`, certificate `number`, live `status` / `memberStatus`, `validUntil`, and confirmed `channels` only. Pending applicants (no membership / no certificate) are omitted. Status is computed live (expired dates never look Active). | Exists |
+| GET | `/api/search/members/:id` | Public | **In:** path `MemberProfile.id` or certificate number. **Out:** `200 { certificate }` — same public payload as `GET /api/verify/:certificateNumber`. `404` if the person is not publicly visible. | Exists |
 
 ### 6.8 Complaints and appeals
 
@@ -297,10 +298,10 @@ Complaints are new. They are always free. Service times in Africa/Johannesburg: 
 | POST | `/api/admin/members/:id/status` | Admin | **In:** `{ status: "active" \| "suspended" \| "expired" \| "revoked" \| "resigned", reason, conflictDeclared: true }`. **Out:** `200 { member, historyEntry }`. Writes `StatusHistory` + audit. Revoked/resigned/expired also updates the stored certificate status so live-check stays correct. | Exists |
 | GET | `/api/admin/members/:id/history` | Admin | **In:** path id. **Out:** `200 { history[] }`: from, to, reason, actor, `conflictDeclared`, at. | Exists |
 | GET | `/api/admin/audit` | Admin | **In:** query `q?`, `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }` from existing `AuditLog` rows (action, entity, reason, actor, at). | Exists |
-| GET | `/api/member/renewal` | Member | **In:** cookie. **Out:** `200 { validUntil, windowOpensAt, status, checklist, lastReminderAt? }`. | To build |
-| POST | `/api/member/renewal/start` | Member | **In:** empty, or `{ confirm: true }`. **Out:** `201 { renewal }` so the member can update documents and sit the refresher exam. | To build |
-| POST | `/api/member/renewal/declaration` | Member | **In:** `{ accepted: true, version, statements? }`. **Out:** `200 { renewal }`. | To build |
-| POST | `/api/admin/renewals/:id/decision` | Admin | **In:** `{ decision: "approved" \| "rejected" \| "needs_info", reason, conflictDeclared: true }`. **Out:** `200 { renewal, member }`. On approval, `validUntil` normally moves forward 12 months. A fee or payment must never lift a suspension or set Active by itself. Renewed certificates keep the `PSSA-YYYY-XXXXXX` format. | To build |
+| GET | `/api/member/renewal` | Member | **In:** cookie. **Out:** `200 { validUntil, windowOpensAt, status, checklist, lastReminderAt?, renewal?, canStart }`. Window opens 60 calendar days before `validUntil`. Checklist covers documents, **refresher** assessment (passed in this renewal cycle), and annual declaration. Admin approval requires the refresher item complete. | Exists |
+| POST | `/api/member/renewal/start` | Member | **In:** empty, or `{ confirm: true }`. **Out:** `201 { renewal }` so the member can update documents and sit the refresher exam. Blocked outside the window, while suspended/revoked/resigned, or if an open renewal already exists. | Exists |
+| POST | `/api/member/renewal/declaration` | Member | **In:** `{ accepted: true, version, statements? }`. **Out:** `200 { renewal }`. Sets declaration fields and moves the open renewal to `submitted`. | Exists |
+| POST | `/api/admin/renewals/:id/decision` | Admin | **In:** `{ decision: "approved" \| "rejected" \| "needs_info", reason, conflictDeclared: true }`. **Out:** `200 { renewal, member, certificate? }`. On approval, `validUntil` moves forward 12 months from the later of now or current expiry, member becomes `active`, and the certificate dates are updated (same `PSSA-YYYY-XXXXXX` number when already issued). Approval never lifts a suspension. | Exists |
 
 ### 6.10 Other
 
@@ -316,10 +317,12 @@ Policy pages (Code of Conduct, Privacy Policy, Complaints and Appeals, Badge Rul
 
 | Job | Owner | What it must do |
 | --- | --- | --- |
-| Expiry | KG, with Ryan on mail | When `validUntil` is reached, member status becomes `expired`. The live badge and public register must not show Active, even if this job failed — compute status from the stored date as well as from a flag. |
-| Renewal reminders | Ryan, with KG on dates | Try to email the member 60, 30 and 7 calendar days before expiry, and send a confirmation when expiry happens. These are a service target, not a right that keeps a badge Active. |
-| Complaint deadline mail | Ryan | Remind reviewers when the two-business-day acknowledgement or the 30-business-day decision target is close or overdue. |
+| Expiry | KG, with Ryan on mail | When `validUntil` is reached, member status becomes `expired`. The live badge and public register must not show Active, even if this job failed — compute status from the stored date as well as from a flag. Ryan’s `npm run jobs:mails` sends an expiry confirmation email (deduped via `AuditLog`); status flag updates remain KG’s expiry job. |
+| Renewal reminders | Ryan, with KG on dates | `npm run jobs:mails` emails the member 60, 30 and 7 calendar days before expiry (Africa/Johannesburg day match), deduped via `AuditLog`. These are a service target, not a right that keeps a badge Active. |
+| Complaint deadline mail | Ryan | `npm run jobs:mails` reminds admins when the two-business-day acknowledgement or the 30-business-day decision target is within ~24 hours or overdue. |
 | Privacy and retention | Ryan, with KG on queries | Remove or archive identity and bank files according to the published retention schedule. Do not keep private evidence for ever. |
+
+**Immediate (request-time) mail** — sent after the API action when SMTP is configured; failures are logged and never fail the HTTP request: application decision → applicant; member status change → member; complaint decision / appeal decision → complainant and named member. Renewal decision helper `notifyRenewalDecision` is ready to call from the renewal decision route once that PR is on `main`. Run scheduled mail with `npm run jobs:mails` in `backend/`.
 
 ---
 
