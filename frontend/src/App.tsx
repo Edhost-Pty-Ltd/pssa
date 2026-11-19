@@ -11,6 +11,7 @@ import Profile from "./pages/member/Profile";
 import SignIn from "./pages/member/SignIn";
 import Verification from "./pages/member/Verification";
 import Landing from "./pages/public/Landing";
+import Register from "./pages/public/Register";
 import VerifyCertificate from "./pages/public/VerifyCertificate";
 import ScreensReference from "./screens-reference";
 
@@ -24,6 +25,7 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/" element={<Landing />} />
+          <Route path="/register" element={<Register />} />
           <Route path="/verify" element={<VerifyCertificate />} />
           <Route path="/verify/:number" element={<VerifyCertificate />} />
 

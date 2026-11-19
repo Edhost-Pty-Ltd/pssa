@@ -41,9 +41,9 @@ export function FinalCta() {
                 </span>
               </Link>
             </Magnetic>
-            <a href="#register" className="inline-flex items-center gap-2 rounded-full border border-white/30 px-7 py-4 font-semibold text-white backdrop-blur-sm transition hover:bg-white/10">
+            <Link to="/register" className="inline-flex items-center gap-2 rounded-full border border-white/30 px-7 py-4 font-semibold text-white backdrop-blur-sm transition hover:bg-white/10">
               <Icon name="search" size={17} /> Check a shopper
-            </a>
+            </Link>
             <Link to="/policies/verification" className="link-underline text-sm font-semibold text-white/75 hover:text-white">
               Read the Verification Standard
             </Link>

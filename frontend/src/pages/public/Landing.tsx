@@ -9,7 +9,6 @@ import { Gates } from "./landing/Gates";
 import { Hero } from "./landing/Hero";
 import { LiveStatus } from "./landing/LiveStatus";
 import { ProfileAnatomy } from "./landing/ProfileAnatomy";
-import { RegisterSection } from "./landing/RegisterSection";
 import { Standards } from "./landing/Standards";
 import { TrustGap } from "./landing/TrustGap";
 import { useSmoothScroll } from "./landing/motion";
@@ -24,7 +23,6 @@ export default function Landing() {
       <SiteHeader transparent />
       <main>
         <Hero />
-        <RegisterSection />
         <WhatIsShopper />
         <TrustGap />
         <VerificationPipeline />

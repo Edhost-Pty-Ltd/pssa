@@ -134,9 +134,9 @@ export function CheckBeforeYouPay() {
         </div>
 
         <div className="mt-14 flex flex-wrap gap-4">
-          <a href="#register" className="inline-flex items-center gap-2 rounded-full bg-noir px-6 py-3.5 font-semibold text-white transition hover:bg-navy">
+          <Link to="/register" className="inline-flex items-center gap-2 rounded-full bg-noir px-6 py-3.5 font-semibold text-white transition hover:bg-navy">
             <Icon name="search" size={17} /> Check a shopper now
-          </a>
+          </Link>
           <Link to="/policies/order-template" className="inline-flex items-center gap-2 rounded-full border border-noir/20 px-6 py-3.5 font-semibold text-noir transition hover:border-noir hover:bg-white">
             <Icon name="download" size={17} /> Customer order template
           </Link>

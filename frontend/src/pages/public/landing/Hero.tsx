@@ -7,7 +7,7 @@ import { EASE } from "./motion";
 import { GrainOverlay, Magnetic, SplitWords } from "./ui";
 
 const RAIL: { icon: IconName; label: string; href: string }[] = [
-  { icon: "search", label: "Check a shopper", href: "#register" },
+  { icon: "search", label: "Check a shopper", href: "/register" },
   { icon: "badge", label: "Apply to join", href: "/member" },
   { icon: "flag", label: "Raise a concern", href: "/concern" },
 ];
@@ -104,7 +104,7 @@ export function Hero() {
         >
           <motion.img
             src={IMG.heroShopper}
-            alt="A confident Black South African personal shopper in a camel blazer, holding shopping bags and her phone"
+            alt="A charismatic Black South African personal shopper in an elevated silk blouse and high-waisted tailored trousers, smiling warmly while holding luxury shopping bags and her phone"
             initial={{ opacity: 0, scale: 1.06, filter: "blur(12px)" }}
             animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
             transition={{ duration: 1.6, ease: EASE }}
@@ -142,15 +142,15 @@ export function Hero() {
             className="mt-8 flex flex-wrap items-center gap-4"
           >
             <Magnetic>
-              <a
-                href="#register"
+              <Link
+                to="/register"
                 className="group inline-flex items-center gap-3 rounded-full bg-gold py-3.5 pl-7 pr-3 font-semibold text-noir shadow-[0_18px_40px_-12px_rgba(200,150,62,0.7)] transition hover:bg-gold-light"
               >
                 Check a shopper
                 <span className="flex size-8 items-center justify-center rounded-full bg-noir text-gold transition group-hover:rotate-[-45deg]">
                   <Icon name="arrow" size={16} />
                 </span>
-              </a>
+              </Link>
             </Magnetic>
             <Link to="/member" className="link-underline text-sm font-semibold text-white/85 hover:text-white">
               I'm a shopper. Apply to join

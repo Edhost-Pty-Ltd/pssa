@@ -247,7 +247,7 @@ export const AUDIENCES: { tag: string; title: string; text: string; image: strin
     title: "Shop with certainty.",
     text: "Check a shopper in seconds, get your order in writing and know there's a free, fair process if something goes wrong.",
     image: IMG.customer,
-    cta: { label: "Check a shopper", to: "/#register" },
+    cta: { label: "Check a shopper", to: "/register" },
   },
 ];
 
