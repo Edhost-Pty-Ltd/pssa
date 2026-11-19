@@ -8,6 +8,7 @@ import {
   type ExamAttempt,
   type ExamQuestion,
   type ExamStatus,
+  type ExamType,
 } from "../../api/learning";
 import { Icon } from "../../components/Icon";
 import { Button, ButtonLink, ErrorState, LoadingState, Notice, Panel, StatusBadge } from "../../components/ui";
@@ -24,9 +25,61 @@ type View = { kind: "overview" } | { kind: "taking"; sitting: Sitting } | { kind
 
 const formatDate = (value: string) => new Date(value).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" });
 
+// Wording that differs between the entrance assessment (joining) and the refresher (renewal).
+const COPY: Record<ExamType, {
+  kicker: string;
+  title: string;
+  intro: string;
+  passedTitle: string;
+  passedText: string;
+  lockedLink: { to: string; label: string };
+  resultPassTitle: string;
+  resultPassText: string;
+  doneLink: string;
+  doneLabel: string;
+  retryLink: string;
+  retryLabel: string;
+}> = {
+  entrance: {
+    kicker: "Application · Step 4 of 6",
+    title: "Entrance assessment",
+    intro: "A short test on the PSSA Code of Conduct. You need to pass it before your application goes to review.",
+    passedTitle: "You've passed the entrance assessment",
+    passedText: "Nothing more to do here. Your application moves on to review once every other step is complete.",
+    lockedLink: { to: "/member/tutorials", label: "Go to tutorials" },
+    resultPassTitle: "Your application can move to review",
+    resultPassText: "We'll let you know once a PSSA reviewer has checked everything.",
+    doneLink: "/member",
+    doneLabel: "Return to your application",
+    retryLink: "/member/tutorials",
+    retryLabel: "Review the lessons",
+  },
+  refresher: {
+    kicker: "Annual renewal",
+    title: "Refresher assessment",
+    intro: "A short test on the current Code of Conduct. You need to pass it once each year to renew your membership.",
+    passedTitle: "You've passed the refresher assessment",
+    passedText: "This counts for this year's renewal. Go back to Renewal to finish the remaining steps.",
+    lockedLink: { to: "/member/renewal", label: "Back to renewal" },
+    resultPassTitle: "This counts towards your renewal",
+    resultPassText: "Go back to Renewal to finish the remaining steps.",
+    doneLink: "/member/renewal",
+    doneLabel: "Back to renewal",
+    retryLink: "/member/tutorials",
+    retryLabel: "Watch the lessons again",
+  },
+};
+
 export default function Assessment() {
+  return <ExamPage type="entrance" />;
+}
+
+/** The whole assessment flow, for either the entrance assessment or the renewal refresher. */
+export function ExamPage({ type }: { type: ExamType }) {
+  const copy = COPY[type];
   const [status, setStatus] = useState<ExamStatus | null>(null);
   const [attempts, setAttempts] = useState<ExamAttempt[]>([]);
+  const [hasOpenAttempt, setHasOpenAttempt] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
   const [view, setView] = useState<View>({ kind: "overview" });
@@ -35,23 +88,27 @@ export default function Assessment() {
 
   useEffect(() => {
     const controller = new AbortController();
-    Promise.all([getExamStatus(controller.signal), getExamAttempts(controller.signal)])
+    Promise.all([getExamStatus(controller.signal, type), getExamAttempts(controller.signal)])
       .then(([s, a]) => {
+        const mine = a.attempts.filter((x) => x.type === type);
+        // Only an unfinished attempt that's still within its time can be resumed.
+        const loadedAt = Date.now();
         setStatus(s);
-        setAttempts(a.attempts);
+        setAttempts(mine);
+        setHasOpenAttempt(mine.some((x) => !x.submittedAt && new Date(x.expiresAt).getTime() > loadedAt));
         setError(null);
       })
       .catch((err) => {
         if (!controller.signal.aborted) setError(errorMessage(err));
       });
     return () => controller.abort();
-  }, [reload]);
+  }, [reload, type]);
 
   async function begin() {
     setStarting(true);
     setStartError(null);
     try {
-      const sitting = await startExam();
+      const sitting = await startExam(type);
       setView({ kind: "taking", sitting });
     } catch (err) {
       setStartError(errorMessage(err));
@@ -73,7 +130,7 @@ export default function Assessment() {
     );
   }
   if (view.kind === "result") {
-    return <Result attempt={view.attempt} total={view.total} status={status} onBack={() => setView({ kind: "overview" })} />;
+    return <Result attempt={view.attempt} total={view.total} status={status} copy={copy} onBack={() => setView({ kind: "overview" })} />;
   }
 
   if (error) {
@@ -90,27 +147,26 @@ export default function Assessment() {
   }
   if (!status) return <LoadingState rows={3} label="Loading the assessment" />;
 
-  const openAttempt = attempts.find((a) => !a.submittedAt && new Date(a.expiresAt).getTime() > new Date(a.startedAt).getTime());
 
   return (
     <>
       <div className="workspace-title">
         <div>
-          <span>Application · Step 4 of 6</span>
-          <h1>Entrance assessment</h1>
-          <p>A short test on the PSSA Code of Conduct. You need to pass it before your application goes to review.</p>
+          <span>{copy.kicker}</span>
+          <h1>{copy.title}</h1>
+          <p>{copy.intro}</p>
         </div>
         {status.passed && <StatusBadge tone="green">Passed</StatusBadge>}
       </div>
 
       <div style={{ display: "grid", gap: 18, maxWidth: 820 }}>
         {status.passed ? (
-          <Notice tone="green" title="You've passed the entrance assessment">
-            Nothing more to do here. Your application moves on to review once every other step is complete.
+          <Notice tone="green" title={copy.passedTitle}>
+            {copy.passedText}
           </Notice>
         ) : status.canStart ? (
-          <Notice tone="blue" title={openAttempt ? "You have an assessment in progress" : "You're ready to take the assessment"}>
-            {openAttempt
+          <Notice tone="blue" title={hasOpenAttempt ? "You have an assessment in progress" : "You're ready to take the assessment"}>
+            {hasOpenAttempt
               ? "Continue where you left off. The timer kept running while you were away."
               : "Set aside 45 minutes somewhere quiet. Once you start, the timer can't be paused."}
           </Notice>
@@ -140,12 +196,12 @@ export default function Assessment() {
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           {!status.passed && (
             <Button variant="green" onClick={begin} loading={starting} disabled={!status.canStart} iconRight="arrow">
-              {openAttempt ? "Continue assessment" : "Start assessment"}
+              {hasOpenAttempt ? "Continue assessment" : "Start assessment"}
             </Button>
           )}
           {!status.canStart && !status.passed && (
-            <ButtonLink to="/member/tutorials" variant="outline">
-              Go to tutorials
+            <ButtonLink to={copy.lockedLink.to} variant="outline">
+              {copy.lockedLink.label}
             </ButtonLink>
           )}
         </div>
@@ -369,7 +425,19 @@ function TakeExam({ sitting, onExit, onDone }: { sitting: Sitting; onExit: () =>
 
 /* Result */
 
-function Result({ attempt, total, status, onBack }: { attempt: ExamAttempt; total: number; status: ExamStatus | null; onBack: () => void }) {
+function Result({
+  attempt,
+  total,
+  status,
+  copy,
+  onBack,
+}: {
+  attempt: ExamAttempt;
+  total: number;
+  status: ExamStatus | null;
+  copy: (typeof COPY)[ExamType];
+  onBack: () => void;
+}) {
   const { user } = useAuth();
   const passed = attempt.passed === true;
   return (
@@ -408,8 +476,8 @@ function Result({ attempt, total, status, onBack }: { attempt: ExamAttempt; tota
           </div>
         </div>
         {passed ? (
-          <Notice tone="green" title="Your application can move to review">
-            We'll let you know once a PSSA reviewer has checked everything.
+          <Notice tone="green" title={copy.resultPassTitle}>
+            {copy.resultPassText}
           </Notice>
         ) : (
           <Notice tone="amber" title="You can try again later" icon="clock">
@@ -419,8 +487,8 @@ function Result({ attempt, total, status, onBack }: { attempt: ExamAttempt; tota
           </Notice>
         )}
         <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
-          <ButtonLink to={passed ? "/member" : "/member/tutorials"} variant="dark" full>
-            {passed ? "Return to your application" : "Review the lessons"}
+          <ButtonLink to={passed ? copy.doneLink : copy.retryLink} variant="dark" full>
+            {passed ? copy.doneLabel : copy.retryLabel}
           </ButtonLink>
           <Button variant="ghost" full onClick={onBack}>
             Back to the assessment page

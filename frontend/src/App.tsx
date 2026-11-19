@@ -4,7 +4,8 @@ import { RequireMember } from "./components/member/RequireMember";
 import { AuthProvider } from "./context/AuthProvider";
 import ComingSoon from "./pages/ComingSoon";
 import ComponentsPreview from "./pages/dev/ComponentsPreview";
-import Assessment from "./pages/member/Assessment";
+import Assessment, { ExamPage } from "./pages/member/Assessment";
+import Renewal from "./pages/member/Renewal";
 import Certificate from "./pages/member/Certificate";
 import Dashboard from "./pages/member/Dashboard";
 import MemberComplaints from "./pages/member/MemberComplaints";
@@ -47,6 +48,8 @@ export default function App() {
               <Route path="assessment" element={<Assessment />} />
               <Route path="certificate" element={<Certificate />} />
               <Route path="complaints" element={<MemberComplaints />} />
+              <Route path="renewal" element={<Renewal />} />
+              <Route path="renewal/refresher" element={<ExamPage type="refresher" />} />
               <Route path="*" element={<Navigate to="/member" replace />} />
             </Route>
           </Route>
