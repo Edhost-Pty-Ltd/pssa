@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { COMPLAINT_TYPES, MAX_EVIDENCE_FILES, realFieldErrors, submitComplaint, type ComplaintType } from "../../api/complaints";
+import { COMPLAINT_TYPES, FREE_TEXT_SUBJECT_TYPES, MAX_EVIDENCE_FILES, realFieldErrors, submitComplaint, type ComplaintType } from "../../api/complaints";
 import { ACCEPT_ATTRIBUTE, ACCEPTED_FILE_TYPES, MAX_FILE_MB } from "../../api/documents";
 import { initials, searchRegister, type RegisterMember } from "../../api/register";
 import { CERTIFICATE_PATTERN, normalizeCertificateNumber } from "../../api/verify";
@@ -17,7 +17,7 @@ const TYPE_ICONS: Record<ComplaintType, IconName> = { misconduct: "flag", impers
 const MAX_DESCRIPTION = 5000;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-type Who = { kind: "member"; member: RegisterMember } | { kind: "certificate"; number: string } | null;
+type Who = { kind: "member"; member: RegisterMember } | { kind: "certificate"; number: string } | { kind: "label"; label: string } | null;
 type Errors = Partial<Record<"type" | "member" | "description" | "contactName" | "contactEmail" | "evidence" | "consent", string>>;
 
 export default function RaiseConcern() {
@@ -41,7 +41,11 @@ export default function RaiseConcern() {
   function validate(): Errors {
     const e: Errors = {};
     if (!type) e.type = "Choose what you'd like to report.";
-    if (!who) e.member = "Find the member on the register, or enter the certificate number you were shown.";
+    if (!who) {
+      e.member = type && FREE_TEXT_SUBJECT_TYPES.includes(type)
+        ? "Find them on the register, enter a certificate number, or give their name or social handle."
+        : "Find the member on the register, or enter the certificate number you were shown.";
+    }
     if (description.trim().length < 20) e.description = "Tell us what happened in a few sentences (at least 20 characters).";
     if (!contactName.trim()) e.contactName = "Enter your name.";
     if (!EMAIL.test(contactEmail.trim())) e.contactEmail = "Enter a valid email address. We'll use it to update you.";
@@ -66,7 +70,11 @@ export default function RaiseConcern() {
         contactName: contactName.trim(),
         contactEmail: contactEmail.trim(),
         contactPhone: contactPhone.trim() || undefined,
-        ...(who.kind === "member" ? { memberProfileId: who.member.id } : { certificateNumber: who.number }),
+        ...(who.kind === "member"
+          ? { memberProfileId: who.member.id }
+          : who.kind === "certificate"
+            ? { certificateNumber: who.number }
+            : { subjectLabel: who.label }),
         consent,
         evidence: files,
       });
@@ -136,6 +144,7 @@ export default function RaiseConcern() {
                         key={t.value}
                         onClick={() => {
                           setType(t.value);
+                          if (who?.kind === "label" && !FREE_TEXT_SUBJECT_TYPES.includes(t.value)) setWho(null);
                           setErrors((x) => ({ ...x, type: undefined }));
                         }}
                         className={`rounded-xl border p-4 text-left transition ${picked ? "border-green bg-green-soft" : "border-line hover:border-green"}`}
@@ -156,6 +165,7 @@ export default function RaiseConcern() {
               >
                 <MemberPicker
                   who={who}
+                  allowLabel={type !== null && FREE_TEXT_SUBJECT_TYPES.includes(type)}
                   onChange={(next) => {
                     setWho(next);
                     setErrors((x) => ({ ...x, member: undefined }));
@@ -287,12 +297,14 @@ function Field({ id, label, error, children }: { id: string; label: string; erro
   );
 }
 
-function MemberPicker({ who, onChange }: { who: Who; onChange: (who: Who) => void }) {
+function MemberPicker({ who, allowLabel, onChange }: { who: Who; allowLabel: boolean; onChange: (who: Who) => void }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<RegisterMember[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [useNumber, setUseNumber] = useState(false);
+  const [mode, setMode] = useState<"search" | "number" | "label">("search");
+  const [label, setLabel] = useState("");
+  const [labelError, setLabelError] = useState<string | null>(null);
   const [number, setNumber] = useState("");
   const [numberError, setNumberError] = useState<string | null>(null);
 
@@ -307,10 +319,15 @@ function MemberPicker({ who, onChange }: { who: Who; onChange: (who: Who) => voi
               <p className="truncate text-sm text-muted">{[who.member.tradingName, who.member.scope].filter(Boolean).join(" · ")}</p>
             </div>
           </>
-        ) : (
+        ) : who.kind === "certificate" ? (
           <div className="min-w-0 flex-1">
             <p className="text-sm text-muted">Certificate number</p>
             <p className="font-mono font-semibold text-ink">{who.number}</p>
+          </div>
+        ) : (
+          <div className="min-w-0 flex-1">
+            <p className="text-sm text-muted">Not on the register</p>
+            <p className="font-semibold text-ink">{who.label}</p>
           </div>
         )}
         <button type="button" onClick={() => onChange(null)} className="text-sm font-semibold text-green-dark underline">
@@ -347,7 +364,41 @@ function MemberPicker({ who, onChange }: { who: Who; onChange: (who: Who) => voi
     onChange({ kind: "certificate", number: value });
   }
 
-  if (useNumber) {
+  function applyLabel() {
+    const value = label.trim();
+    if (value.length < 2) {
+      setLabelError("Enter the name or social handle they use, e.g. @shop.deals.sa.");
+      return;
+    }
+    onChange({ kind: "label", label: value });
+  }
+
+  if (mode === "label" && allowLabel) {
+    return (
+      <div>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <input
+            aria-label="Their name or social handle"
+            value={label}
+            maxLength={200}
+            onChange={(e) => setLabel(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), applyLabel())}
+            placeholder="Name or social handle, e.g. @shop.deals.sa"
+            className="flex-1 rounded-xl border border-line px-4 py-3 outline-none focus:border-green"
+          />
+          <button type="button" onClick={applyLabel} className="rounded-xl border border-line px-5 py-3 font-semibold text-navy hover:border-green">
+            Use this
+          </button>
+        </div>
+        {labelError && <p className="mt-2 text-sm font-semibold text-[#b42318]">{labelError}</p>}
+        <button type="button" onClick={() => setMode("search")} className="mt-3 text-sm font-semibold text-green-dark underline">
+          Search the register instead
+        </button>
+      </div>
+    );
+  }
+
+  if (mode === "number") {
     return (
       <div>
         <div className="flex flex-col gap-3 sm:flex-row">
@@ -364,7 +415,7 @@ function MemberPicker({ who, onChange }: { who: Who; onChange: (who: Who) => voi
           </button>
         </div>
         {numberError && <p className="mt-2 text-sm font-semibold text-[#b42318]">{numberError}</p>}
-        <button type="button" onClick={() => setUseNumber(false)} className="mt-3 text-sm font-semibold text-green-dark underline">
+        <button type="button" onClick={() => setMode("search")} className="mt-3 text-sm font-semibold text-green-dark underline">
           Search by name instead
         </button>
       </div>
@@ -412,9 +463,16 @@ function MemberPicker({ who, onChange }: { who: Who; onChange: (who: Who) => voi
           ))}
         </ul>
       )}
-      <button type="button" onClick={() => setUseNumber(true)} className="mt-3 text-sm font-semibold text-green-dark underline">
-        I have a certificate number instead
-      </button>
+      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
+        <button type="button" onClick={() => setMode("number")} className="text-sm font-semibold text-green-dark underline">
+          I have a certificate number instead
+        </button>
+        {allowLabel && (
+          <button type="button" onClick={() => setMode("label")} className="text-sm font-semibold text-green-dark underline">
+            They're not on the register
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -430,7 +488,7 @@ function EvidencePicker({ files, onChange, onError }: { files: File[]; onChange:
       if (file.size > MAX_FILE_MB * 1024 * 1024) return onError(`"${file.name}" is larger than ${MAX_FILE_MB} MB.`);
     }
     const next = [...files, ...picked].slice(0, MAX_EVIDENCE_FILES);
-    onError(files.length + picked.length > MAX_EVIDENCE_FILES ? `You can attach up to ${MAX_EVIDENCE_FILES} file${MAX_EVIDENCE_FILES === 1 ? "" : "s"}.` : undefined);
+    onError(files.length + picked.length > MAX_EVIDENCE_FILES ? `You can attach up to ${MAX_EVIDENCE_FILES} files.` : undefined);
     onChange(next);
   }
 
@@ -463,7 +521,7 @@ function EvidencePicker({ files, onChange, onError }: { files: File[]; onChange:
           className="flex w-full flex-col items-center gap-1 rounded-xl border-2 border-dashed border-line p-6 text-center hover:border-green"
         >
           <span className="text-muted"><Icon name="upload" size={24} /></span>
-          <span className="font-semibold text-ink">Choose a file</span>
+          <span className="font-semibold text-ink">Choose files (up to {MAX_EVIDENCE_FILES})</span>
           <span className="text-sm text-muted">Receipts, messages or screenshots · PDF, JPG, PNG or WebP · up to {MAX_FILE_MB} MB</span>
         </button>
       )}
@@ -472,7 +530,7 @@ function EvidencePicker({ files, onChange, onError }: { files: File[]; onChange:
         type="file"
         hidden
         accept={ACCEPT_ATTRIBUTE}
-        multiple={MAX_EVIDENCE_FILES > 1}
+        multiple
         onChange={(e) => {
           add(e.target.files);
           e.target.value = "";

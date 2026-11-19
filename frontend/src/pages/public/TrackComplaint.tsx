@@ -110,7 +110,7 @@ export default function TrackComplaint() {
 }
 
 function ComplaintView({ complaint: c, email, checkedAt, onChanged }: { complaint: PublicComplaint; email: string; checkedAt: number; onChanged: () => void }) {
-  const memberName = c.member ? `${c.member.firstName} ${c.member.lastName}` : null;
+  const memberName = c.member ? `${c.member.firstName} ${c.member.lastName}` : (c.subjectLabel ?? null);
   const canAppeal = c.status === "decided" && c.appeals.length === 0 && c.appealDeadline !== null && new Date(c.appealDeadline).getTime() > checkedAt;
 
   const timeline: { label: string; value: string | null }[] = [

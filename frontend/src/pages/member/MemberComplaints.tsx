@@ -163,12 +163,13 @@ function ResponseForm({ complaintId, onSent }: { complaintId: string; onSent: ()
   const inputRef = useRef<HTMLInputElement>(null);
 
   function pick(list: FileList | null) {
-    const file = list?.[0];
-    if (!file) return;
-    if (!ACCEPTED_FILE_TYPES.includes(file.type)) return setError(`"${file.name}" isn't a PDF, JPG, PNG or WebP file.`);
-    if (file.size > MAX_FILE_MB * 1024 * 1024) return setError(`"${file.name}" is larger than ${MAX_FILE_MB} MB.`);
-    setError(null);
-    setFiles([...files, file].slice(0, MAX_EVIDENCE_FILES));
+    const picked = Array.from(list ?? []);
+    for (const file of picked) {
+      if (!ACCEPTED_FILE_TYPES.includes(file.type)) return setError(`"${file.name}" isn't a PDF, JPG, PNG or WebP file.`);
+      if (file.size > MAX_FILE_MB * 1024 * 1024) return setError(`"${file.name}" is larger than ${MAX_FILE_MB} MB.`);
+    }
+    setError(files.length + picked.length > MAX_EVIDENCE_FILES ? `You can attach up to ${MAX_EVIDENCE_FILES} files.` : null);
+    setFiles([...files, ...picked].slice(0, MAX_EVIDENCE_FILES));
   }
 
   async function submit(e: FormEvent) {
@@ -228,6 +229,7 @@ function ResponseForm({ complaintId, onSent }: { complaintId: string; onSent: ()
           type="file"
           hidden
           accept={ACCEPT_ATTRIBUTE}
+          multiple
           onChange={(e) => {
             pick(e.target.files);
             e.target.value = "";

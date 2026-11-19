@@ -25,6 +25,8 @@ export interface PublicComplaint {
   /** Plain-language "what happens next" from the backend. */
   nextSteps: string;
   member: { firstName: string; lastName: string; tradingName: string | null } | null;
+  /** Name or social handle, when the person isn't on the register. */
+  subjectLabel?: string | null;
   evidenceCount: number;
   responseCount: number;
   appeals: { id: string; lodgedAt: string; decidedAt: string | null; decision: string | null }[];
@@ -43,8 +45,10 @@ export const OUTCOME_LABELS: Record<ComplaintOutcome, string> = {
   revocation: "Membership revoked",
 };
 
-/** The contract allows 5, but the backend's upload limit currently accepts 1 file per request (reported to Ryan). */
-export const MAX_EVIDENCE_FILES = 1;
+export const MAX_EVIDENCE_FILES = 5;
+
+/** Types that can name someone who isn't on the register (a name or social handle). Misconduct can't. */
+export const FREE_TEXT_SUBJECT_TYPES: ComplaintType[] = ["impersonation", "badge_misuse"];
 
 export interface NewComplaint {
   type: ComplaintType;
@@ -55,6 +59,8 @@ export interface NewComplaint {
   /** One of these identifies the member. */
   memberProfileId?: string;
   certificateNumber?: string;
+  /** Impersonation or badge misuse by someone not on the register. */
+  subjectLabel?: string;
   consent: boolean;
   evidence: File[];
 }
@@ -69,6 +75,7 @@ export function submitComplaint(report: NewComplaint) {
   if (report.contactPhone) form.set("contactPhone", report.contactPhone);
   if (report.memberProfileId) form.set("memberProfileId", report.memberProfileId);
   if (report.certificateNumber) form.set("certificateNumber", report.certificateNumber);
+  if (report.subjectLabel) form.set("subjectLabel", report.subjectLabel);
   form.set("consent", report.consent ? "true" : "false");
   for (const file of report.evidence) form.append("evidence", file);
   return api<{ complaint: PublicComplaint; referenceNumber: string | null }>("/complaints", { form });
