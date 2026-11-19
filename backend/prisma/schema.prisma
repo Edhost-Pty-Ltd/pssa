@@ -107,6 +107,13 @@ enum RenewalStatus {
   rejected
 }
 
+enum ReminderKind {
+  days_60
+  days_30
+  days_7
+  expiry_confirmation
+}
+
 model User {
   id              String    @id @default(cuid())
   email           String    @unique
@@ -159,6 +166,8 @@ model MemberProfile {
   updatedAt       DateTime       @updatedAt @map("updated_at")
 
   renewals           Renewal[]
+
+  reminderPoints     ReminderPoint[]
 
   channels           Channel[]
   statusHistory      StatusHistory[]
@@ -472,4 +481,18 @@ model Renewal {
 
   @@index([memberProfileId, status])
   @@map("renewals")
+}
+
+model ReminderPoint {
+  id              String        @id @default(cuid())
+  memberProfileId String        @map("member_profile_id")
+  member          MemberProfile @relation(fields: [memberProfileId], references: [id], onDelete: Cascade)
+  kind            ReminderKind
+  dueAt           DateTime      @map("due_at")
+  sentAt          DateTime?     @map("sent_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  @@unique([memberProfileId, kind, dueAt])
+  @@index([dueAt, sentAt])
+  @@map("reminder_points")
 }

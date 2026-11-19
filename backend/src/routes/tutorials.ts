@@ -1,20 +1,23 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { Router } from "express";
 import { z } from "zod";
-import { badRequest, forbidden, notFound } from "../lib/http.js";
+import { badRequest, conflict, forbidden, notFound } from "../lib/http.js";
+import { applyPrivateFileHeaders, logPrivateFileAccess } from "../lib/privateFiles.js";
 import { prisma } from "../lib/prisma.js";
 import { assertVideoSignature, privateFilePath, removePrivateFile, videoUpload } from "../lib/uploads.js";
 import { requireRole } from "../middleware/auth.js";
 
 /**
  * Tutorial listing, streaming, progress, and admin upload/activate.
- * Skip-ahead scrubbing cannot mark a lesson complete.
+ * Official catalogue is capped at four videos. Skip-ahead cannot mark a lesson complete.
  */
 export const tutorialsRouter = Router();
 
 const COMPLETE_RATIO = 0.95;
 /** Max seconds a single progress report may advance maxPosition (anti skip-ahead). */
 const MAX_JUMP_SECONDS = 5;
+/** Senior provides four official conduct tutorials; admin may store at most that many. */
+export const MAX_OFFICIAL_TUTORIALS = 4;
 
 async function requireMemberProfileId(userId: string) {
   const profile = await prisma.memberProfile.findUnique({ where: { userId }, select: { id: true } });
@@ -113,6 +116,20 @@ tutorialsRouter.get("/:id/stream", requireRole("MEMBER", "ADMIN"), async (req, r
   const mime = mimeForVideo(video.storagePath);
   const range = req.headers.range;
 
+  // Log once per stream open (skip tiny mid-file range probes after the first byte).
+  const rangeStart = range ? Number(/^bytes=(\d*)-/.exec(range)?.[1] || 0) : 0;
+  if (!range || rangeStart === 0) {
+    await logPrivateFileAccess({
+      actorId: req.user!.id,
+      action: "tutorial.stream_access",
+      entityType: "tutorial_video",
+      entityId: video.id,
+      reason: video.title,
+    });
+  }
+
+  applyPrivateFileHeaders(res, { contentType: mime });
+
   if (range) {
     const match = /^bytes=(\d*)-(\d*)$/.exec(range);
     if (!match) throw badRequest("Invalid Range header.");
@@ -127,14 +144,12 @@ tutorialsRouter.get("/:id/stream", requireRole("MEMBER", "ADMIN"), async (req, r
     res.setHeader("Content-Range", `bytes ${start}-${end}/${stat.size}`);
     res.setHeader("Accept-Ranges", "bytes");
     res.setHeader("Content-Length", String(end - start + 1));
-    res.setHeader("Content-Type", mime);
     createReadStream(filePath, { start, end }).pipe(res);
     return;
   }
 
   res.setHeader("Content-Length", String(stat.size));
   res.setHeader("Accept-Ranges", "bytes");
-  res.setHeader("Content-Type", mime);
   createReadStream(filePath).pipe(res);
 });
 
@@ -226,7 +241,13 @@ tutorialsRouter.get("/", async (_req, res) => {
       createdAt: true,
     },
   });
-  res.json({ tutorials });
+  const count = tutorials.length;
+  res.json({
+    tutorials,
+    limit: MAX_OFFICIAL_TUTORIALS,
+    count,
+    remaining: Math.max(0, MAX_OFFICIAL_TUTORIALS - count),
+  });
 });
 
 tutorialsRouter.post("/", videoUpload.single("file"), async (req, res) => {
@@ -237,6 +258,14 @@ tutorialsRouter.post("/", videoUpload.single("file"), async (req, res) => {
   if (!req.file) throw badRequest("Upload a video file.", { fields: { file: "is required" } });
 
   try {
+    const existingCount = await prisma.tutorialVideo.count();
+    if (existingCount >= MAX_OFFICIAL_TUTORIALS) {
+      throw conflict(
+        `Only ${MAX_OFFICIAL_TUTORIALS} official tutorial videos can be stored. Remove one before uploading another.`,
+        { fields: { file: "catalogue is full" }, limit: MAX_OFFICIAL_TUTORIALS, count: existingCount },
+      );
+    }
+
     await assertVideoSignature(req.file);
     const tutorial = await prisma.tutorialVideo.create({
       data: {
@@ -256,7 +285,13 @@ tutorialsRouter.post("/", videoUpload.single("file"), async (req, res) => {
         createdAt: true,
       },
     });
-    res.status(201).json({ tutorial });
+    const count = existingCount + 1;
+    res.status(201).json({
+      tutorial,
+      limit: MAX_OFFICIAL_TUTORIALS,
+      count,
+      remaining: Math.max(0, MAX_OFFICIAL_TUTORIALS - count),
+    });
   } catch (error) {
     await removePrivateFile(req.file.filename).catch(() => {});
     throw error;
@@ -314,4 +349,24 @@ tutorialsRouter.post("/:id/activate", async (req, res) => {
     },
   });
   res.json({ tutorial });
+});
+
+/** Remove a stored lesson so admin can replace a bad upload within the four-video cap. */
+tutorialsRouter.delete("/:id", async (req, res) => {
+  const existing = await prisma.tutorialVideo.findUnique({
+    where: { id: String(req.params.id) },
+    select: { id: true, storagePath: true },
+  });
+  if (!existing) throw notFound("Tutorial not found.");
+
+  await prisma.tutorialVideo.delete({ where: { id: existing.id } });
+  await removePrivateFile(existing.storagePath).catch(() => {});
+
+  const count = await prisma.tutorialVideo.count();
+  res.json({
+    ok: true,
+    limit: MAX_OFFICIAL_TUTORIALS,
+    count,
+    remaining: Math.max(0, MAX_OFFICIAL_TUTORIALS - count),
+  });
 });
