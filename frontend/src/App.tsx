@@ -4,11 +4,12 @@ import { RequireMember } from "./components/member/RequireMember";
 import { AuthProvider } from "./context/AuthProvider";
 import ComingSoon from "./pages/ComingSoon";
 import ComponentsPreview from "./pages/dev/ComponentsPreview";
-import NotBuiltYet from "./pages/member/NotBuiltYet";
+import Assessment from "./pages/member/Assessment";
 import Certificate from "./pages/member/Certificate";
 import Dashboard from "./pages/member/Dashboard";
 import Profile from "./pages/member/Profile";
 import SignIn from "./pages/member/SignIn";
+import Tutorials from "./pages/member/Tutorials";
 import Verification from "./pages/member/Verification";
 import Landing from "./pages/public/Landing";
 import VerifyCertificate from "./pages/public/VerifyCertificate";
@@ -33,8 +34,8 @@ export default function App() {
               <Route index element={<Dashboard />} />
               <Route path="profile" element={<Profile />} />
               <Route path="verification" element={<Verification />} />
-              <Route path="tutorials" element={<NotBuiltYet title="Tutorials" when="Phase 2" />} />
-              <Route path="assessment" element={<NotBuiltYet title="Assessment" when="Phase 2" />} />
+              <Route path="tutorials" element={<Tutorials />} />
+              <Route path="assessment" element={<Assessment />} />
               <Route path="certificate" element={<Certificate />} />
               <Route path="*" element={<Navigate to="/member" replace />} />
             </Route>
