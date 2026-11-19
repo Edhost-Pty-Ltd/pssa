@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { RenewalStatus } from "@prisma/client";
 import { z } from "zod";
 import { ensureCertificatePdf } from "../lib/certificatePdf.js";
 import { issueCertificateOnActivation, liveCertificateStatus, serializeCertificate } from "../lib/certificates.js";
@@ -7,17 +8,72 @@ import { prisma } from "../lib/prisma.js";
 import {
   buildRenewalChecklist,
   findRenewalById,
+  listRenewals,
   nextValidUntil,
+  refresherResultForRenewal,
   serializeRenewal,
 } from "../lib/renewals.js";
 import { requireRole } from "../middleware/auth.js";
 
 /**
- * Admin renewal decisions on KG’s Renewal model.
+ * Admin renewal queue, detail, and decisions on KG’s Renewal model.
  * Approval extends validity; it never lifts a suspension or activates from a fee alone.
  */
 export const adminRenewalsRouter = Router();
 adminRenewalsRouter.use(requireRole("ADMIN"));
+
+const RENEWAL_STATUSES = ["draft", "submitted", "needs_info", "approved", "rejected"] as const satisfies readonly RenewalStatus[];
+
+const listQuerySchema = z.object({
+  status: z.enum(RENEWAL_STATUSES).optional(),
+  q: z.string().trim().optional(),
+  page: z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce.number().int().positive().max(100).default(20),
+});
+
+adminRenewalsRouter.get("/renewals", async (req, res) => {
+  const query = listQuerySchema.parse(req.query);
+  res.json(await listRenewals(query));
+});
+
+adminRenewalsRouter.get("/renewals/:id", async (req, res) => {
+  const renewal = await findRenewalById(String(req.params.id));
+  if (!renewal) throw notFound("Renewal not found.");
+
+  const member = renewal.member;
+  const refresherSince = renewal.startedAt ?? renewal.windowOpensAt ?? null;
+  const [checklist, refresher] = await Promise.all([
+    buildRenewalChecklist({
+      memberProfileId: member.id,
+      userId: member.userId,
+      renewal,
+    }),
+    refresherResultForRenewal(member.id, refresherSince),
+  ]);
+
+  res.json({
+    renewal: serializeRenewal(renewal),
+    member: {
+      id: member.id,
+      email: member.user.email,
+      firstName: member.firstName,
+      lastName: member.lastName,
+      tradingName: member.tradingName,
+      scope: member.scope,
+      memberStatus: member.memberStatus,
+      validFrom: member.validFrom,
+      validUntil: member.validUntil,
+      certificateNumber: member.certificates[0]?.number ?? null,
+    },
+    checklist,
+    declaration: {
+      acceptedAt: renewal.declarationAcceptedAt,
+      version: renewal.declarationVersion,
+      statements: renewal.declarationStatements,
+    },
+    refresher,
+  });
+});
 
 const decisionSchema = z.object({
   decision: z.enum(["approved", "rejected", "needs_info"]),
