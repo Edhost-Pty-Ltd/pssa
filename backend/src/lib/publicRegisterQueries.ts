@@ -62,11 +62,14 @@ function toPublicMember(row: PublicRow) {
   const validUntil = certificate?.validUntil ?? row.validUntil;
   return {
     id: row.id,
+    firstName: row.firstName,
+    lastName: row.lastName,
     name: `${row.firstName} ${row.lastName}`.trim(),
     tradingName: row.tradingName,
     number: certificate?.number ?? null,
     scope: certificate?.scope ?? row.scope,
     status: liveMemberStatus({ memberStatus: row.memberStatus, validUntil }),
+    memberStatus: liveMemberStatus({ memberStatus: row.memberStatus, validUntil }),
     validUntil,
     channels: row.channels.map((channel) => ({
       kind: channel.kind,
