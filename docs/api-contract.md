@@ -226,6 +226,8 @@ Uploads accept the types below, including bank and channel evidence, and allow r
 
 The official exam is **30 questions in 45 minutes**, a pass mark of **at least 80 percent**, and **every critical question correct**. After a fail, one retake is allowed after at least **seven calendar days**. After two failed attempts, further training and a reviewer’s approval are required. Tutorial content is blocked until the four official videos arrive; the official paper is blocked until the senior provides the 30 questions with critical ones marked.
 
+**Official tutorial catalogue (max 4).** Admin may store at most **four** `TutorialVideo` rows. Uploads beyond that return `409`. To replace a bad file, `DELETE` the row then upload again. New uploads start inactive (`isActive: false`); activate when ready for members. Frontend upload UI (admin): drag-and-drop or file picker posting `multipart/form-data` with field name **`file`**, plus `title` and optional `durationSeconds`. Member (seller) watch UI: list `GET /api/tutorials/active`, play via `GET /api/tutorials/:id/stream` (HTTP Range), report progress with `POST /api/tutorials/:id/progress`.
+
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
 | GET | `/api/tutorials/active` | Member or admin | **In:** cookie. **Out:** `200 { tutorials[] }` with title, duration and (for members) completion / watched seconds. Empty list includes a `reason` until official videos are active. | Exists |
@@ -236,10 +238,11 @@ The official exam is **30 questions in 45 minutes**, a pass mark of **at least 8
 | POST | `/api/exam/attempts/:id/submit` | Member | **In:** `{ answers }` as a map of questionId→optionId, or `[{ questionId, optionId }]`. **Out:** `200 { attempt }` with score, percent, passed (≥80% and every critical correct), and `criticalFailed`. Late or over-time submits are scored as a fail. | Exists |
 | GET | `/api/exam/attempts` | Member | **In:** cookie. **Out:** `200 { attempts[] }` (no answer key). | Exists |
 | POST | `/api/exam/attempts/:id/appeal` | Member | **In:** `{ reason }`. **Out:** `201 { appeal }`. | To build |
-| GET | `/api/tutorials` | Admin | **In:** cookie. **Out:** `200 { tutorials[] }` including inactive ones. | Exists |
-| POST | `/api/tutorials` | Admin | **In:** multipart `file` (MP4/WebM/MOV, max 200 MB) plus `title`, optional `durationSeconds`. **Out:** `201 { tutorial }` with `isActive: false`. | Exists |
+| GET | `/api/tutorials` | Admin | **In:** cookie. **Out:** `200 { tutorials[], limit: 4, count, remaining }` including inactive ones. | Exists |
+| POST | `/api/tutorials` | Admin | **In:** multipart `file` (MP4/WebM/MOV, max 200 MB) plus `title`, optional `durationSeconds`. **Out:** `201 { tutorial, limit, count, remaining }` with `isActive: false`. `409` when four videos are already stored. | Exists |
 | PATCH | `/api/tutorials/:id` | Admin | **In:** title, durationSeconds, isActive. **Out:** `200 { tutorial }`. | Exists |
 | POST | `/api/tutorials/:id/activate` | Admin | **In:** none. **Out:** `200 { tutorial }` with `isActive: true`. | Exists |
+| DELETE | `/api/tutorials/:id` | Admin | **In:** path id. **Out:** `200 { ok: true, limit, count, remaining }`. Deletes the private file and cascaded progress so a slot can be reused. | Exists |
 | GET | `/api/exam/questions` | Admin | **In:** cookie. **Out:** `200 { questions[] }` including `isCritical` and the correct option (admin only). | Exists |
 | POST | `/api/exam/attempts/:id/allow-retake` | Admin | **In:** `{ reason, conflictDeclared: true }`. **Out:** `200 { attempt, retake }`. Used after two failed attempts; records an audit unlock for one further attempt. | Exists |
 | GET | `/api/admin/applications/:id/tutorial` | Admin | **In:** path id. **Out:** `{ tutorial }` with completedCount / total / lessons. | Exists |
