@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { EXAM_PASS_PERCENT, normalizeAnswers, publicQuestion, scoreAttempt } from "./exam.js";
+import {
+  EXAM_PASS_PERCENT,
+  normalizeAnswers,
+  normalizeQuestionOptions,
+  publicQuestion,
+  scoreAttempt,
+  serializeAdminQuestion,
+} from "./exam.js";
 
 describe("exam rules", () => {
   const questions = [
@@ -51,5 +58,30 @@ describe("exam rules", () => {
     });
     assert.equal("correctOptionId" in publicQ, false);
     assert.equal(publicQ.id, "q1");
+  });
+
+  it("normalizes admin label options to stored text", () => {
+    assert.deepEqual(normalizeQuestionOptions([{ id: "a", label: "Yes" }, { id: "b", text: "No" }]), [
+      { id: "a", text: "Yes" },
+      { id: "b", text: "No" },
+    ]);
+  });
+
+  it("mirrors text as label on admin serialize", () => {
+    const now = new Date();
+    const admin = serializeAdminQuestion({
+      id: "q1",
+      prompt: "Example?",
+      options: [{ id: "a", text: "One" }],
+      correctOptionId: "a",
+      isCritical: false,
+      topic: null,
+      isActive: true,
+      sortOrder: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
+    assert.equal(admin.topic, "");
+    assert.deepEqual(admin.options, [{ id: "a", text: "One", label: "One" }]);
   });
 });

@@ -90,6 +90,47 @@ export function normalizeAnswers(raw: unknown): AnswerMap {
   return out;
 }
 
+/** Admin UI may send `label`; member scoring stores canonical `text`. */
+export type AdminOptionInput = { id: string; text?: string; label?: string };
+
+export function normalizeQuestionOptions(raw: unknown): QuestionOption[] {
+  if (!Array.isArray(raw)) return [];
+  const out: QuestionOption[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const id = String((row as AdminOptionInput).id ?? "").trim();
+    const text = String((row as AdminOptionInput).text ?? (row as AdminOptionInput).label ?? "").trim();
+    if (id && text) out.push({ id, text });
+  }
+  return out;
+}
+
+/** Admin payloads include `label` (Naledi UI) alongside stored `text`. */
+export function serializeAdminQuestion(
+  question: Pick<
+    ExamQuestion,
+    "id" | "prompt" | "options" | "correctOptionId" | "isCritical" | "topic" | "isActive" | "sortOrder" | "createdAt" | "updatedAt"
+  >,
+) {
+  const options = normalizeQuestionOptions(question.options).map((option) => ({
+    id: option.id,
+    text: option.text,
+    label: option.text,
+  }));
+  return {
+    id: question.id,
+    prompt: question.prompt,
+    options,
+    correctOptionId: question.correctOptionId,
+    isCritical: question.isCritical,
+    topic: question.topic ?? "",
+    isActive: question.isActive,
+    sortOrder: question.sortOrder,
+    createdAt: question.createdAt,
+    updatedAt: question.updatedAt,
+  };
+}
+
 export function scoreAttempt(
   questions: Array<Pick<ExamQuestion, "id" | "correctOptionId" | "isCritical">>,
   answers: AnswerMap,

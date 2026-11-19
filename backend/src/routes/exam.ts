@@ -3,9 +3,11 @@ import { z } from "zod";
 import {
   EXAM_DURATION_MS,
   normalizeAnswers,
+  normalizeQuestionOptions,
   pickExamQuestions,
   publicQuestion,
   scoreAttempt,
+  serializeAdminQuestion,
   serializeAttempt,
 } from "../lib/exam.js";
 import {
@@ -15,13 +17,13 @@ import {
   retakeWindow,
   tutorialCompletion,
 } from "../lib/examReviewQueries.js";
-import { conflict, notFound } from "../lib/http.js";
+import { badRequest, conflict, notFound } from "../lib/http.js";
 import { prisma } from "../lib/prisma.js";
 import { canStartRenewal, findOpenRenewal, renewalWindowOpensAt } from "../lib/renewals.js";
 import { requireRole } from "../middleware/auth.js";
 
 /**
- * Exam status, start, submit, and admin allow-retake.
+ * Exam status, start, submit, admin question bank CRUD, and allow-retake.
  * Questions sent to members never include the answer key.
  */
 export const examRouter = Router();
@@ -250,24 +252,162 @@ examRouter.post("/attempts/:id/submit", requireRole("MEMBER"), async (req, res) 
   res.json({ attempt: serializeAttempt(updated) });
 });
 
+const adminQuestionSelect = {
+  id: true,
+  prompt: true,
+  options: true,
+  correctOptionId: true,
+  isCritical: true,
+  topic: true,
+  isActive: true,
+  sortOrder: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+const optionSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    text: z.string().trim().min(1).optional(),
+    label: z.string().trim().min(1).optional(),
+  })
+  .refine((option) => Boolean(option.text?.trim() || option.label?.trim()), {
+    message: "each option needs text or label",
+  });
+
+const createQuestionSchema = z.object({
+  topic: z.string().trim().min(1, "topic is required"),
+  prompt: z.string().trim().min(1, "prompt is required"),
+  options: z.array(optionSchema).min(2, "at least two options are required"),
+  correctOptionId: z.string().trim().min(1),
+  isCritical: z.boolean().optional().default(false),
+  isActive: z.boolean().optional().default(true),
+  sortOrder: z.number().int().optional().default(0),
+});
+
+const patchQuestionSchema = z
+  .object({
+    topic: z.string().trim().min(1).optional(),
+    prompt: z.string().trim().min(1).optional(),
+    options: z.array(optionSchema).min(2).optional(),
+    correctOptionId: z.string().trim().min(1).optional(),
+    isCritical: z.boolean().optional(),
+    isActive: z.boolean().optional(),
+    sortOrder: z.number().int().optional(),
+  })
+  .refine((body) => Object.keys(body).length > 0, { message: "at least one field is required" });
+
+function assertCorrectOption(options: { id: string }[], correctOptionId: string) {
+  if (!options.some((option) => option.id === correctOptionId)) {
+    throw badRequest("correctOptionId must match one of the option ids.");
+  }
+}
+
 examRouter.get("/questions", requireRole("ADMIN"), async (_req, res) => {
   const questions = await prisma.examQuestion.findMany({
-    where: { isActive: true },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-    select: {
-      id: true,
-      prompt: true,
-      options: true,
-      correctOptionId: true,
-      isCritical: true,
-      topic: true,
-      isActive: true,
-      sortOrder: true,
-      createdAt: true,
-      updatedAt: true,
+    select: adminQuestionSelect,
+  });
+  res.json({ questions: questions.map(serializeAdminQuestion) });
+});
+
+examRouter.post("/questions", requireRole("ADMIN"), async (req, res) => {
+  const body = createQuestionSchema.parse(req.body ?? {});
+  const options = normalizeQuestionOptions(body.options);
+  if (options.length < 2) throw badRequest("At least two options with id and text/label are required.");
+  assertCorrectOption(options, body.correctOptionId);
+
+  const question = await prisma.examQuestion.create({
+    data: {
+      topic: body.topic,
+      prompt: body.prompt,
+      options,
+      correctOptionId: body.correctOptionId,
+      isCritical: body.isCritical,
+      isActive: body.isActive,
+      sortOrder: body.sortOrder,
+    },
+    select: adminQuestionSelect,
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      actorId: req.user!.id,
+      action: "exam.question_create",
+      entityType: "exam_question",
+      entityId: question.id,
+      reason: `Created assessment question (${body.topic})`,
+      conflictDeclared: true,
     },
   });
-  res.json({ questions });
+
+  res.status(201).json({ question: serializeAdminQuestion(question) });
+});
+
+examRouter.patch("/questions/:id", requireRole("ADMIN"), async (req, res) => {
+  const body = patchQuestionSchema.parse(req.body ?? {});
+  const existing = await prisma.examQuestion.findUnique({
+    where: { id: String(req.params.id) },
+    select: adminQuestionSelect,
+  });
+  if (!existing) throw notFound("Exam question not found.");
+
+  const options = body.options ? normalizeQuestionOptions(body.options) : normalizeQuestionOptions(existing.options);
+  if (body.options && options.length < 2) {
+    throw badRequest("At least two options with id and text/label are required.");
+  }
+  const correctOptionId = body.correctOptionId ?? existing.correctOptionId;
+  assertCorrectOption(options, correctOptionId);
+
+  const question = await prisma.examQuestion.update({
+    where: { id: existing.id },
+    data: {
+      ...(body.topic !== undefined ? { topic: body.topic } : {}),
+      ...(body.prompt !== undefined ? { prompt: body.prompt } : {}),
+      ...(body.options !== undefined ? { options } : {}),
+      ...(body.correctOptionId !== undefined ? { correctOptionId: body.correctOptionId } : {}),
+      ...(body.isCritical !== undefined ? { isCritical: body.isCritical } : {}),
+      ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
+      ...(body.sortOrder !== undefined ? { sortOrder: body.sortOrder } : {}),
+    },
+    select: adminQuestionSelect,
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      actorId: req.user!.id,
+      action: "exam.question_update",
+      entityType: "exam_question",
+      entityId: question.id,
+      reason: `Updated assessment question (${question.topic ?? question.id})`,
+      conflictDeclared: true,
+    },
+  });
+
+  res.json({ question: serializeAdminQuestion(question) });
+});
+
+examRouter.delete("/questions/:id", requireRole("ADMIN"), async (req, res) => {
+  const existing = await prisma.examQuestion.findUnique({
+    where: { id: String(req.params.id) },
+    select: { id: true, topic: true },
+  });
+  if (!existing) throw notFound("Exam question not found.");
+
+  await prisma.examQuestion.delete({ where: { id: existing.id } });
+
+  await prisma.auditLog.create({
+    data: {
+      actorId: req.user!.id,
+      action: "exam.question_delete",
+      entityType: "exam_question",
+      entityId: existing.id,
+      reason: `Removed assessment question (${existing.topic ?? existing.id})`,
+      conflictDeclared: true,
+    },
+  });
+
+  res.json({ ok: true });
 });
 
 const allowRetakeSchema = z.object({

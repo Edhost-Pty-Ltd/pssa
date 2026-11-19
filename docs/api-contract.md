@@ -243,7 +243,10 @@ The official exam is **30 questions in 45 minutes**, a pass mark of **at least 8
 | PATCH | `/api/tutorials/:id` | Admin | **In:** title, durationSeconds, isActive. **Out:** `200 { tutorial }`. | Exists |
 | POST | `/api/tutorials/:id/activate` | Admin | **In:** none. **Out:** `200 { tutorial }` with `isActive: true`. | Exists |
 | DELETE | `/api/tutorials/:id` | Admin | **In:** path id. **Out:** `200 { ok: true, limit, count, remaining }`. Deletes the private file and cascaded progress so a slot can be reused. | Exists |
-| GET | `/api/exam/questions` | Admin | **In:** cookie. **Out:** `200 { questions[] }` including `isCritical` and the correct option (admin only). | Exists |
+| GET | `/api/exam/questions` | Admin | **In:** cookie. **Out:** `200 { questions[] }` including inactive rows, `isCritical`, and the correct option (admin only). Each option includes stored `text` and a mirrored `label` for the admin UI. | Exists |
+| POST | `/api/exam/questions` | Admin | **In:** `{ topic, prompt, options[{ id, text\|label }], correctOptionId, isCritical?, isActive?, sortOrder? }`. Options accept `label` (admin UI) or `text` (canonical). **Out:** `201 { question }`. `400` if fewer than two options or `correctOptionId` is not in the option list. | Exists |
+| PATCH | `/api/exam/questions/:id` | Admin | **In:** any subset of create fields (including `isActive` toggle). **Out:** `200 { question }`. Same option/`correctOptionId` rules when those fields are sent. `404` if unknown. | Exists |
+| DELETE | `/api/exam/questions/:id` | Admin | **In:** path id. **Out:** `200 { ok: true }`. Hard-deletes the bank row (past attempts keep scored results by question id). `404` if unknown. | Exists |
 | POST | `/api/exam/attempts/:id/allow-retake` | Admin | **In:** `{ reason, conflictDeclared: true }`. **Out:** `200 { attempt, retake }`. Used after two failed attempts; records an audit unlock for one further attempt. | Exists |
 | GET | `/api/admin/applications/:id/tutorial` | Admin | **In:** path id. **Out:** `{ tutorial }` with completedCount / total / lessons. | Exists |
 | GET | `/api/admin/applications/:id/exam` | Admin | **In:** path id. **Out:** `{ exam }` with passed, attemptCount, latest score/time, and attempt history. | Exists |
