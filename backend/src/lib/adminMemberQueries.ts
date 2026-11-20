@@ -124,17 +124,34 @@ export async function getMemberDetail(memberProfileId: string) {
           actor: { select: { id: true, email: true, firstName: true, lastName: true } },
         },
       },
+      user: {
+        select: {
+          id: true,
+          email: true,
+          applications: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: {
+              id: true,
+              number: true,
+              status: true,
+              submittedAt: true,
+            },
+          },
+        },
+      },
     },
   });
   if (!row) return null;
 
-  const { statusHistory, physicalAddress, city, identityType, channels, ...listed } = row;
+  const { statusHistory, physicalAddress, city, identityType, channels, user, ...listed } = row;
   return {
-    ...serializeListedMember(listed),
+    ...serializeListedMember({ ...listed, user: { id: user.id, email: user.email } }),
     physicalAddress,
     city,
     identityType,
     channels,
+    application: user.applications[0] ?? null,
     history: statusHistory.map((entry) => ({
       id: entry.id,
       from: entry.fromStatus,
