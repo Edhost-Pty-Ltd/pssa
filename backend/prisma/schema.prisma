@@ -120,6 +120,8 @@ enum ShopperListingStatus {
   PENDING
   PAUSED
   FLAGGED
+}
+
 enum AdminNotificationType {
   INFO
   WARNING
@@ -533,6 +535,8 @@ model ShopperProfileListing {
   @@index([status, createdAt])
   @@index([memberProfileId])
   @@map("shopper_profile_listings")
+}
+
 /** Singleton association governance settings for the admin Settings page. */
 model AssociationSettings {
   id                          String   @id @default("default")
@@ -554,6 +558,7 @@ model AdminNotification {
   body      String
   type      AdminNotificationType @default(INFO)
   read      Boolean               @default(false)
+  link      String?
   sourceKey String?               @unique @map("source_key")
   createdAt DateTime              @default(now()) @map("created_at")
 

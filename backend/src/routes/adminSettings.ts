@@ -43,7 +43,7 @@ adminSettingsRouter.put("/settings", async (req, res) => {
 });
 
 adminSettingsRouter.get("/notifications", async (_req, res) => {
-  res.json(await listAdminNotifications());
+  res.json({ notifications: await listAdminNotifications() });
 });
 
 adminSettingsRouter.post("/notifications/read-all", async (_req, res) => {
