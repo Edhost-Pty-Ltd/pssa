@@ -322,7 +322,7 @@ Complaints are new. They are always free. Service times in Africa/Johannesburg: 
 | --- | --- | --- | --- | --- |
 | GET | `/api/admin/settings` | Admin | **In:** cookie. **Out:** association settings object (`associationName`, `supportEmail`, `annualMembershipFeeZar`, `verificationSlaHours`, `autoPublishApprovedListings`, `requireIdVerification`). Creates defaults on first read. | Exists |
 | PUT | `/api/admin/settings` | Admin | **In:** full settings object (same fields). **Out:** saved settings object. Writes an audit row. `autoPublishApprovedListings` is stored for the admin UI; Phase 1 has no specialty listings model to publish. | Exists |
-| GET | `/api/admin/notifications` | Admin | **In:** cookie. **Out:** JSON array of `{ id, title, body, type, read, createdAt }` (not wrapped). Seeds/upserts inbox rows from open applications and non-draft open complaints so the feed is live, not mock-only. | Exists |
+| GET | `/api/admin/notifications` | Admin | **In:** cookie. **Out:** `{ notifications: [{ id, title, body, type, read, link, createdAt }] }`. `link` is a dashboard path (`/admin/verifications`, `/admin/verifications/:id`, or `/admin/complaints`) or `null`. Creates inbox rows on member signup and application submit (deduped by `sourceKey`); GET also upserts rows from open applications and non-draft open complaints so the feed stays live. | Exists |
 | POST | `/api/admin/notifications/read-all` | Admin | **In:** none. **Out:** `200 { ok: true }`. Marks every notification as read. | Exists |
 
 ### 6.11 Other

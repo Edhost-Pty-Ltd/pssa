@@ -8,11 +8,66 @@ export function serializeAdminNotification(row: AdminNotification) {
     body: row.body,
     type: row.type,
     read: row.read,
+    link: row.link,
     createdAt: row.createdAt.toISOString(),
   };
 }
 
-/** Upsert inbox rows from open applications/complaints so the feed is not mock-only. */
+/** Create inbox row when a new MEMBER account is registered (password or first OTP). */
+export async function notifyAdminMemberSignup(input: {
+  userId: string;
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+}) {
+  const name = [input.firstName, input.lastName].filter((part) => part && part.trim()).join(" ").trim();
+  const who = name || input.email;
+  await prisma.adminNotification.upsert({
+    where: { sourceKey: `signup:${input.userId}` },
+    create: {
+      sourceKey: `signup:${input.userId}`,
+      title: "New member signup",
+      body: `${who} created a member account (${input.email}).`,
+      type: "INFO",
+      link: "/admin/verifications",
+    },
+    update: {
+      title: "New member signup",
+      body: `${who} created a member account (${input.email}).`,
+      type: "INFO",
+      link: "/admin/verifications",
+    },
+  });
+}
+
+/** Create inbox row when a member submits a verification application. */
+export async function notifyAdminApplicationSubmitted(input: {
+  applicationId: string;
+  number: string;
+  memberName: string;
+  tradingName?: string | null;
+}) {
+  const trading = input.tradingName ? ` (${input.tradingName})` : "";
+  await prisma.adminNotification.upsert({
+    where: { sourceKey: `application:${input.applicationId}` },
+    create: {
+      sourceKey: `application:${input.applicationId}`,
+      title: "New verification application",
+      body: `${input.memberName}${trading} submitted ${input.number}.`,
+      type: "INFO",
+      link: `/admin/verifications/${input.applicationId}`,
+    },
+    update: {
+      title: "New verification application",
+      body: `${input.memberName}${trading} submitted ${input.number}.`,
+      type: "INFO",
+      link: `/admin/verifications/${input.applicationId}`,
+      read: false,
+    },
+  });
+}
+
+/** Upsert inbox rows from open applications/complaints so the feed stays current on GET. */
 export async function ensureAdminNotificationsFromQueue() {
   const [applications, complaints] = await Promise.all([
     prisma.application.findMany({
@@ -58,19 +113,22 @@ export async function ensureAdminNotificationsFromQueue() {
         title: "Verification application needs review",
         body: `${name}${trading} — ${application.number} is ${application.status.replaceAll("_", " ")}.`,
         type: "INFO",
+        link: `/admin/verifications/${application.id}`,
         createdAt: application.updatedAt,
       },
       update: {
         title: "Verification application needs review",
         body: `${name}${trading} — ${application.number} is ${application.status.replaceAll("_", " ")}.`,
         type: "INFO",
+        link: `/admin/verifications/${application.id}`,
       },
     });
   }
 
   for (const complaint of complaints) {
     const ref = complaint.referenceNumber ?? complaint.id;
-    const type: AdminNotificationType = complaint.type === "impersonation" || complaint.type === "badge_misuse" ? "WARNING" : "INFO";
+    const type: AdminNotificationType =
+      complaint.type === "impersonation" || complaint.type === "badge_misuse" ? "WARNING" : "INFO";
     await prisma.adminNotification.upsert({
       where: { sourceKey: `complaint:${complaint.id}` },
       create: {
@@ -78,12 +136,14 @@ export async function ensureAdminNotificationsFromQueue() {
         title: "Open complaint requires attention",
         body: `${ref} (${complaint.type.replaceAll("_", " ")}) is ${complaint.status.replaceAll("_", " ")}.`,
         type,
+        link: `/admin/complaints`,
         createdAt: complaint.updatedAt,
       },
       update: {
         title: "Open complaint requires attention",
         body: `${ref} (${complaint.type.replaceAll("_", " ")}) is ${complaint.status.replaceAll("_", " ")}.`,
         type,
+        link: `/admin/complaints`,
       },
     });
   }

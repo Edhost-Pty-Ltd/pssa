@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import type { DocumentType } from "@prisma/client";
 import { z } from "zod";
+import { notifyAdminApplicationSubmitted } from "../lib/adminNotifications.js";
 import { certificatePdfDiskPath, ensureCertificatePdf } from "../lib/certificatePdf.js";
 import {
   findCertificateForMember,
@@ -592,6 +593,18 @@ memberRouter.post("/application/submit", async (req, res) => {
     },
     select: applicationSelect,
   });
+
+  const profile = member.memberProfile;
+  const memberName = profile
+    ? [profile.firstName, profile.lastName].filter(Boolean).join(" ") || profile.tradingName || member.email
+    : member.email;
+  await notifyAdminApplicationSubmitted({
+    applicationId: updated.id,
+    number: updated.number,
+    memberName,
+    tradingName: profile?.tradingName ?? null,
+  });
+
   res.status(existing ? 200 : 201).json({ application: serializeApplication(updated) });
 });
 

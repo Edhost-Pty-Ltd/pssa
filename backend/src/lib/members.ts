@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
+import { notifyAdminMemberSignup } from "./adminNotifications.js";
 import { conflict } from "./http.js";
 import { hashPassword, passwordSchema } from "./password.js";
 import { prisma } from "./prisma.js";
@@ -151,7 +152,7 @@ export async function createMember(input: MemberRegistration) {
   if (input.idNumber && (await prisma.memberProfile.findUnique({ where: { idNumber: input.idNumber }, select: { id: true } }))) {
     throw conflict("A member with this ID number is already registered.", { fields: { idNumber: "is already registered" } });
   }
-  return prisma.user.create({
+  const user = await prisma.user.create({
     data: {
       role: "MEMBER",
       email: input.email,
@@ -171,6 +172,13 @@ export async function createMember(input: MemberRegistration) {
     },
     select: userSelect,
   });
+  await notifyAdminMemberSignup({
+    userId: user.id,
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+  });
+  return user;
 }
 
 const passwordlessMemberSelect = { id: true, email: true, role: true } as const;
@@ -184,7 +192,7 @@ export async function findOrCreatePasswordlessMember(email: string) {
   if (existing) return existing;
 
   try {
-    return await prisma.user.create({
+    const created = await prisma.user.create({
       data: {
         role: "MEMBER",
         email,
@@ -195,6 +203,8 @@ export async function findOrCreatePasswordlessMember(email: string) {
       },
       select: passwordlessMemberSelect,
     });
+    await notifyAdminMemberSignup({ userId: created.id, email: created.email, firstName: "", lastName: "" });
+    return created;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return prisma.user.findUniqueOrThrow({ where: { email }, select: passwordlessMemberSelect });
