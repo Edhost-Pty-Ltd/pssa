@@ -759,6 +759,7 @@ const publicComplaintSelect = {
   type: true,
   status: true,
   description: true,
+  subjectLabel: true,
   isDraft: true,
   acknowledgedAt: true,
   memberResponseDueAt: true,
