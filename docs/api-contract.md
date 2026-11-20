@@ -305,7 +305,7 @@ Complaints are new. They are always free. Service times in Africa/Johannesburg: 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |
 | GET | `/api/admin/members` | Admin | **In:** query `status?` (`active` \| `suspended` \| `expired` \| `revoked` \| `resigned`), `q?`, `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }` with profile fields and latest certificate (live status). | Exists |
-| GET | `/api/admin/members/:id` | Admin | **In:** path id (`MemberProfile.id`). **Out:** `200 { member }` with status, certificate (`PSSA-YYYY-XXXXXX`), channels, identityType, and recent history. | Exists |
+| GET | `/api/admin/members/:id` | Admin | **In:** path id (`MemberProfile.id`). **Out:** `200 { member }` with status, certificate (`PSSA-YYYY-XXXXXX`), channels, identityType, recent history, and `application` — the member’s latest application (`{ id, number, status, submittedAt }` or `null`) so the admin UI can deep-link to `/admin/verifications/:id`. | Exists |
 | POST | `/api/admin/members/:id/status` | Admin | **In:** `{ status: "active" \| "suspended" \| "expired" \| "revoked" \| "resigned", reason, conflictDeclared: true }`. **Out:** `200 { member, historyEntry }`. Writes `StatusHistory` + audit. Revoked/resigned/expired also updates the stored certificate status so live-check stays correct. | Exists |
 | GET | `/api/admin/members/:id/history` | Admin | **In:** path id. **Out:** `200 { history[] }`: from, to, reason, actor, `conflictDeclared`, at. | Exists |
 | GET | `/api/admin/audit` | Admin | **In:** query `q?`, `page`, `pageSize`. **Out:** `200 { items, page, pageSize, total }` from existing `AuditLog` rows (action, entity, reason, actor, at). | Exists |
