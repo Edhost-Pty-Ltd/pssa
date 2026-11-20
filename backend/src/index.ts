@@ -6,6 +6,7 @@ const app = createApp();
 
 const server = app.listen(config.port, () => {
   console.log(`[api] PSSA API listening on http://localhost:${config.port}`);
+  void prisma.$connect().catch(() => {});
 });
 
 async function shutdown() {

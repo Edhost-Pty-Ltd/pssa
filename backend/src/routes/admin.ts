@@ -439,3 +439,41 @@ adminRouter.get("/applications/:id/exam", async (req, res) => {
     },
   });
 });
+
+async function toggleChannelHandler(id: string, channelId: string) {
+  let memberProfileId: string | null = null;
+  if (id.startsWith("member:")) {
+    memberProfileId = id.slice("member:".length);
+  } else {
+    const application = await prisma.application.findUnique({
+      where: { id },
+      select: { user: { select: { memberProfile: { select: { id: true } } } } },
+    });
+    if (!application) throw notFound("Application not found.");
+    memberProfileId = application.user.memberProfile?.id ?? null;
+  }
+  if (!memberProfileId) throw notFound("Member profile not found.");
+
+  const channel = await prisma.channel.findFirst({
+    where: { id: channelId, memberProfileId },
+    select: { id: true, kind: true, value: true, status: true },
+  });
+  if (!channel) throw notFound("Channel not found.");
+
+  const nextStatus = channel.status === "confirmed" ? "code_sent" : "confirmed";
+  return prisma.channel.update({
+    where: { id: channel.id },
+    data: { status: nextStatus },
+    select: { id: true, kind: true, value: true, status: true },
+  });
+}
+
+adminRouter.patch("/applications/:id/channels/:channelId", async (req, res) => {
+  const channel = await toggleChannelHandler(String(req.params.id), String(req.params.channelId));
+  res.json({ channel });
+});
+
+adminRouter.patch("/verifications/:id/channels/:channelId", async (req, res) => {
+  const channel = await toggleChannelHandler(String(req.params.id), String(req.params.channelId));
+  res.json({ channel });
+});

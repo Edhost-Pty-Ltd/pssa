@@ -592,6 +592,16 @@ memberRouter.post("/application/submit", async (req, res) => {
     },
     select: applicationSelect,
   });
+  await prisma.adminNotification
+    .create({
+      data: {
+        title: "Verification application submitted",
+        body: `Application ${updated.number} was submitted and is ready for admin review.`,
+        type: "INFO",
+        link: `/admin/verifications/${updated.id}`,
+      },
+    })
+    .catch(() => {});
   res.status(existing ? 200 : 201).json({ application: serializeApplication(updated) });
 });
 
@@ -757,6 +767,7 @@ const publicComplaintSelect = {
   id: true,
   referenceNumber: true,
   type: true,
+  subjectLabel: true,
   status: true,
   description: true,
   isDraft: true,

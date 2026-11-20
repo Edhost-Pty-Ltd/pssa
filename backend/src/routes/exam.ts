@@ -15,7 +15,7 @@ import {
   retakeWindow,
   tutorialCompletion,
 } from "../lib/examReviewQueries.js";
-import { conflict, notFound } from "../lib/http.js";
+import { badRequest, conflict, notFound } from "../lib/http.js";
 import { prisma } from "../lib/prisma.js";
 import { canStartRenewal, findOpenRenewal, renewalWindowOpensAt } from "../lib/renewals.js";
 import { requireRole } from "../middleware/auth.js";
@@ -250,24 +250,106 @@ examRouter.post("/attempts/:id/submit", requireRole("MEMBER"), async (req, res) 
   res.json({ attempt: serializeAttempt(updated) });
 });
 
+const questionSelect = {
+  id: true,
+  prompt: true,
+  options: true,
+  correctOptionId: true,
+  isCritical: true,
+  topic: true,
+  isActive: true,
+  sortOrder: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+const questionOptionSchema = z.object({
+  id: z.string().trim().min(1).max(20),
+  label: z.string().trim().min(1).max(400),
+});
+
+const createQuestionSchema = z.object({
+  topic: z.string().trim().min(1, "is required").max(120),
+  prompt: z.string().trim().min(5, "must be at least 5 characters").max(1000),
+  options: z.array(questionOptionSchema).min(2, "at least 2 options required").max(6),
+  correctOptionId: z.string().trim().min(1, "is required"),
+  isCritical: z.boolean().optional().default(false),
+  isActive: z.boolean().optional().default(true),
+  sortOrder: z.coerce.number().int().min(0).optional().default(0),
+});
+
+const patchQuestionSchema = createQuestionSchema
+  .partial()
+  .refine((body) => Object.values(body).some((value) => value !== undefined), {
+    error: "Provide at least one field to update.",
+  });
+
 examRouter.get("/questions", requireRole("ADMIN"), async (_req, res) => {
   const questions = await prisma.examQuestion.findMany({
-    where: { isActive: true },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-    select: {
-      id: true,
-      prompt: true,
-      options: true,
-      correctOptionId: true,
-      isCritical: true,
-      topic: true,
-      isActive: true,
-      sortOrder: true,
-      createdAt: true,
-      updatedAt: true,
-    },
+    select: questionSelect,
   });
   res.json({ questions });
+});
+
+examRouter.post("/questions", requireRole("ADMIN"), async (req, res) => {
+  const body = createQuestionSchema.parse(req.body ?? {});
+  if (!body.options.some((o) => o.id === body.correctOptionId)) {
+    throw badRequest("correctOptionId must match one of the provided options.");
+  }
+  const question = await prisma.examQuestion.create({
+    data: {
+      topic: body.topic,
+      prompt: body.prompt,
+      options: body.options,
+      correctOptionId: body.correctOptionId,
+      isCritical: body.isCritical,
+      isActive: body.isActive,
+      sortOrder: body.sortOrder,
+    },
+    select: questionSelect,
+  });
+  res.status(201).json({ question });
+});
+
+examRouter.patch("/questions/:id", requireRole("ADMIN"), async (req, res) => {
+  const body = patchQuestionSchema.parse(req.body ?? {});
+  const existing = await prisma.examQuestion.findUnique({
+    where: { id: String(req.params.id) },
+    select: { id: true, options: true, correctOptionId: true },
+  });
+  if (!existing) throw notFound("Exam question not found.");
+
+  const nextOptions = (body.options ?? existing.options) as { id: string; label: string }[];
+  const nextCorrectId = body.correctOptionId ?? existing.correctOptionId;
+  if (!nextOptions.some((o) => o.id === nextCorrectId)) {
+    throw badRequest("correctOptionId must match one of the options.");
+  }
+
+  const question = await prisma.examQuestion.update({
+    where: { id: existing.id },
+    data: {
+      ...(body.topic !== undefined ? { topic: body.topic } : {}),
+      ...(body.prompt !== undefined ? { prompt: body.prompt } : {}),
+      ...(body.options !== undefined ? { options: body.options } : {}),
+      ...(body.correctOptionId !== undefined ? { correctOptionId: body.correctOptionId } : {}),
+      ...(body.isCritical !== undefined ? { isCritical: body.isCritical } : {}),
+      ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
+      ...(body.sortOrder !== undefined ? { sortOrder: body.sortOrder } : {}),
+    },
+    select: questionSelect,
+  });
+  res.json({ question });
+});
+
+examRouter.delete("/questions/:id", requireRole("ADMIN"), async (req, res) => {
+  const existing = await prisma.examQuestion.findUnique({
+    where: { id: String(req.params.id) },
+    select: { id: true },
+  });
+  if (!existing) throw notFound("Exam question not found.");
+  await prisma.examQuestion.delete({ where: { id: existing.id } });
+  res.json({ ok: true });
 });
 
 const allowRetakeSchema = z.object({
