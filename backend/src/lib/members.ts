@@ -62,13 +62,6 @@ export const accountSchema = z.object({
   ),
 });
 
-/** Public sign-up can create MEMBER (the default) or CUSTOMER accounts, never ADMIN. */
-export const signUpRoleSchema = z.object({
-  role: optional(z.enum(["MEMBER", "CUSTOMER"], { error: "must be MEMBER or CUSTOMER" })).default("MEMBER"),
-});
-
-export const customerRegistrationSchema = accountSchema;
-
 export const memberRegistrationSchema = accountSchema.extend({
   idNumber: optional(
     z
@@ -81,7 +74,6 @@ export const memberRegistrationSchema = accountSchema.extend({
 });
 
 export type MemberRegistration = z.infer<typeof memberRegistrationSchema>;
-export type CustomerRegistration = z.infer<typeof customerRegistrationSchema>;
 
 export const userSelect = {
   id: true,
@@ -131,20 +123,6 @@ async function assertEmailFree(email: string) {
   if (await prisma.user.findUnique({ where: { email }, select: { id: true } })) {
     throw conflict("An account with this email already exists. Try signing in instead.", { fields: { email: "is already registered" } });
   }
-}
-
-export async function createCustomer(input: CustomerRegistration) {
-  await assertEmailFree(input.email);
-  return prisma.user.create({
-    data: {
-      role: "CUSTOMER",
-      email: input.email,
-      passwordHash: await hashPassword(input.password),
-      firstName: input.firstName,
-      lastName: input.lastName,
-    },
-    select: userSelect,
-  });
 }
 
 export async function createMember(input: MemberRegistration) {
