@@ -546,16 +546,15 @@ function SessionVerification({
     }
   }
 
-  const hasConfirmedChannel = channels.some((c) => c.status === "confirmed");
   const hasAllDocs = REQUIRED_DOCS.every((d) => docs.some((uploaded) => uploaded.type === d.type));
-  const canProceed = stepComplete || (hasConfirmedChannel && hasAllDocs);
+  const canProceed = stepComplete || hasAllDocs;
 
   return (
     <div className="space-y-6">
       {error && <div className="rounded-2xl border border-red-400/40 bg-red-950/50 p-4 text-sm text-red-100">{error}</div>}
 
       <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-5">
-        <p className="text-sm font-semibold text-white">1. Confirm a trading channel</p>
+        <p className="text-sm font-semibold text-white">1. Trading channels <span className="text-xs font-normal text-white/55">(optional)</span></p>
         <form onSubmit={onAddChannel} className="mt-3 flex flex-col gap-2.5 sm:flex-row">
           <select
             value={platform}
@@ -648,7 +647,7 @@ function SessionVerification({
 
       <div className="flex items-center justify-between gap-4">
         <p className="text-xs text-white/60">
-          {canProceed ? "Channel & documents saved." : "Confirm at least one channel and upload the 3 required documents to unlock 03."}
+          {canProceed ? "Required documents uploaded." : "Upload the 3 required documents to unlock 03 (channels are optional)."}
         </p>
         <button
           type="button"
