@@ -228,6 +228,12 @@ tutorialsRouter.post("/:id/progress", requireRole("MEMBER"), async (req, res) =>
 
 tutorialsRouter.use(requireRole("ADMIN"));
 
+async function recordTutorialAudit(actorId: string, action: string, entityId: string, reason: string) {
+  await prisma.auditLog.create({
+    data: { actorId, action, entityType: "tutorial_video", entityId, reason, conflictDeclared: true },
+  });
+}
+
 tutorialsRouter.get("/", async (_req, res) => {
   const tutorials = await prisma.tutorialVideo.findMany({
     orderBy: { createdAt: "asc" },
@@ -286,6 +292,7 @@ tutorialsRouter.post("/", videoUpload.single("file"), async (req, res) => {
       },
     });
     const count = existingCount + 1;
+    await recordTutorialAudit(req.user!.id, "tutorial.upload", tutorial.id, `Uploaded tutorial video "${tutorial.title}"`);
     res.status(201).json({
       tutorial,
       limit: MAX_OFFICIAL_TUTORIALS,
@@ -328,6 +335,7 @@ tutorialsRouter.patch("/:id", async (req, res) => {
       createdAt: true,
     },
   });
+  await recordTutorialAudit(req.user!.id, "tutorial.update", tutorial.id, `Updated tutorial "${tutorial.title}"`);
   res.json({ tutorial });
 });
 
@@ -348,6 +356,7 @@ tutorialsRouter.post("/:id/activate", async (req, res) => {
       createdAt: true,
     },
   });
+  await recordTutorialAudit(req.user!.id, "tutorial.update", tutorial.id, `Updated tutorial "${tutorial.title}"`);
   res.json({ tutorial });
 });
 
