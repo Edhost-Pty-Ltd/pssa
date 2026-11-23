@@ -485,6 +485,9 @@ memberRouter.patch("/profile", async (req, res) => {
 
 memberRouter.get("/certificate", async (req, res) => {
   const member = await loadMember(req.user!.id);
+  if (!member.memberProfile!.memberStatus) {
+    throw forbidden("Your application must be approved before accessing your certificate.");
+  }
   const certificate = await findCertificateForMember(member.memberProfile!.id);
   if (!certificate) {
     res.json({ certificate: null, reason: "No certificate has been issued yet." });
@@ -501,6 +504,9 @@ memberRouter.get("/certificate", async (req, res) => {
 memberRouter.get("/certificate/pdf", async (req, res) => {
   const member = await loadMember(req.user!.id);
   const profile = member.memberProfile!;
+  if (!profile.memberStatus) {
+    throw forbidden("Your application must be approved before accessing your certificate.");
+  }
   let certificate = await findCertificateForMember(profile.id);
   if (!certificate) throw notFound("No certificate has been issued yet.");
 
@@ -840,6 +846,9 @@ const publicComplaintSelect = {
 /** Cases naming this member (public-safe shape). Drafts are omitted. Newest first. */
 memberRouter.get("/complaints", async (req, res) => {
   const member = await loadMember(req.user!.id);
+  if (!member.memberProfile!.memberStatus) {
+    throw forbidden("Your application must be approved before accessing member concerns.");
+  }
   const rows = await prisma.complaint.findMany({
     where: { memberProfileId: member.memberProfile!.id, isDraft: false },
     orderBy: { createdAt: "desc" },
@@ -863,6 +872,9 @@ memberRouter.post("/complaints/:id/response", (req, res, next) => {
   const body = memberComplaintResponseSchema.parse(req.body ?? {});
   const files = (req.files as Express.Multer.File[] | undefined) ?? [];
   const member = await loadMember(req.user!.id);
+  if (!member.memberProfile!.memberStatus) {
+    throw forbidden("Your application must be approved before responding to member concerns.");
+  }
   const profileId = member.memberProfile!.id;
   const raw = String(req.params.id ?? "").trim();
 
