@@ -32,6 +32,7 @@ export function MemberLayout() {
 
   if (!user) return null;
   const name = [user.firstName, user.lastName].filter(Boolean).join(" ");
+  const isApproved = Boolean(user.memberProfile?.memberStatus);
 
   async function handleSignOut() {
     setSigningOut(true);
@@ -102,27 +103,39 @@ export function MemberLayout() {
           </button>
         </div>
 
-        <nav aria-label="Member journey navigation" className="border-t border-white/10 bg-white/[0.03]">
-          <div className="mx-auto flex max-w-7xl items-center gap-1.5 overflow-x-auto px-6 py-2.5">
-            {NAV.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) =>
-                  `inline-flex shrink-0 items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
-                    isActive
-                      ? "bg-green text-white shadow-[0_8px_24px_-6px_rgba(24,162,105,0.75)]"
-                      : "text-white/70 hover:bg-white/10 hover:text-white"
-                  }`
-                }
-              >
-                <Icon name={item.icon} size={14} />
-                {item.label}
-              </NavLink>
-            ))}
+        {isApproved ? (
+          <nav aria-label="Member account navigation" className="border-t border-white/10 bg-white/[0.03]">
+            <div className="mx-auto flex max-w-7xl items-center gap-1.5 overflow-x-auto px-6 py-2.5">
+              {NAV.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  className={({ isActive }) =>
+                    `inline-flex shrink-0 items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
+                      isActive
+                        ? "bg-green text-white shadow-[0_8px_24px_-6px_rgba(24,162,105,0.75)]"
+                        : "text-white/70 hover:bg-white/10 hover:text-white"
+                    }`
+                  }
+                >
+                  <Icon name={item.icon} size={14} />
+                  {item.label}
+                </NavLink>
+              ))}
+            </div>
+          </nav>
+        ) : (
+          <div className="border-t border-white/10 bg-white/[0.03]">
+            <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-2 text-xs text-white/70">
+              <span className="inline-flex items-center gap-2 font-semibold text-white">
+                <span className="size-2 rounded-full bg-green" />
+                Application Portal
+              </span>
+              <span>Complete your application to unlock your member account</span>
+            </div>
           </div>
-        </nav>
+        )}
 
         {menuOpen && (
           <div id="member-mobile-nav" className="border-t border-white/10 bg-navy/95 px-6 py-4 backdrop-blur-xl md:hidden">

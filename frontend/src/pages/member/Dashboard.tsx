@@ -710,7 +710,7 @@ function SessionTutorials({ stepComplete, onContinue }: { stepComplete: boolean;
       {error && <div className="rounded-2xl border border-red-400/40 bg-red-950/50 p-4 text-sm text-red-100">{error}</div>}
       {!loading && tutorials.length === 0 && (
         <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-5 text-sm text-white/75">
-          No active tutorial videos are published yet. You can also check <Link to="/member/tutorials" className="text-green underline">the tutorials page</Link>.
+          No active tutorial videos are published yet. Please check back shortly.
         </div>
       )}
 
