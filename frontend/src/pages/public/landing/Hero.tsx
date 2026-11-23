@@ -104,7 +104,7 @@ export function Hero() {
         </motion.div>
 
         <motion.div
-          className="pointer-events-none relative z-[5] order-2 -mt-4 h-[58svh] min-h-[380px] lg:absolute lg:inset-y-0 lg:bottom-0 lg:left-[40%] lg:mt-0 lg:h-[92%] lg:w-[44%] lg:-translate-x-1/2"
+          className="pointer-events-none relative z-[5] order-2 -mt-4 h-[58svh] min-h-[380px] lg:absolute lg:inset-y-0 lg:bottom-0 lg:left-[50%] lg:mt-0 lg:h-[92%] lg:w-[44%] lg:-translate-x-1/2"
           style={{ y: subjectY }}
         >
           <motion.img
@@ -158,7 +158,7 @@ export function Hero() {
               </Link>
             </Magnetic>
             <Link to="/member" className="link-underline text-sm font-semibold text-white/85 hover:text-white">
-              I'm a shopper. Apply to join
+              I want to be a shopper.
             </Link>
           </motion.div>
         </motion.div>

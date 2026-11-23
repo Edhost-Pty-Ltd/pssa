@@ -14,7 +14,7 @@ const COLUMNS = [
   {
     title: "Customers",
     links: [
-      { label: "Member register", href: "/register" },
+      { label: "Verify a member", href: "/register" },
       { label: "Check a certificate", href: "/verify" },
       { label: "Buy safely", href: "/#buy-safely" },
       { label: "Customer order template", href: "/policies/order-template" },
