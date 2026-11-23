@@ -5,6 +5,8 @@ import { api } from "../lib/api";
 export interface Tutorial {
   id: string;
   title: string;
+  description: string | null;
+  version: number;
   durationSeconds: number | null;
   createdAt: string;
   completed: boolean;
