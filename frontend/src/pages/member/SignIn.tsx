@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
-import { sendCode, verifyCode, type CodeSent } from "../../api/auth";
+import {
+  registerMember,
+  sendCode,
+  signInWithPassword,
+  verifyCode,
+  type CodeSent,
+} from "../../api/auth";
 import { Icon } from "../../components/Icon";
 import { Wordmark } from "../../components/site/Wordmark";
 import { useAuth } from "../../context/auth-context";
@@ -13,6 +19,8 @@ import { GrainOverlay } from "../public/landing/ui";
 const RESEND_SECONDS = 30;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const EASE = [0.22, 1, 0.36, 1] as const;
+
+type AuthMode = "password" | "register" | "otp";
 
 const JOURNEY_GATES = [
   { num: "01", title: "Identity & Scope", desc: "Name, trading profile, and city." },
@@ -44,12 +52,24 @@ export default function SignIn() {
   const [params] = useSearchParams();
   const next = safeNext(params.get("next"));
 
+  const [mode, setMode] = useState<AuthMode>("password");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+
   const [digits, setDigits] = useState<string[]>(["", "", "", "", "", ""]);
   const [sent, setSent] = useState<CodeSentWithDev | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [fieldError, setFieldError] = useState<{ email?: string; code?: string }>({});
+  const [fieldError, setFieldError] = useState<{
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    password?: string;
+    code?: string;
+  }>({});
   const [cooldown, setCooldown] = useState(0);
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -62,12 +82,90 @@ export default function SignIn() {
   }, [cooldown]);
 
   useEffect(() => {
-    if (sent) {
+    if (mode === "otp" && sent) {
       otpRefs.current[0]?.focus();
     }
-  }, [sent]);
+  }, [mode, sent]);
 
   if (user?.role === "MEMBER") return <Navigate to={next} replace />;
+
+  function switchMode(nextMode: AuthMode) {
+    setMode(nextMode);
+    setError(null);
+    setFieldError({});
+    if (nextMode !== "otp") {
+      setSent(null);
+      setDigits(["", "", "", "", "", ""]);
+    }
+  }
+
+  async function submitPasswordSignIn(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const cleanEmail = email.trim().toLowerCase();
+    const nextErrors: typeof fieldError = {};
+    if (!EMAIL.test(cleanEmail)) nextErrors.email = "Enter a valid email address.";
+    if (!password) nextErrors.password = "Enter your password.";
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldError(nextErrors);
+      return;
+    }
+
+    setFieldError({});
+    setBusy(true);
+    try {
+      const { user: signedInUser } = await signInWithPassword(cleanEmail, password);
+      setUser(signedInUser);
+      navigate(next, { replace: true });
+    } catch (err) {
+      setError(friendlyError(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitRegister(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const cleanEmail = email.trim().toLowerCase();
+    const nextErrors: typeof fieldError = {};
+    if (!firstName.trim()) nextErrors.firstName = "Enter your first name.";
+    if (!lastName.trim()) nextErrors.lastName = "Enter your last name.";
+    if (!EMAIL.test(cleanEmail)) nextErrors.email = "Enter a valid email address.";
+    if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+      nextErrors.password = "Use at least 8 characters with at least one letter and one number.";
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldError(nextErrors);
+      return;
+    }
+
+    setFieldError({});
+    setBusy(true);
+    try {
+      const { user: registeredUser } = await registerMember({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: cleanEmail,
+        password,
+      });
+      setUser(registeredUser);
+      navigate(next, { replace: true });
+    } catch (err) {
+      if (err instanceof ApiError && Object.keys(err.fields).length > 0) {
+        setFieldError({
+          firstName: err.fields.firstName ? fieldMessage("First name", err.fields.firstName) : undefined,
+          lastName: err.fields.lastName ? fieldMessage("Last name", err.fields.lastName) : undefined,
+          email: err.fields.email ? fieldMessage("That email address", err.fields.email) : undefined,
+          password: err.fields.password ? fieldMessage("Password", err.fields.password) : undefined,
+        });
+      } else {
+        setError(friendlyError(err));
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function requestCode(e?: FormEvent) {
     e?.preventDefault();
@@ -221,7 +319,6 @@ export default function SignIn() {
       />
       <GrainOverlay />
 
-      {/* Top minimal editorial bar */}
       <header className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between px-6 pt-7">
         <Wordmark />
         <Link
@@ -232,9 +329,8 @@ export default function SignIn() {
         </Link>
       </header>
 
-      {/* Main split frosted-glass stage */}
       <main className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 items-center px-6 py-10">
-        <div className="grid w-full items-stretch gap-6 lg:grid-cols-[1.08fr_0.92fr]">
+        <div className="grid w-full items-stretch gap-6 lg:grid-cols-[1.05fr_0.95fr]">
           {/* Left: Editorial luxury story & 4-gate preview */}
           <motion.section
             initial={{ opacity: 0, y: 18 }}
@@ -256,13 +352,13 @@ export default function SignIn() {
             <div className="relative z-10">
               <span className="inline-flex items-center gap-2 rounded-full border border-green/40 bg-green/15 px-3.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-green">
                 <span className="size-1.5 rounded-full bg-green" />
-                Passwordless Member Access
+                PSASA Member Portal
               </span>
               <h1 className="mt-5 font-display text-4xl font-semibold leading-[1.1] tracking-tight text-white">
                 South Africa’s accredited personal shopper standard.
               </h1>
               <p className="mt-4 max-w-md text-sm leading-relaxed text-white/75">
-                Start your verification application or resume where you left off. Your member account unlocks once an
+                Create your account or sign in to complete your application. Your full member account unlocks once an
                 officer approves your file.
               </p>
             </div>
@@ -286,19 +382,42 @@ export default function SignIn() {
             </div>
           </motion.section>
 
-          {/* Right: Frosted Glass Passwordless OTP Card */}
+          {/* Right: Frosted Glass Auth Card (Sign In / Create Account / OTP) */}
           <motion.section
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.65, delay: 0.08, ease: EASE }}
             className="flex flex-col justify-center rounded-3xl border border-white/20 bg-white/94 p-8 text-navy shadow-[0_30px_90px_-20px_rgba(0,0,0,0.55)] backdrop-blur-2xl sm:p-10"
           >
-            <div className="mb-6 flex items-center justify-between">
-              <span className="inline-flex items-center gap-2 rounded-full bg-navy/6 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-navy/70">
-                <Icon name="lock" size={12} />
-                {sent ? "Step 02 · Verify Code" : "Step 01 · Email OTP"}
-              </span>
-              <span className="text-xs font-medium text-navy/50">No password required</span>
+            {/* Mode Switcher */}
+            <div className="mb-6 grid grid-cols-3 gap-1 rounded-2xl bg-navy/6 p-1 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => switchMode("password")}
+                className={`rounded-xl py-2 transition ${
+                  mode === "password" ? "bg-white text-navy shadow-sm" : "text-navy/60 hover:text-navy"
+                }`}
+              >
+                Sign in
+              </button>
+              <button
+                type="button"
+                onClick={() => switchMode("register")}
+                className={`rounded-xl py-2 transition ${
+                  mode === "register" ? "bg-white text-navy shadow-sm" : "text-navy/60 hover:text-navy"
+                }`}
+              >
+                Create account
+              </button>
+              <button
+                type="button"
+                onClick={() => switchMode("otp")}
+                className={`rounded-xl py-2 transition ${
+                  mode === "otp" ? "bg-white text-navy shadow-sm" : "text-navy/60 hover:text-navy"
+                }`}
+              >
+                Email OTP
+              </button>
             </div>
 
             {(signedOut || params.get("signedOut")) && !sent && (
@@ -309,20 +428,286 @@ export default function SignIn() {
             )}
 
             <AnimatePresence mode="wait">
-              {!sent ? (
+              {mode === "password" && (
                 <motion.div
-                  key="step-email"
-                  initial={{ opacity: 0, x: -12 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 12 }}
-                  transition={{ duration: 0.3, ease: EASE }}
+                  key="mode-password"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.25, ease: EASE }}
                 >
-                  <h2 className="font-display text-3xl font-semibold tracking-tight text-navy">
-                    Enter the Member Portal
-                  </h2>
-                  <p className="mt-2 text-sm leading-relaxed text-navy/68">
-                    New to PSASA or returning to your application? Enter your email and we’ll send a one-time 6-digit
-                    code.
+                  <h2 className="font-display text-3xl font-semibold tracking-tight text-navy">Welcome back</h2>
+                  <p className="mt-1.5 text-sm leading-relaxed text-navy/68">
+                    Sign in with your email and password to continue your application or manage your membership.
+                  </p>
+
+                  {error && (
+                    <div
+                      role="alert"
+                      className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+                    >
+                      {error}
+                    </div>
+                  )}
+
+                  <form onSubmit={submitPasswordSignIn} noValidate className="mt-6 space-y-4">
+                    <div>
+                      <label htmlFor="signin-email" className="block text-xs font-bold uppercase tracking-[0.12em] text-navy/70">
+                        Email address
+                      </label>
+                      <div className="relative mt-1.5">
+                        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-navy/40">
+                          <Icon name="mail" size={17} />
+                        </span>
+                        <input
+                          id="signin-email"
+                          type="email"
+                          autoComplete="email"
+                          autoFocus
+                          placeholder="you@example.co.za"
+                          value={email}
+                          onChange={(e) => {
+                            setEmail(e.target.value);
+                            if (fieldError.email) setFieldError((f) => ({ ...f, email: undefined }));
+                          }}
+                          className={`w-full rounded-2xl border bg-white py-3.5 pl-11 pr-4 text-sm text-navy outline-none transition placeholder:text-navy/35 focus:ring-4 ${
+                            fieldError.email
+                              ? "border-red-400 focus:border-red-500 focus:ring-red-500/15"
+                              : "border-navy/15 focus:border-green focus:ring-green/15"
+                          }`}
+                          required
+                        />
+                      </div>
+                      {fieldError.email && <p className="mt-1.5 text-xs font-medium text-red-600">{fieldError.email}</p>}
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <label htmlFor="signin-password" className="block text-xs font-bold uppercase tracking-[0.12em] text-navy/70">
+                          Password
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword((v) => !v)}
+                          className="text-xs font-semibold text-navy/55 transition hover:text-navy"
+                        >
+                          {showPassword ? "Hide" : "Show"}
+                        </button>
+                      </div>
+                      <div className="relative mt-1.5">
+                        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-navy/40">
+                          <Icon name="lock" size={17} />
+                        </span>
+                        <input
+                          id="signin-password"
+                          type={showPassword ? "text" : "password"}
+                          autoComplete="current-password"
+                          placeholder="Enter your password"
+                          value={password}
+                          onChange={(e) => {
+                            setPassword(e.target.value);
+                            if (fieldError.password) setFieldError((f) => ({ ...f, password: undefined }));
+                          }}
+                          className={`w-full rounded-2xl border bg-white py-3.5 pl-11 pr-4 text-sm text-navy outline-none transition placeholder:text-navy/35 focus:ring-4 ${
+                            fieldError.password
+                              ? "border-red-400 focus:border-red-500 focus:ring-red-500/15"
+                              : "border-navy/15 focus:border-green focus:ring-green/15"
+                          }`}
+                          required
+                        />
+                      </div>
+                      {fieldError.password && <p className="mt-1.5 text-xs font-medium text-red-600">{fieldError.password}</p>}
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={busy}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-green px-6 py-3.5 text-sm font-semibold text-white shadow-[0_14px_32px_-10px_rgba(24,162,105,0.65)] transition hover:bg-green-dark disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {busy ? "Signing in…" : "Sign in"}
+                      {!busy && <Icon name="arrow" size={16} />}
+                    </button>
+                  </form>
+
+                  <p className="mt-5 text-center text-xs text-navy/60">
+                    Prefer a one-time code?{" "}
+                    <button
+                      type="button"
+                      onClick={() => switchMode("otp")}
+                      className="font-semibold text-green-dark underline underline-offset-2 hover:text-green"
+                    >
+                      Sign in with email OTP
+                    </button>
+                  </p>
+                </motion.div>
+              )}
+
+              {mode === "register" && (
+                <motion.div
+                  key="mode-register"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.25, ease: EASE }}
+                >
+                  <h2 className="font-display text-3xl font-semibold tracking-tight text-navy">Start your application</h2>
+                  <p className="mt-1.5 text-sm leading-relaxed text-navy/68">
+                    Create your applicant login with a password to begin the PSASA verification process.
+                  </p>
+
+                  {error && (
+                    <div
+                      role="alert"
+                      className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+                    >
+                      {error}
+                    </div>
+                  )}
+
+                  <form onSubmit={submitRegister} noValidate className="mt-6 space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label htmlFor="reg-first" className="block text-xs font-bold uppercase tracking-[0.12em] text-navy/70">
+                          First name
+                        </label>
+                        <input
+                          id="reg-first"
+                          type="text"
+                          autoComplete="given-name"
+                          placeholder="Lerato"
+                          value={firstName}
+                          onChange={(e) => {
+                            setFirstName(e.target.value);
+                            if (fieldError.firstName) setFieldError((f) => ({ ...f, firstName: undefined }));
+                          }}
+                          className={`mt-1.5 w-full rounded-2xl border bg-white px-4 py-3 text-sm text-navy outline-none transition placeholder:text-navy/35 focus:ring-4 ${
+                            fieldError.firstName
+                              ? "border-red-400 focus:border-red-500 focus:ring-red-500/15"
+                              : "border-navy/15 focus:border-green focus:ring-green/15"
+                          }`}
+                          required
+                        />
+                        {fieldError.firstName && <p className="mt-1 text-xs font-medium text-red-600">{fieldError.firstName}</p>}
+                      </div>
+                      <div>
+                        <label htmlFor="reg-last" className="block text-xs font-bold uppercase tracking-[0.12em] text-navy/70">
+                          Last name
+                        </label>
+                        <input
+                          id="reg-last"
+                          type="text"
+                          autoComplete="family-name"
+                          placeholder="Mokoena"
+                          value={lastName}
+                          onChange={(e) => {
+                            setLastName(e.target.value);
+                            if (fieldError.lastName) setFieldError((f) => ({ ...f, lastName: undefined }));
+                          }}
+                          className={`mt-1.5 w-full rounded-2xl border bg-white px-4 py-3 text-sm text-navy outline-none transition placeholder:text-navy/35 focus:ring-4 ${
+                            fieldError.lastName
+                              ? "border-red-400 focus:border-red-500 focus:ring-red-500/15"
+                              : "border-navy/15 focus:border-green focus:ring-green/15"
+                          }`}
+                          required
+                        />
+                        {fieldError.lastName && <p className="mt-1 text-xs font-medium text-red-600">{fieldError.lastName}</p>}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label htmlFor="reg-email" className="block text-xs font-bold uppercase tracking-[0.12em] text-navy/70">
+                        Email address
+                      </label>
+                      <div className="relative mt-1.5">
+                        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-navy/40">
+                          <Icon name="mail" size={17} />
+                        </span>
+                        <input
+                          id="reg-email"
+                          type="email"
+                          autoComplete="email"
+                          placeholder="you@example.co.za"
+                          value={email}
+                          onChange={(e) => {
+                            setEmail(e.target.value);
+                            if (fieldError.email) setFieldError((f) => ({ ...f, email: undefined }));
+                          }}
+                          className={`w-full rounded-2xl border bg-white py-3.5 pl-11 pr-4 text-sm text-navy outline-none transition placeholder:text-navy/35 focus:ring-4 ${
+                            fieldError.email
+                              ? "border-red-400 focus:border-red-500 focus:ring-red-500/15"
+                              : "border-navy/15 focus:border-green focus:ring-green/15"
+                          }`}
+                          required
+                        />
+                      </div>
+                      {fieldError.email && <p className="mt-1 text-xs font-medium text-red-600">{fieldError.email}</p>}
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <label htmlFor="reg-password" className="block text-xs font-bold uppercase tracking-[0.12em] text-navy/70">
+                          Create password
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword((v) => !v)}
+                          className="text-xs font-semibold text-navy/55 transition hover:text-navy"
+                        >
+                          {showPassword ? "Hide" : "Show"}
+                        </button>
+                      </div>
+                      <div className="relative mt-1.5">
+                        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-navy/40">
+                          <Icon name="lock" size={17} />
+                        </span>
+                        <input
+                          id="reg-password"
+                          type={showPassword ? "text" : "password"}
+                          autoComplete="new-password"
+                          placeholder="8+ chars with a letter & number"
+                          value={password}
+                          onChange={(e) => {
+                            setPassword(e.target.value);
+                            if (fieldError.password) setFieldError((f) => ({ ...f, password: undefined }));
+                          }}
+                          className={`w-full rounded-2xl border bg-white py-3.5 pl-11 pr-4 text-sm text-navy outline-none transition placeholder:text-navy/35 focus:ring-4 ${
+                            fieldError.password
+                              ? "border-red-400 focus:border-red-500 focus:ring-red-500/15"
+                              : "border-navy/15 focus:border-green focus:ring-green/15"
+                          }`}
+                          required
+                        />
+                      </div>
+                      {fieldError.password ? (
+                        <p className="mt-1 text-xs font-medium text-red-600">{fieldError.password}</p>
+                      ) : (
+                        <p className="mt-1 text-[11px] text-navy/55">Minimum 8 characters, including at least one letter and one number.</p>
+                      )}
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={busy}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-green px-6 py-3.5 text-sm font-semibold text-white shadow-[0_14px_32px_-10px_rgba(24,162,105,0.65)] transition hover:bg-green-dark disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {busy ? "Creating account…" : "Create account & start application"}
+                      {!busy && <Icon name="arrow" size={16} />}
+                    </button>
+                  </form>
+                </motion.div>
+              )}
+
+              {mode === "otp" && !sent && (
+                <motion.div
+                  key="mode-otp-email"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.25, ease: EASE }}
+                >
+                  <h2 className="font-display text-3xl font-semibold tracking-tight text-navy">One-time email code</h2>
+                  <p className="mt-1.5 text-sm leading-relaxed text-navy/68">
+                    Enter your email address and we’ll send a 6-digit verification code to sign you in.
                   </p>
 
                   {error && (
@@ -336,15 +721,15 @@ export default function SignIn() {
 
                   <form onSubmit={requestCode} noValidate className="mt-6 space-y-5">
                     <div>
-                      <label htmlFor="member-email" className="block text-xs font-bold uppercase tracking-[0.12em] text-navy/70">
+                      <label htmlFor="otp-email" className="block text-xs font-bold uppercase tracking-[0.12em] text-navy/70">
                         Email address
                       </label>
-                      <div className="relative mt-2">
+                      <div className="relative mt-1.5">
                         <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-navy/40">
                           <Icon name="mail" size={17} />
                         </span>
                         <input
-                          id="member-email"
+                          id="otp-email"
                           type="email"
                           autoComplete="email"
                           autoFocus
@@ -374,32 +759,19 @@ export default function SignIn() {
                       {!busy && <Icon name="arrow" size={16} />}
                     </button>
                   </form>
-
-                  <div className="mt-7 rounded-2xl border border-navy/10 bg-sand/45 p-4 text-xs leading-relaxed text-navy/75">
-                    <div className="flex items-start gap-3">
-                      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-navy text-white">
-                        <Icon name="shield" size={13} />
-                      </span>
-                      <div>
-                        <p className="font-semibold text-navy">Application-first verification</p>
-                        <p className="mt-0.5 text-navy/65">
-                          First-time emails automatically open a new application. Account features unlock once PSASA
-                          approves your file.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
                 </motion.div>
-              ) : (
+              )}
+
+              {mode === "otp" && sent && (
                 <motion.div
-                  key="step-otp"
+                  key="mode-otp-verify"
                   initial={{ opacity: 0, x: 12 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -12 }}
-                  transition={{ duration: 0.3, ease: EASE }}
+                  transition={{ duration: 0.25, ease: EASE }}
                 >
                   <h2 className="font-display text-3xl font-semibold tracking-tight text-navy">Check your inbox</h2>
-                  <p className="mt-2 text-sm leading-relaxed text-navy/68">
+                  <p className="mt-1.5 text-sm leading-relaxed text-navy/68">
                     Enter the 6-digit code sent to <strong className="text-navy">{sent.destination}</strong>. Expires at{" "}
                     <span className="font-medium text-navy">{expiryTime(sent.expiresAt)}</span>.
                   </p>

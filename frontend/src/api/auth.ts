@@ -37,6 +37,16 @@ export interface CodeSent {
 
 export const getSession = (signal?: AbortSignal) => api<{ user: User | null }>("/auth/me", { signal });
 
+export const signInWithPassword = (email: string, password: string) =>
+  api<{ user: User }>("/auth/login", { body: { email, password } });
+
+export const registerMember = (input: {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+}) => api<{ user: User; message: string }>("/auth/register", { body: { ...input, role: "MEMBER" } });
+
 export const sendCode = (email: string) => api<CodeSent>("/auth/otp/send", { body: { email } });
 
 export const verifyCode = (email: string, code: string) => api<{ user: User }>("/auth/otp/verify", { body: { email, code } });
