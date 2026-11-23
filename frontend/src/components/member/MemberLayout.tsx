@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../../context/auth-context";
 import { useSmoothScroll } from "../../pages/public/landing/motion";
+import { GrainOverlay } from "../../pages/public/landing/ui";
 import { Icon, type IconName } from "../Icon";
 import { SiteFooter } from "../site/SiteFooter";
 import { Wordmark } from "../site/Wordmark";
@@ -38,13 +39,27 @@ export function MemberLayout() {
   }
 
   return (
-    <div className="landing flex min-h-screen flex-col bg-gradient-to-b from-soft via-white to-sand/35 font-body text-ink">
-      <header className="relative z-40 border-b border-white/10 bg-gradient-to-r from-navy via-navy-2 to-navy text-white shadow-[0_14px_40px_-18px_rgba(11,32,55,0.55)]">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -top-20 right-10 h-44 w-44 rounded-full bg-green/15 blur-3xl"
+    <div className="landing relative flex min-h-screen flex-col overflow-x-clip bg-navy font-body text-white">
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+        <img
+          src="/images/landing/hero-city.jpg"
+          alt=""
+          className="h-full w-full scale-105 object-cover opacity-20 blur-[2px]"
         />
-        <div className="relative mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-4">
+        <div className="absolute inset-0 bg-gradient-to-b from-navy/90 via-navy/85 to-navy-2/95" />
+        <div
+          className="absolute -top-40 right-[-10%] h-[540px] w-[540px] rounded-full opacity-30 blur-[120px]"
+          style={{ background: "radial-gradient(circle, #18a269 0%, transparent 70%)" }}
+        />
+        <div
+          className="absolute bottom-[-15%] left-[-8%] h-[520px] w-[520px] rounded-full opacity-20 blur-[120px]"
+          style={{ background: "radial-gradient(circle, #efe6d4 0%, transparent 70%)" }}
+        />
+        <GrainOverlay />
+      </div>
+
+      <header className="sticky top-0 z-40 border-b border-white/10 bg-navy/65 text-white backdrop-blur-2xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-4">
           <Wordmark />
 
           <div className="hidden items-center gap-3 md:flex">
@@ -87,7 +102,7 @@ export function MemberLayout() {
           </button>
         </div>
 
-        <nav aria-label="Member journey navigation" className="relative border-t border-white/10 bg-navy-2/50">
+        <nav aria-label="Member journey navigation" className="border-t border-white/10 bg-white/[0.03]">
           <div className="mx-auto flex max-w-7xl items-center gap-1.5 overflow-x-auto px-6 py-2.5">
             {NAV.map((item) => (
               <NavLink
@@ -97,7 +112,7 @@ export function MemberLayout() {
                 className={({ isActive }) =>
                   `inline-flex shrink-0 items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
                     isActive
-                      ? "bg-green text-white shadow-[0_8px_20px_-8px_rgba(24,162,105,0.8)]"
+                      ? "bg-green text-white shadow-[0_8px_24px_-6px_rgba(24,162,105,0.75)]"
                       : "text-white/70 hover:bg-white/10 hover:text-white"
                   }`
                 }
@@ -110,7 +125,7 @@ export function MemberLayout() {
         </nav>
 
         {menuOpen && (
-          <div id="member-mobile-nav" className="border-t border-white/10 bg-navy px-6 py-4 md:hidden">
+          <div id="member-mobile-nav" className="border-t border-white/10 bg-navy/95 px-6 py-4 backdrop-blur-xl md:hidden">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-white">{name || user.email}</p>
@@ -138,13 +153,15 @@ export function MemberLayout() {
         )}
       </header>
 
-      <main className="relative flex-1">
+      <main className="relative z-10 flex-1">
         <div className="mx-auto max-w-7xl px-6 py-10 sm:py-14">
           <Outlet />
         </div>
       </main>
 
-      <SiteFooter />
+      <div className="relative z-10 border-t border-white/10">
+        <SiteFooter />
+      </div>
     </div>
   );
 }

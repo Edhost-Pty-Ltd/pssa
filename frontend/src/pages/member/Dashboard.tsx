@@ -1,7 +1,26 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
-import { addChannel, confirmChannel } from "../../api/documents";
+import {
+  ACCEPT_ATTRIBUTE,
+  addChannel,
+  confirmChannel,
+  uploadDocument,
+  type DocumentType,
+} from "../../api/documents";
+import {
+  EXAM_RULES,
+  getExamStatus,
+  getTutorials,
+  reportProgress,
+  startExam,
+  submitExam,
+  tutorialStreamUrl,
+  type ExamAttempt,
+  type ExamQuestion,
+  type ExamStatus,
+  type Tutorial,
+} from "../../api/learning";
 import {
   getApplication,
   getProfile,
@@ -13,36 +32,42 @@ import {
   type StepKey,
 } from "../../api/member";
 import { Icon, type IconName } from "../../components/Icon";
-import { APPLICATION_STATUS, Button, ButtonLink, ErrorState, LoadingState, Notice, Status } from "../../components/ui";
 import { useAuth } from "../../context/auth-context";
-import { ApiError, errorMessage } from "../../lib/api";
+import { api, errorMessage } from "../../lib/api";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
-const STEP_ICON: Record<StepKey, IconName> = {
-  profile: "user",
-  documents: "shield",
-  tutorials: "play",
-  assessment: "book",
-  review: "eye",
-  certified: "badge",
-};
-
-const STEP_LINK: Partial<Record<StepKey, string>> = {
-  profile: "/member/profile",
-  documents: "/member/verification",
-  tutorials: "/member/tutorials",
-  assessment: "/member/assessment",
-  certified: "/member/certificate",
-};
-
-const STEP_WHY: Record<StepKey, string> = {
-  profile: "Your name, trading name, city, and scope are what customers see when they check the live PSASA register.",
-  documents: "We verify your SA ID or passport, address, bank confirmation, and channel ownership privately so customers never have to.",
-  tutorials: "Short conduct lessons prepared by PSASA so every verified personal shopper shares the same customer-care standard.",
-  assessment: "A timed 30-question conduct check (80% pass mark) before your file enters human verification review.",
-  review: "A PSASA verification officer checks your documents and assessment before activating your public certificate.",
-  certified: "Your live certificate and QR verification link are active—customers can confirm your status in seconds.",
+const STEP_META: Record<StepKey, { icon: IconName; cover: string; subtitle: string }> = {
+  profile: {
+    icon: "user",
+    cover: "/images/landing/shopper-editorial.jpg",
+    subtitle: "Your name, trading identity, shopping scope, and city on the public register.",
+  },
+  documents: {
+    icon: "shield",
+    cover: "/images/landing/verification-officer.jpg",
+    subtitle: "Confirm your trading channels and upload private verification documents.",
+  },
+  tutorials: {
+    icon: "play",
+    cover: "/images/landing/sourcing-market.jpg",
+    subtitle: "Watch the official PSASA conduct lessons before unlocking your assessment.",
+  },
+  assessment: {
+    icon: "book",
+    cover: "/images/landing/customer-phone.jpg",
+    subtitle: "Complete the timed 30-question conduct assessment (80% pass mark).",
+  },
+  review: {
+    icon: "eye",
+    cover: "/images/landing/verification-officer.jpg",
+    subtitle: "Accept the membership agreement and submit your file for PSASA officer review.",
+  },
+  certified: {
+    icon: "badge",
+    cover: "/images/landing/delivery-handover.jpg",
+    subtitle: "Your live certificate, QR verification link, and annual renewal status.",
+  },
 };
 
 function greeting() {
@@ -53,144 +78,129 @@ function greeting() {
 type LoadState =
   | { kind: "loading" }
   | { kind: "ready"; app: ApplicationOverview; profile: MemberProfile | null }
-  | { kind: "not_available" }
   | { kind: "error"; message: string };
 
 export default function Dashboard() {
   const { user, refresh } = useAuth();
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
-  const [selectedStep, setSelectedStep] = useState<StepKey | null>(null);
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
     Promise.all([getApplication(controller.signal), getProfile(controller.signal).catch(() => null)])
       .then(([app, profRes]) => {
         setState({ kind: "ready", app, profile: profRes?.profile ?? null });
-        const next = app.progress.steps.find((s) => s.state !== "complete");
-        setSelectedStep((prev) => prev ?? next?.key ?? "certified");
+        const firstIncomplete = app.progress.steps.findIndex((s) => s.state !== "complete");
+        setActiveIndex((prev) => prev ?? (firstIncomplete === -1 ? app.progress.steps.length - 1 : firstIncomplete));
       })
       .catch((err) => {
         if (controller.signal.aborted) return;
-        if (err instanceof ApiError && err.status === 404) setState({ kind: "not_available" });
-        else setState({ kind: "error", message: errorMessage(err) });
+        setState({ kind: "error", message: errorMessage(err) });
       });
     return () => controller.abort();
   }, [attempt]);
 
-  const reload = () => {
-    setState({ kind: "loading" });
+  const reload = (advanceTo?: number) => {
+    if (advanceTo !== undefined) setActiveIndex(advanceTo);
     setAttempt((n) => n + 1);
     void refresh();
   };
 
-  const firstName = user?.firstName?.trim();
-
-  if (state.kind === "loading") return <LoadingState rows={3} label="Loading your verification application" />;
-  if (state.kind === "error") return <ErrorState title="We couldn't load your application" text={state.message} onRetry={reload} />;
-  if (state.kind === "not_available") {
+  if (state.kind === "loading") {
     return (
-      <div className="mx-auto max-w-3xl rounded-3xl bg-gradient-to-br from-navy via-navy-2 to-navy-3 p-8 text-white shadow-2xl sm:p-10">
-        <p className="text-xs font-bold uppercase tracking-[0.22em] text-green">Step 1 of 6</p>
-        <h1 className="mt-3 font-display text-3xl font-semibold text-white sm:text-4xl">
-          {firstName ? `${greeting()}, ${firstName}.` : "Welcome to PSASA."}
-        </h1>
-        <p className="mt-3 text-base leading-relaxed text-white/75">
-          Let's build your verified personal shopper application step by step. Your progress saves automatically so you can pause and continue anytime.
-        </p>
-        <div className="mt-7">
-          <ButtonLink to="/member/profile" variant="green" iconRight="arrow">
-            Start your application
-          </ButtonLink>
-        </div>
+      <div className="mx-auto max-w-4xl rounded-[32px] border border-white/15 bg-white/[0.06] p-10 text-center backdrop-blur-2xl">
+        <div className="mx-auto size-10 animate-spin rounded-full border-2 border-white/20 border-t-green" />
+        <p className="mt-4 text-sm text-white/75">Preparing your PSASA application album…</p>
+      </div>
+    );
+  }
+
+  if (state.kind === "error") {
+    return (
+      <div className="mx-auto max-w-2xl rounded-[32px] border border-red-400/30 bg-red-950/40 p-8 text-white backdrop-blur-2xl">
+        <h2 className="font-display text-2xl font-semibold text-white">We couldn't load your application</h2>
+        <p className="mt-2 text-sm text-white/75">{state.message}</p>
+        <button
+          type="button"
+          onClick={() => reload()}
+          className="mt-5 rounded-full bg-green px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-green-dark"
+        >
+          Try again
+        </button>
       </div>
     );
   }
 
   const { app, profile } = state;
-  const activeStepKey = selectedStep ?? app.progress.steps.find((s) => s.state !== "complete")?.key ?? "certified";
+  const steps = app.progress.steps;
+  const firstIncomplete = steps.findIndex((s) => s.state !== "complete");
+  const highestUnlocked = firstIncomplete === -1 ? steps.length - 1 : firstIncomplete;
+  const currentIdx = Math.min(activeIndex ?? highestUnlocked, highestUnlocked);
 
   return (
-    <ApplicationWizard
-      firstName={firstName}
+    <AlbumApplication
+      firstName={user?.firstName?.trim()}
       app={app}
       profile={profile}
-      activeStepKey={activeStepKey}
-      onSelectStep={setSelectedStep}
+      currentIdx={currentIdx}
+      highestUnlocked={highestUnlocked}
+      onSelectIndex={(idx) => {
+        if (idx <= highestUnlocked) setActiveIndex(idx);
+      }}
       onReload={reload}
     />
   );
 }
 
-function ApplicationWizard({
+function AlbumApplication({
   firstName,
   app,
   profile,
-  activeStepKey,
-  onSelectStep,
+  currentIdx,
+  highestUnlocked,
+  onSelectIndex,
   onReload,
 }: {
   firstName?: string;
   app: ApplicationOverview;
   profile: MemberProfile | null;
-  activeStepKey: StepKey;
-  onSelectStep: (key: StepKey) => void;
-  onReload: () => void;
+  currentIdx: number;
+  highestUnlocked: number;
+  onSelectIndex: (idx: number) => void;
+  onReload: (advanceTo?: number) => void;
 }) {
   const { application, progress } = app;
+  const steps = progress.steps;
+  const currentStep = steps[currentIdx];
   const pct = Math.round(Math.min(100, Math.max(0, progress.percent)));
-  const activeIndex = Math.max(0, progress.steps.findIndex((s) => s.key === activeStepKey));
-  const currentStep = progress.steps[activeIndex] ?? progress.steps[0];
-  const completedCount = progress.steps.filter((s) => s.state === "complete").length;
-  const isCertified = application.status === "approved" && progress.steps.every((s) => s.state === "complete");
-
-  const mp = profile?.memberProfile;
-  const previewName = [mp?.firstName, mp?.lastName].filter(Boolean).join(" ") || firstName || "Your Name";
-  const previewTrading = mp?.tradingName || "Your Trading Name";
-  const previewScope = mp?.scope || "Personal shopping & sourcing";
-  const previewCity = mp?.city || "South Africa";
-  const confirmedChannels = (mp?.channels ?? []).filter((c) => c.status === "confirmed");
+  const prevStep = currentIdx > 0 ? steps[currentIdx - 1] : null;
+  const nextStep = currentIdx < steps.length - 1 ? steps[currentIdx + 1] : null;
+  const nextLocked = currentIdx + 1 > highestUnlocked;
 
   return (
     <div className="space-y-8">
-      <motion.section
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: EASE }}
-        className="relative overflow-hidden rounded-[32px] bg-gradient-to-br from-navy via-navy-2 to-navy-3 p-7 text-white shadow-[0_30px_80px_-28px_rgba(11,32,55,0.65)] sm:p-10"
-      >
-        <div aria-hidden="true" className="pointer-events-none absolute -right-24 -top-24 size-80 rounded-full bg-green/20 blur-3xl" />
-        <div aria-hidden="true" className="pointer-events-none absolute -bottom-24 left-1/3 size-72 rounded-full bg-sand/10 blur-3xl" />
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.26em] text-green">
+            PSASA Shopper Application · {application.number}
+          </p>
+          <h1 className="mt-2 font-display text-3xl font-semibold text-white sm:text-5xl">
+            {firstName ? `${greeting()}, ${firstName}.` : "Become a Verified Shopper."}
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/70 sm:text-base">
+            Save &amp; continue through each numbered session in order. Your progress is persisted automatically at every step.
+          </p>
+        </div>
 
-        <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 py-1 text-[11px] font-bold uppercase tracking-[0.2em] text-green backdrop-blur-md">
-                <span className="size-2 rounded-full bg-green" />
-                {isCertified ? "Verified PSASA Member" : "Become a Verified Shopper"}
-              </span>
-              <Status of={APPLICATION_STATUS} value={application.status} />
-            </div>
-            <h1 className="mt-4 font-display text-3xl font-semibold leading-tight text-white sm:text-5xl">
-              {isCertified
-                ? `You're verified, ${firstName || "member"}.`
-                : firstName
-                  ? `${greeting()}, ${firstName}.`
-                  : "Your PSASA application."}
-            </h1>
-            <p className="mt-3 max-w-xl text-base leading-relaxed text-white/75">
-              {isCertified
-                ? "Your public certificate and register listing are live. Manage renewals, downloads, and status checks below."
-                : "Complete each milestone at your own pace. Everything saves automatically so you can pick up right where you left off."}
-            </p>
+        <div className="flex items-center gap-4 rounded-2xl border border-white/15 bg-white/[0.07] px-5 py-3.5 backdrop-blur-xl">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Progress</p>
+            <p className="font-display text-2xl font-bold text-green">{pct}%</p>
           </div>
-
-          <div className="min-w-[230px] rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur-md">
-            <div className="flex items-baseline justify-between gap-4">
-              <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/70">Completion</span>
-              <strong className="font-display text-3xl font-bold text-green">{pct}%</strong>
-            </div>
-            <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-white/15" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+          <div className="h-10 w-px bg-white/15" />
+          <div className="w-32">
+            <div className="h-2 overflow-hidden rounded-full bg-white/15">
               <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: `${pct}%` }}
@@ -198,236 +208,184 @@ function ApplicationWizard({
                 className="h-full rounded-full bg-gradient-to-r from-green to-[#6ee7b7]"
               />
             </div>
-            <p className="mt-2 text-xs text-white/70">
-              {completedCount} of {progress.steps.length} milestones complete
+            <p className="mt-1.5 text-[11px] text-white/65">
+              Session 0{currentIdx + 1} of 0{steps.length}
             </p>
           </div>
         </div>
+      </div>
 
-        <ol className="relative z-10 mt-8 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-6" aria-label="Application steps">
-          {progress.steps.map((step, i) => {
-            const done = step.state === "complete";
-            const selected = step.key === activeStepKey;
-            const locked = step.state === "locked";
-            return (
-              <li key={step.key}>
-                <button
-                  type="button"
-                  onClick={() => onSelectStep(step.key)}
-                  className={`flex h-full w-full flex-col justify-between rounded-2xl border p-3.5 text-left transition ${
-                    selected
-                      ? "border-green bg-white text-navy shadow-lg"
-                      : done
-                        ? "border-green/45 bg-green/15 text-white hover:bg-green/25"
-                        : "border-white/15 bg-white/5 text-white/75 hover:bg-white/10"
+      {/* Numbered Album Rail */}
+      <ol className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6" aria-label="Numbered application sessions">
+        {steps.map((step, i) => {
+          const done = step.state === "complete";
+          const active = i === currentIdx;
+          const locked = i > highestUnlocked;
+          return (
+            <li key={step.key}>
+              <button
+                type="button"
+                disabled={locked}
+                onClick={() => onSelectIndex(i)}
+                className={`group flex w-full items-center gap-3 rounded-2xl border px-3.5 py-3 text-left backdrop-blur-xl transition ${
+                  active
+                    ? "border-green bg-green/20 text-white shadow-[0_12px_32px_-10px_rgba(24,162,105,0.65)]"
+                    : done
+                      ? "border-white/20 bg-white/[0.08] text-white hover:border-green/50"
+                      : locked
+                        ? "cursor-not-allowed border-white/10 bg-white/[0.03] text-white/40"
+                        : "border-white/15 bg-white/[0.06] text-white/80 hover:bg-white/[0.12]"
+                }`}
+              >
+                <span
+                  className={`flex size-8 shrink-0 items-center justify-center rounded-xl text-xs font-bold ${
+                    done
+                      ? "bg-green text-white"
+                      : active
+                        ? "bg-white text-navy"
+                        : "bg-white/10 text-white/65"
                   }`}
                 >
-                  <div className="flex w-full items-center justify-between">
-                    <span
-                      className={`flex size-8 items-center justify-center rounded-xl text-xs font-bold ${
-                        selected || done ? "bg-green text-white" : "bg-white/10 text-white/75"
-                      }`}
-                    >
-                      <Icon name={done ? "check" : locked ? "lock" : STEP_ICON[step.key]} size={15} />
-                    </span>
-                    <span className={`text-[10.5px] font-bold uppercase tracking-[0.14em] ${selected ? "text-green-dark" : "text-white/55"}`}>
-                      0{i + 1}
-                    </span>
-                  </div>
-                  <div className="mt-3">
-                    <p className={`text-sm font-semibold leading-snug ${selected ? "text-navy" : "text-white"}`}>{step.label}</p>
-                    <p className={`mt-1 line-clamp-1 text-xs ${selected ? "text-muted" : "text-white/65"}`}>{step.detail}</p>
-                  </div>
-                </button>
-              </li>
-            );
-          })}
-        </ol>
-      </motion.section>
-
-      <div className="grid gap-8 lg:grid-cols-[1.35fr_0.85fr] lg:items-start">
-        <div className="space-y-6">
-          {progress.actions.length > 0 && (
-            <section className="rounded-3xl border border-amber-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center gap-3">
-                <span className="flex size-10 items-center justify-center rounded-2xl bg-[var(--amber-soft)] text-[#9a6700]">
-                  <Icon name="warning" size={20} />
+                  {done ? <Icon name="check" size={14} /> : locked ? <Icon name="lock" size={13} /> : `0${i + 1}`}
                 </span>
-                <div>
-                  <h2 className="font-display text-xl font-semibold text-navy">Attention needed</h2>
-                  <p className="text-sm text-muted">Resolve these items so your verification stays on track.</p>
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold">{step.label}</p>
+                  <p className="truncate text-[10.5px] opacity-70">
+                    {done ? "Saved" : locked ? "Locked" : active ? "Current" : "Unlocked"}
+                  </p>
                 </div>
-              </div>
-              <div className="mt-4 space-y-2.5">
-                {progress.actions.map((item) => {
-                  const link = STEP_LINK[item.step];
-                  return (
-                    <div key={`${item.step}-${item.title}`} className="flex flex-col justify-between gap-3 rounded-2xl border border-line bg-soft/60 p-4 sm:flex-row sm:items-center">
-                      <div>
-                        <p className="font-semibold text-navy">{item.title}</p>
-                        {item.detail && <p className="mt-0.5 text-sm text-muted">{item.detail}</p>}
-                      </div>
-                      {link && (
-                        <ButtonLink to={link} variant="green" iconRight="arrow">
-                          Fix now
-                        </ButtonLink>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          )}
+              </button>
+            </li>
+          );
+        })}
+      </ol>
 
+      {/* Interactive Album Carousel Stage */}
+      <div className="relative flex items-stretch gap-4">
+        {/* Previous peeking album card */}
+        <button
+          type="button"
+          disabled={!prevStep}
+          onClick={() => prevStep && onSelectIndex(currentIdx - 1)}
+          aria-label={prevStep ? `Go back to ${prevStep.label}` : "First session"}
+          className={`hidden w-24 shrink-0 flex-col justify-between rounded-[28px] border border-white/10 bg-white/[0.04] p-4 text-left backdrop-blur-xl transition lg:flex ${
+            prevStep ? "opacity-60 hover:scale-[0.98] hover:border-white/25 hover:opacity-90" : "pointer-events-none opacity-0"
+          }`}
+        >
+          <span className="font-display text-2xl font-bold text-white/40">0{currentIdx}</span>
+          <div>
+            <Icon name="chevron" size={18} />
+            <p className="mt-2 line-clamp-2 text-xs font-semibold text-white/75">{prevStep?.label}</p>
+          </div>
+        </button>
+
+        {/* Active Center Album Card */}
+        <div className="min-w-0 flex-1">
           <AnimatePresence mode="wait">
             <motion.div
-              key={activeStepKey}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.3, ease: EASE }}
-              className="rounded-[28px] border border-line/80 bg-white p-6 shadow-[0_20px_50px_-24px_rgba(11,32,55,0.16)] sm:p-8"
+              key={currentStep.key}
+              initial={{ opacity: 0, x: 28, scale: 0.98 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: -28, scale: 0.98 }}
+              transition={{ duration: 0.38, ease: EASE }}
+              className="overflow-hidden rounded-[32px] border border-white/20 bg-white/[0.08] shadow-[0_40px_100px_-28px_rgba(0,0,0,0.7)] backdrop-blur-2xl"
             >
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line/70 pb-5">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-green-dark">
-                    Step 0{activeIndex + 1} of 0{progress.steps.length}
-                  </p>
-                  <h2 className="mt-1 font-display text-3xl font-semibold text-navy">{currentStep.label}</h2>
+              <div className="relative h-44 overflow-hidden sm:h-52">
+                <img
+                  src={STEP_META[currentStep.key].cover}
+                  alt=""
+                  className="h-full w-full object-cover object-center opacity-75"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-navy via-navy/55 to-transparent" />
+                <div className="absolute inset-x-6 bottom-5 flex flex-wrap items-end justify-between gap-4 sm:inset-x-8">
+                  <div>
+                    <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-navy/60 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em] text-green backdrop-blur-md">
+                      <Icon name={STEP_META[currentStep.key].icon} size={13} />
+                      Session 0{currentIdx + 1} of 0{steps.length}
+                    </span>
+                    <h2 className="mt-2.5 font-display text-3xl font-semibold text-white sm:text-4xl">
+                      {currentStep.label}
+                    </h2>
+                  </div>
+                  <span className="rounded-full border border-white/20 bg-white/10 px-3.5 py-1 text-xs font-semibold text-white backdrop-blur-md">
+                    {currentStep.state === "complete" ? "Completed" : currentStep.detail}
+                  </span>
                 </div>
-                <span className="rounded-full bg-green-soft px-3.5 py-1 text-xs font-semibold text-green-dark">
-                  {currentStep.state === "complete" ? "Completed" : currentStep.detail}
-                </span>
               </div>
 
-              <p className="mt-5 rounded-2xl bg-sand/45 px-4 py-3 text-sm text-navy/90">
-                <strong>Why we ask for this:</strong> {STEP_WHY[activeStepKey]}
-              </p>
+              <div className="p-6 sm:p-8">
+                <p className="mb-6 text-sm leading-relaxed text-white/75 sm:text-base">
+                  {STEP_META[currentStep.key].subtitle}
+                </p>
 
-              <div className="mt-6">
-                {activeStepKey === "profile" && (
-                  <InlineProfileStep
+                {currentStep.key === "profile" && (
+                  <SessionProfile
                     profile={profile}
-                    onSaved={() => {
-                      onReload();
-                      onSelectStep("documents");
-                    }}
+                    onSaved={() => onReload(1)}
                   />
                 )}
-                {activeStepKey === "documents" && (
-                  <InlineVerificationStep
+                {currentStep.key === "documents" && (
+                  <SessionVerification
                     profile={profile}
-                    onUpdated={onReload}
-                    onContinue={() => onSelectStep("tutorials")}
+                    stepComplete={currentStep.state === "complete"}
+                    onUpdated={() => onReload()}
+                    onContinue={() => onReload(2)}
                   />
                 )}
-                {activeStepKey === "tutorials" && (
-                  <StepLaunchPanel
-                    title="Watch PSASA conduct tutorials"
-                    description="Complete every active conduct lesson so you're ready for the verification assessment. Progress saves automatically as you watch."
-                    ctaLabel="Open tutorial player"
-                    to="/member/tutorials"
-                    secondaryLabel="Next: Assessment"
-                    onSecondary={() => onSelectStep("assessment")}
+                {currentStep.key === "tutorials" && (
+                  <SessionTutorials
+                    stepComplete={currentStep.state === "complete"}
+                    onContinue={() => onReload(3)}
                   />
                 )}
-                {activeStepKey === "assessment" && (
-                  <StepLaunchPanel
-                    title="Complete the conduct assessment"
-                    description="30 questions in 45 minutes. You need 80% overall and every critical customer-protection question correct."
-                    ctaLabel="Open assessment"
-                    to="/member/assessment"
-                    secondaryLabel="Next: Submit & Review"
-                    onSecondary={() => onSelectStep("review")}
+                {currentStep.key === "assessment" && (
+                  <SessionAssessment
+                    stepComplete={currentStep.state === "complete"}
+                    onContinue={() => onReload(4)}
                   />
                 )}
-                {activeStepKey === "review" && (
-                  <InlineSubmitStep app={app} onSubmitted={onReload} />
-                )}
-                {activeStepKey === "certified" && (
-                  <StepLaunchPanel
-                    title={isCertified ? "Your PSASA certificate is live" : "Certificate & public badge"}
-                    description={
-                      isCertified
-                        ? "Download your official QR certificate PDF or check your annual renewal status."
-                        : "Your live certificate and QR verification link are issued automatically once all four gates are approved."
-                    }
-                    ctaLabel="View certificate & QR"
-                    to="/member/certificate"
-                    secondaryLabel="Check renewal status"
-                    secondaryTo="/member/renewal"
+                {currentStep.key === "review" && (
+                  <SessionAgreementSubmit
+                    app={app}
+                    onSubmitted={() => onReload(5)}
                   />
+                )}
+                {currentStep.key === "certified" && (
+                  <SessionCertified app={app} profile={profile} />
                 )}
               </div>
             </motion.div>
           </AnimatePresence>
         </div>
 
-        <aside className="space-y-5 lg:sticky lg:top-8">
-          <div className="overflow-hidden rounded-[28px] border border-navy/15 bg-gradient-to-b from-navy via-navy-2 to-navy p-6 text-white shadow-xl">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-green">Public Register Preview</span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-green/20 px-2.5 py-1 text-[11px] font-semibold text-green">
-                <span className="size-1.5 rounded-full bg-green" /> {isCertified ? "Live" : "Preview"}
-              </span>
-            </div>
-
-            <div className="mt-5 flex items-center gap-4">
-              <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-green/20 font-display text-xl font-bold text-green">
-                {previewName
-                  .split(/\s+/)
-                  .slice(0, 2)
-                  .map((p) => p[0]?.toUpperCase() ?? "")
-                  .join("") || "P"}
-              </span>
-              <div className="min-w-0">
-                <p className="truncate font-display text-xl font-semibold text-white">{previewName}</p>
-                <p className="truncate text-sm text-white/70">{previewTrading}</p>
-              </div>
-            </div>
-
-            <div className="mt-5 space-y-2.5 border-t border-white/10 pt-4 text-sm">
-              <div className="flex justify-between gap-3">
-                <span className="text-white/55">Scope</span>
-                <span className="text-right font-medium text-white">{previewScope}</span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-white/55">City</span>
-                <span className="text-right font-medium text-white">{previewCity}</span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-white/55">Confirmed channels</span>
-                <span className="text-right font-medium text-green">{confirmedChannels.length} verified</span>
-              </div>
-            </div>
-
-            <p className="mt-5 rounded-xl bg-white/5 p-3 text-xs leading-relaxed text-white/65">
-              ID numbers, bank confirmations, and home addresses are never published on the public register.
-            </p>
+        {/* Next peeking album card */}
+        <button
+          type="button"
+          disabled={!nextStep || nextLocked}
+          onClick={() => nextStep && !nextLocked && onSelectIndex(currentIdx + 1)}
+          aria-label={nextStep ? `Next: ${nextStep.label}` : "Final session"}
+          className={`hidden w-24 shrink-0 flex-col justify-between rounded-[28px] border border-white/10 bg-white/[0.04] p-4 text-left backdrop-blur-xl transition lg:flex ${
+            !nextStep
+              ? "pointer-events-none opacity-0"
+              : nextLocked
+                ? "cursor-not-allowed opacity-35"
+                : "opacity-65 hover:scale-[0.98] hover:border-green/50 hover:opacity-95"
+          }`}
+        >
+          <span className="font-display text-2xl font-bold text-white/40">0{currentIdx + 2}</span>
+          <div>
+            <Icon name={nextLocked ? "lock" : "arrow"} size={18} />
+            <p className="mt-2 line-clamp-2 text-xs font-semibold text-white/75">{nextStep?.label}</p>
           </div>
-
-          <div className="rounded-3xl border border-sand-dark/60 bg-sand/45 p-6">
-            <h3 className="font-display text-lg font-semibold text-navy">Need a break?</h3>
-            <p className="mt-1.5 text-sm leading-relaxed text-ink/75">
-              Every field you save is stored safely in PostgreSQL. Sign back in anytime with your email to continue from this exact step.
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Link to="/#membership" className="text-xs font-bold text-green-dark underline">
-                Read the four gates
-              </Link>
-              <span className="text-muted">·</span>
-              <Link to="/policies/verification" className="text-xs font-bold text-green-dark underline">
-                Verification Standard
-              </Link>
-            </div>
-          </div>
-        </aside>
+        </button>
       </div>
     </div>
   );
 }
 
-function InlineProfileStep({ profile, onSaved }: { profile: MemberProfile | null; onSaved: () => void }) {
+/* ---------------- Session 01: Profile ---------------- */
+
+function SessionProfile({ profile, onSaved }: { profile: MemberProfile | null; onSaved: () => void }) {
   const mp = profile?.memberProfile;
   const [firstName, setFirstName] = useState(mp?.firstName ?? "");
   const [lastName, setLastName] = useState(mp?.lastName ?? "");
@@ -435,6 +393,9 @@ function InlineProfileStep({ profile, onSaved }: { profile: MemberProfile | null
   const [scope, setScope] = useState(mp?.scope ?? "");
   const [city, setCity] = useState(mp?.city ?? "");
   const [phone, setPhone] = useState(mp?.phone ?? "");
+  const [identityType, setIdentityType] = useState<"sa_id" | "passport">(mp?.identityType ?? "sa_id");
+  const [idNumber, setIdNumber] = useState("");
+  const [physicalAddress, setPhysicalAddress] = useState(mp?.physicalAddress ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -450,6 +411,8 @@ function InlineProfileStep({ profile, onSaved }: { profile: MemberProfile | null
         scope: scope.trim() || null,
         city: city.trim() || null,
         phone: phone.trim() || null,
+        physicalAddress: physicalAddress.trim() || null,
+        ...(idNumber.trim() ? { identityType, idNumber: idNumber.trim() } : mp?.identityType ? {} : { identityType }),
       });
       onSaved();
     } catch (err) {
@@ -460,52 +423,65 @@ function InlineProfileStep({ profile, onSaved }: { profile: MemberProfile | null
   }
 
   return (
-    <form onSubmit={submit} className="space-y-4">
-      {error && <Notice tone="red" title="Could not save profile">{error}</Notice>}
+    <form onSubmit={submit} className="space-y-5">
+      {error && <div className="rounded-2xl border border-red-400/40 bg-red-950/50 p-4 text-sm text-red-100">{error}</div>}
       <div className="grid gap-4 sm:grid-cols-2">
+        <GlassInput label="First name *" required value={firstName} onChange={setFirstName} />
+        <GlassInput label="Last name *" required value={lastName} onChange={setLastName} />
+        <GlassInput label="Trading / business name *" required value={tradingName} onChange={setTradingName} placeholder="e.g. Curated by Lerato" />
+        <GlassInput label="Shopping scope *" required value={scope} onChange={setScope} placeholder="e.g. Luxury fashion & footwear" />
+        <GlassInput label="City *" required value={city} onChange={setCity} placeholder="e.g. Johannesburg" />
+        <GlassInput label="Phone number *" required value={phone} onChange={setPhone} placeholder="+27 82 000 0000" />
         <label className="block text-sm">
-          <span className="font-semibold text-navy">First name</span>
-          <input required value={firstName} onChange={(e) => setFirstName(e.target.value)} className="mt-1.5 w-full rounded-xl border border-line px-3.5 py-2.5 outline-none focus:border-green" />
+          <span className="font-semibold text-white/85">Identity type</span>
+          <select
+            value={identityType}
+            onChange={(e) => setIdentityType(e.target.value as "sa_id" | "passport")}
+            className="mt-1.5 w-full rounded-xl border border-white/15 bg-navy/70 px-3.5 py-2.5 text-white outline-none focus:border-green"
+          >
+            <option value="sa_id">South African ID</option>
+            <option value="passport">Passport</option>
+          </select>
         </label>
-        <label className="block text-sm">
-          <span className="font-semibold text-navy">Last name</span>
-          <input required value={lastName} onChange={(e) => setLastName(e.target.value)} className="mt-1.5 w-full rounded-xl border border-line px-3.5 py-2.5 outline-none focus:border-green" />
-        </label>
-        <label className="block text-sm">
-          <span className="font-semibold text-navy">Trading / business name</span>
-          <input value={tradingName} onChange={(e) => setTradingName(e.target.value)} placeholder="e.g. Curated by Lerato" className="mt-1.5 w-full rounded-xl border border-line px-3.5 py-2.5 outline-none focus:border-green" />
-        </label>
-        <label className="block text-sm">
-          <span className="font-semibold text-navy">Shopping scope / category</span>
-          <input value={scope} onChange={(e) => setScope(e.target.value)} placeholder="e.g. Luxury fashion & footwear" className="mt-1.5 w-full rounded-xl border border-line px-3.5 py-2.5 outline-none focus:border-green" />
-        </label>
-        <label className="block text-sm">
-          <span className="font-semibold text-navy">City</span>
-          <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g. Johannesburg" className="mt-1.5 w-full rounded-xl border border-line px-3.5 py-2.5 outline-none focus:border-green" />
-        </label>
-        <label className="block text-sm">
-          <span className="font-semibold text-navy">Phone number</span>
-          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+27 82 000 0000" className="mt-1.5 w-full rounded-xl border border-line px-3.5 py-2.5 outline-none focus:border-green" />
-        </label>
+        <GlassInput
+          label={mp?.idNumber ? `Identity number (saved: ${mp.idNumber})` : "Identity number *"}
+          required={!mp?.idNumber}
+          value={idNumber}
+          onChange={setIdNumber}
+          placeholder={mp?.idNumber ? "Leave blank to keep saved ID" : "13-digit SA ID or passport"}
+        />
       </div>
-      <div className="flex flex-wrap items-center gap-3 pt-2">
-        <Button type="submit" variant="green" iconRight="arrow" loading={busy}>
-          Save &amp; continue
-        </Button>
-        <ButtonLink to="/member/profile" variant="outline">
-          Full identity &amp; address form
-        </ButtonLink>
+      <GlassInput label="Physical address *" required value={physicalAddress} onChange={setPhysicalAddress} placeholder="Street address, suburb, postal code" />
+      <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
+        <p className="text-xs text-white/55">ID numbers and addresses stay private and are never shown on the public register.</p>
+        <button
+          type="submit"
+          disabled={busy}
+          className="inline-flex items-center gap-2 rounded-full bg-green px-7 py-3 text-sm font-semibold text-white shadow-[0_14px_34px_-10px_rgba(24,162,105,0.8)] transition hover:bg-green-dark disabled:opacity-60"
+        >
+          {busy ? "Saving…" : "Save & continue to 02"} <Icon name="arrow" size={16} />
+        </button>
       </div>
     </form>
   );
 }
 
-function InlineVerificationStep({
+/* ---------------- Session 02: Channels & Documents ---------------- */
+
+const REQUIRED_DOCS: { type: DocumentType; label: string }[] = [
+  { type: "id_document", label: "ID or Passport copy" },
+  { type: "proof_of_residence", label: "Proof of residence (≤ 3 months)" },
+  { type: "bank_evidence", label: "Bank account confirmation" },
+];
+
+function SessionVerification({
   profile,
+  stepComplete,
   onUpdated,
   onContinue,
 }: {
   profile: MemberProfile | null;
+  stepComplete: boolean;
   onUpdated: () => void;
   onContinue: () => void;
 }) {
@@ -513,10 +489,11 @@ function InlineVerificationStep({
   const docs = profile?.documents ?? [];
   const [platform, setPlatform] = useState("instagram");
   const [handle, setHandle] = useState("");
-  const [pendingChannel, setPendingChannel] = useState<Channel | null>(null);
+  const [pending, setPending] = useState<Channel | null>(null);
   const [code, setCode] = useState("");
   const [devCode, setDevCode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState<DocumentType | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function onAddChannel(e: FormEvent) {
@@ -526,7 +503,7 @@ function InlineVerificationStep({
     setError(null);
     try {
       const res = (await addChannel(platform, handle.trim())) as { channel: Channel; devCode?: string };
-      setPendingChannel(res.channel);
+      setPending(res.channel);
       setDevCode(res.devCode ?? null);
       setHandle("");
       onUpdated();
@@ -537,14 +514,14 @@ function InlineVerificationStep({
     }
   }
 
-  async function onConfirmCode(e: FormEvent) {
+  async function onConfirm(e: FormEvent) {
     e.preventDefault();
-    if (!pendingChannel) return;
+    if (!pending) return;
     setBusy(true);
     setError(null);
     try {
-      await confirmChannel(pendingChannel.id, code.trim());
-      setPendingChannel(null);
+      await confirmChannel(pending.id, code.trim());
+      setPending(null);
       setCode("");
       setDevCode(null);
       onUpdated();
@@ -555,15 +532,36 @@ function InlineVerificationStep({
     }
   }
 
+  async function onUpload(type: DocumentType, file: File | undefined) {
+    if (!file) return;
+    setUploading(type);
+    setError(null);
+    try {
+      await uploadDocument(type, file);
+      onUpdated();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setUploading(null);
+    }
+  }
+
+  const hasConfirmedChannel = channels.some((c) => c.status === "confirmed");
+  const hasAllDocs = REQUIRED_DOCS.every((d) => docs.some((uploaded) => uploaded.type === d.type));
+  const canProceed = stepComplete || (hasConfirmedChannel && hasAllDocs);
+
   return (
     <div className="space-y-6">
-      {error && <Notice tone="red" title="Channel check failed">{error}</Notice>}
+      {error && <div className="rounded-2xl border border-red-400/40 bg-red-950/50 p-4 text-sm text-red-100">{error}</div>}
 
-      <div className="rounded-2xl border border-line bg-soft/60 p-5">
-        <h3 className="font-semibold text-navy">1. Confirm a trading channel</h3>
-        <p className="mt-1 text-sm text-muted">Add the Instagram, TikTok, or Facebook page you trade on, then enter the 6-digit code emailed to you.</p>
-        <form onSubmit={onAddChannel} className="mt-4 flex flex-col gap-2.5 sm:flex-row">
-          <select value={platform} onChange={(e) => setPlatform(e.target.value)} className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm">
+      <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-5">
+        <p className="text-sm font-semibold text-white">1. Confirm a trading channel</p>
+        <form onSubmit={onAddChannel} className="mt-3 flex flex-col gap-2.5 sm:flex-row">
+          <select
+            value={platform}
+            onChange={(e) => setPlatform(e.target.value)}
+            className="rounded-xl border border-white/15 bg-navy/80 px-3 py-2.5 text-sm text-white"
+          >
             <option value="instagram">Instagram</option>
             <option value="tiktok">TikTok</option>
             <option value="facebook">Facebook</option>
@@ -571,117 +569,365 @@ function InlineVerificationStep({
           <input
             value={handle}
             onChange={(e) => setHandle(e.target.value)}
-            placeholder="@yourshopperhandle or https://..."
-            className="flex-1 rounded-xl border border-line bg-white px-3.5 py-2.5 text-sm outline-none focus:border-green"
+            placeholder="@handle or https://..."
+            className="flex-1 rounded-xl border border-white/15 bg-white/10 px-3.5 py-2.5 text-sm text-white placeholder:text-white/45 outline-none focus:border-green"
           />
-          <Button type="submit" variant="dark" loading={busy}>
+          <button
+            type="submit"
+            disabled={busy}
+            className="rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-navy transition hover:bg-green hover:text-white"
+          >
             Send code
-          </Button>
+          </button>
         </form>
 
-        {pendingChannel && (
-          <form onSubmit={onConfirmCode} className="mt-4 flex flex-col gap-2.5 rounded-xl border border-green/30 bg-green-soft/60 p-4 sm:flex-row sm:items-center">
-            <div className="flex-1 text-sm text-navy">
-              Enter the 6-digit code for <strong>{pendingChannel.value}</strong>
-              {devCode && <span className="ml-2 rounded bg-white px-2 py-0.5 font-mono text-xs text-green-dark">Dev code: {devCode}</span>}
+        {pending && (
+          <form onSubmit={onConfirm} className="mt-3 flex flex-col gap-2.5 rounded-xl border border-green/40 bg-green/15 p-3.5 sm:flex-row sm:items-center">
+            <div className="flex-1 text-xs text-white">
+              Enter 6-digit code for <strong>{pending.value}</strong>
+              {devCode && <span className="ml-2 rounded bg-navy px-2 py-0.5 font-mono text-green">Dev: {devCode}</span>}
             </div>
             <input
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              placeholder="6-digit code"
               maxLength={6}
-              className="w-36 rounded-xl border border-line bg-white px-3 py-2 font-mono text-sm outline-none focus:border-green"
+              placeholder="000000"
+              className="w-32 rounded-xl border border-white/20 bg-navy/80 px-3 py-2 font-mono text-sm text-white outline-none focus:border-green"
             />
-            <Button type="submit" variant="green" loading={busy}>
+            <button type="submit" disabled={busy} className="rounded-xl bg-green px-4 py-2 text-xs font-semibold text-white">
               Verify
-            </Button>
+            </button>
           </form>
         )}
 
         {channels.length > 0 && (
-          <ul className="mt-4 flex flex-wrap gap-2">
-            {channels.map((ch) => (
-              <li key={ch.id} className="inline-flex items-center gap-2 rounded-full border border-line bg-white px-3 py-1 text-xs font-medium text-navy">
-                <span className={`size-2 rounded-full ${ch.status === "confirmed" ? "bg-green" : "bg-amber-500"}`} />
-                {ch.kind}: {ch.value}
-              </li>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {channels.map((c) => (
+              <span key={c.id} className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs">
+                <span className={`size-2 rounded-full ${c.status === "confirmed" ? "bg-green" : "bg-amber-400"}`} />
+                {c.kind}: {c.value}
+              </span>
             ))}
-          </ul>
+          </div>
         )}
       </div>
 
-      <div className="rounded-2xl border border-line bg-soft/60 p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h3 className="font-semibold text-navy">2. Verification documents ({docs.length} uploaded)</h3>
-            <p className="mt-1 text-sm text-muted">Upload your ID, proof of residence, and bank confirmation letter.</p>
-          </div>
-          <ButtonLink to="/member/verification" variant="green" iconRight="arrow">
-            Upload documents
-          </ButtonLink>
+      <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-5">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold text-white">2. Upload verification documents</p>
+          <Link to="/member/verification" className="text-xs font-semibold text-green underline">
+            Manage all files
+          </Link>
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          {REQUIRED_DOCS.map((item) => {
+            const existing = docs.find((d) => d.type === item.type);
+            return (
+              <label key={item.type} className="flex cursor-pointer flex-col justify-between rounded-xl border border-white/15 bg-white/[0.04] p-3.5 transition hover:border-green/50">
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-green">
+                    {existing ? existing.status.replace(/_/g, " ") : "Required"}
+                  </span>
+                  <p className="mt-1 text-xs font-semibold text-white">{item.label}</p>
+                  {existing && <p className="mt-1 truncate text-[11px] text-white/60">{existing.originalName}</p>}
+                </div>
+                <span className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-white/80">
+                  <Icon name="upload" size={13} /> {uploading === item.type ? "Uploading…" : existing ? "Replace file" : "Choose file"}
+                </span>
+                <input
+                  type="file"
+                  accept={ACCEPT_ATTRIBUTE}
+                  className="sr-only"
+                  onChange={(e) => void onUpload(item.type, e.target.files?.[0])}
+                />
+              </label>
+            );
+          })}
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-3">
-        <Button variant="outline" iconRight="chevron" onClick={onContinue}>
-          Continue to tutorials
-        </Button>
+      <div className="flex items-center justify-between gap-4">
+        <p className="text-xs text-white/60">
+          {canProceed ? "Channel & documents saved." : "Confirm at least one channel and upload the 3 required documents to unlock 03."}
+        </p>
+        <button
+          type="button"
+          disabled={!canProceed}
+          onClick={onContinue}
+          className="inline-flex items-center gap-2 rounded-full bg-green px-7 py-3 text-sm font-semibold text-white shadow-[0_14px_34px_-10px_rgba(24,162,105,0.8)] transition hover:bg-green-dark disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          Save &amp; continue to 03 <Icon name="arrow" size={16} />
+        </button>
       </div>
     </div>
   );
 }
 
-function StepLaunchPanel({
-  title,
-  description,
-  ctaLabel,
-  to,
-  secondaryLabel,
-  secondaryTo,
-  onSecondary,
-}: {
-  title: string;
-  description: string;
-  ctaLabel: string;
-  to: string;
-  secondaryLabel?: string;
-  secondaryTo?: string;
-  onSecondary?: () => void;
-}) {
+/* ---------------- Session 03: Inline Tutorials ---------------- */
+
+function SessionTutorials({ stepComplete, onContinue }: { stepComplete: boolean; onContinue: () => void }) {
+  const [tutorials, setTutorials] = useState<Tutorial[]>([]);
+  const [active, setActive] = useState<Tutorial | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const lastSent = useRef(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getTutorials(controller.signal)
+      .then((res) => {
+        setTutorials(res.tutorials);
+        setActive(res.tutorials.find((t) => !t.completed) ?? res.tutorials[0] ?? null);
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted) setError(errorMessage(err));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, []);
+
+  async function syncProgress(video: HTMLVideoElement, force = false) {
+    if (!active) return;
+    const now = Date.now();
+    if (!force && now - lastSent.current < 3500) return;
+    lastSent.current = now;
+    try {
+      const res = await reportProgress(active.id, video.currentTime, Number.isFinite(video.duration) ? video.duration : undefined);
+      if (res.progress.completed) {
+        setTutorials((prev) => prev.map((t) => (t.id === active.id ? { ...t, completed: true } : t)));
+      }
+    } catch {
+      // ignore transient heartbeat errors
+    }
+  }
+
+  const allDone = stepComplete || (tutorials.length > 0 && tutorials.every((t) => t.completed));
+
   return (
     <div className="space-y-5">
-      <div>
-        <h3 className="font-display text-2xl font-semibold text-navy">{title}</h3>
-        <p className="mt-2 text-base leading-relaxed text-muted">{description}</p>
-      </div>
-      <div className="flex flex-wrap gap-3">
-        <ButtonLink to={to} variant="green" iconRight="arrow">
-          {ctaLabel}
-        </ButtonLink>
-        {secondaryLabel && secondaryTo && (
-          <ButtonLink to={secondaryTo} variant="outline">
-            {secondaryLabel}
-          </ButtonLink>
-        )}
-        {secondaryLabel && onSecondary && (
-          <Button variant="outline" iconRight="chevron" onClick={onSecondary}>
-            {secondaryLabel}
-          </Button>
-        )}
+      {loading && <p className="text-sm text-white/70">Loading official PSASA tutorials…</p>}
+      {error && <div className="rounded-2xl border border-red-400/40 bg-red-950/50 p-4 text-sm text-red-100">{error}</div>}
+      {!loading && tutorials.length === 0 && (
+        <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-5 text-sm text-white/75">
+          No active tutorial videos are published yet. You can also check <Link to="/member/tutorials" className="text-green underline">the tutorials page</Link>.
+        </div>
+      )}
+
+      {active && (
+        <div className="space-y-4">
+          <div className="overflow-hidden rounded-2xl border border-white/15 bg-black/50">
+            <video
+              key={active.id}
+              controls
+              playsInline
+              src={tutorialStreamUrl(active.id)}
+              onTimeUpdate={(e) => void syncProgress(e.currentTarget)}
+              onEnded={(e) => void syncProgress(e.currentTarget, true)}
+              className="aspect-video w-full"
+            />
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="font-semibold text-white">
+                {active.title} {active.version ? <span className="ml-2 rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-green">v{active.version}</span> : null}
+              </p>
+              {active.description && <p className="mt-1 text-xs text-white/65">{active.description}</p>}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {tutorials.map((t, i) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setActive(t)}
+                  className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                    t.id === active.id
+                      ? "bg-green text-white"
+                      : t.completed
+                        ? "border border-green/40 bg-green/15 text-green"
+                        : "border border-white/15 bg-white/5 text-white/75"
+                  }`}
+                >
+                  {t.completed ? "✓ " : ""}Lesson {i + 1}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-4 pt-2">
+        <p className="text-xs text-white/60">
+          {allDone ? "All tutorials completed." : "Watch all active lessons to 95% to unlock 04."}
+        </p>
+        <button
+          type="button"
+          disabled={!allDone}
+          onClick={onContinue}
+          className="inline-flex items-center gap-2 rounded-full bg-green px-7 py-3 text-sm font-semibold text-white shadow-[0_14px_34px_-10px_rgba(24,162,105,0.8)] transition hover:bg-green-dark disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          Save &amp; continue to 04 <Icon name="arrow" size={16} />
+        </button>
       </div>
     </div>
   );
 }
 
-function InlineSubmitStep({ app, onSubmitted }: { app: ApplicationOverview; onSubmitted: () => void }) {
+/* ---------------- Session 04: Inline Assessment ---------------- */
+
+function SessionAssessment({ stepComplete, onContinue }: { stepComplete: boolean; onContinue: () => void }) {
+  const [status, setStatus] = useState<ExamStatus | null>(null);
+  const [attempt, setAttempt] = useState<ExamAttempt | null>(null);
+  const [questions, setQuestions] = useState<ExamQuestion[]>([]);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { application, progress } = app;
 
-  async function onSubmit() {
+  useEffect(() => {
+    const controller = new AbortController();
+    getExamStatus(controller.signal)
+      .then(setStatus)
+      .catch((err) => {
+        if (!controller.signal.aborted) setError(errorMessage(err));
+      });
+    return () => controller.abort();
+  }, []);
+
+  async function handleStart() {
     setBusy(true);
     setError(null);
     try {
+      const res = await startExam("entrance");
+      setAttempt(res.attempt);
+      setQuestions(res.questions);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSubmit() {
+    if (!attempt) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await submitExam(attempt.id, answers);
+      setAttempt(res.attempt);
+      setQuestions([]);
+      setStatus(await getExamStatus());
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const passed = stepComplete || status?.passed === true || attempt?.passed === true;
+
+  return (
+    <div className="space-y-5">
+      {error && <div className="rounded-2xl border border-red-400/40 bg-red-950/50 p-4 text-sm text-red-100">{error}</div>}
+
+      {questions.length > 0 && attempt ? (
+        <div className="space-y-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-green">
+            {Object.keys(answers).length} of {questions.length} answered · Pass mark {EXAM_RULES.passPercent}%
+          </p>
+          <div className="max-h-[420px] space-y-4 overflow-y-auto pr-2">
+            {questions.map((q, qi) => (
+              <div key={q.id} className="rounded-2xl border border-white/15 bg-white/[0.05] p-4">
+                <p className="text-sm font-semibold text-white">
+                  {qi + 1}. {q.prompt}
+                </p>
+                <div className="mt-3 space-y-2">
+                  {q.options.map((opt) => (
+                    <label
+                      key={opt.id}
+                      className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-2.5 text-sm transition ${
+                        answers[q.id] === opt.id ? "border-green bg-green/20 text-white" : "border-white/10 bg-white/[0.03] text-white/80 hover:bg-white/[0.08]"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name={q.id}
+                        checked={answers[q.id] === opt.id}
+                        onChange={() => setAnswers((prev) => ({ ...prev, [q.id]: opt.id }))}
+                      />
+                      {opt.text}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            disabled={busy || Object.keys(answers).length < questions.length}
+            onClick={() => void handleSubmit()}
+            className="rounded-full bg-green px-6 py-3 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {busy ? "Scoring…" : "Submit assessment"}
+          </button>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-5">
+          <p className="text-base font-semibold text-white">
+            {passed
+              ? "Entrance assessment passed."
+              : status?.reason || `${EXAM_RULES.questions} questions · ${EXAM_RULES.minutes} minutes · ${EXAM_RULES.passPercent}% pass mark.`}
+          </p>
+          {!passed && (
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                type="button"
+                disabled={busy || status?.canStart === false}
+                onClick={() => void handleStart()}
+                className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-2.5 text-sm font-semibold text-navy transition hover:bg-green hover:text-white disabled:opacity-50"
+              >
+                {busy ? "Starting…" : "Start assessment"} <Icon name="arrow" size={15} />
+              </button>
+              <Link to="/member/assessment" className="inline-flex items-center rounded-full border border-white/20 px-5 py-2.5 text-sm font-semibold text-white/85">
+                Full-screen view
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-4 pt-2">
+        <p className="text-xs text-white/60">
+          {passed ? "Assessment complete." : "Pass the assessment to unlock 05."}
+        </p>
+        <button
+          type="button"
+          disabled={!passed}
+          onClick={onContinue}
+          className="inline-flex items-center gap-2 rounded-full bg-green px-7 py-3 text-sm font-semibold text-white shadow-[0_14px_34px_-10px_rgba(24,162,105,0.8)] transition hover:bg-green-dark disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          Save &amp; continue to 05 <Icon name="arrow" size={16} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Session 05: Agreement & Submit ---------------- */
+
+function SessionAgreementSubmit({ app, onSubmitted }: { app: ApplicationOverview; onSubmitted: () => void }) {
+  const { application, progress } = app;
+  const [accepted, setAccepted] = useState(Boolean(application.agreementAcceptedAt));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSaveAndSubmit() {
+    setBusy(true);
+    setError(null);
+    try {
+      if (!application.agreementAcceptedAt && accepted) {
+        await api("/member/application/agreement", { body: { accepted: true, version: "v1.0" } });
+      }
       await submitApplication();
       onSubmitted();
     } catch (err) {
@@ -691,30 +937,100 @@ function InlineSubmitStep({ app, onSubmitted }: { app: ApplicationOverview; onSu
     }
   }
 
+  const submitted = application.status !== "draft" && application.status !== "needs_info";
+
   return (
     <div className="space-y-5">
-      {application.agreementAcceptedAt ? (
-        <Notice
-          tone="green"
-          title={`Membership agreement accepted on ${new Date(application.agreementAcceptedAt).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}`}
+      {error && <div className="rounded-2xl border border-red-400/40 bg-red-950/50 p-4 text-sm text-red-100">{error}</div>}
+
+      <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-white/15 bg-white/[0.05] p-5">
+        <input
+          type="checkbox"
+          checked={accepted}
+          disabled={Boolean(application.agreementAcceptedAt) || submitted}
+          onChange={(e) => setAccepted(e.target.checked)}
+          className="mt-1 size-4 accent-green"
+        />
+        <span className="text-sm leading-relaxed text-white/85">
+          I agree to the PSASA Code of Conduct, Verification Standard, and Complaints &amp; Appeals rules.
+        </span>
+      </label>
+
+      {submitted ? (
+        <div className="rounded-2xl border border-green/40 bg-green/15 p-5 text-sm text-white">
+          Your application <strong>{application.number}</strong> is currently <strong>{application.status.replace(/_/g, " ")}</strong>. A verification officer will review your file.
+        </div>
+      ) : (
+        <button
+          type="button"
+          disabled={busy || !accepted || (!progress.canSubmit && !application.agreementAcceptedAt)}
+          onClick={() => void handleSaveAndSubmit()}
+          className="inline-flex items-center gap-2 rounded-full bg-green px-7 py-3 text-sm font-semibold text-white shadow-[0_14px_34px_-10px_rgba(24,162,105,0.8)] transition hover:bg-green-dark disabled:cursor-not-allowed disabled:opacity-45"
         >
-          Version {application.agreementVersion}
-        </Notice>
-      ) : (
-        <Notice tone="blue" title="Membership agreement">
-          Accept the membership agreement on your Verification page before submitting.
-        </Notice>
-      )}
-      {error && <Notice tone="red" title="We couldn't submit your application">{error}</Notice>}
-      {application.status === "draft" || application.status === "needs_info" ? (
-        <Button variant="green" iconRight="arrow" disabled={!progress.canSubmit} loading={busy} onClick={() => void onSubmit()}>
-          Submit application for review
-        </Button>
-      ) : (
-        <p className="text-sm font-medium text-muted">
-          Your application ({application.number}) is currently <strong>{application.status.replace(/_/g, " ")}</strong>.
-        </p>
+          {busy ? "Submitting…" : "Save & submit application"} <Icon name="arrow" size={16} />
+        </button>
       )}
     </div>
+  );
+}
+
+/* ---------------- Session 06: Certified ---------------- */
+
+function SessionCertified({ app, profile }: { app: ApplicationOverview; profile: MemberProfile | null }) {
+  const mp = profile?.memberProfile;
+  const approved = app.application.status === "approved";
+  return (
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-green/40 bg-green/15 p-6">
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-green">
+          {approved ? "Active PSASA Verification" : "Pending Final Officer Activation"}
+        </p>
+        <h3 className="mt-2 font-display text-2xl font-semibold text-white">
+          {[mp?.firstName, mp?.lastName].filter(Boolean).join(" ") || "PSASA Member"}
+        </h3>
+        <p className="mt-1 text-sm text-white/75">{mp?.tradingName || "Verified Personal Shopper"}</p>
+      </div>
+      <div className="flex flex-wrap gap-3">
+        <Link
+          to="/member/certificate"
+          className="inline-flex items-center gap-2 rounded-full bg-green px-6 py-3 text-sm font-semibold text-white transition hover:bg-green-dark"
+        >
+          View certificate &amp; QR <Icon name="arrow" size={16} />
+        </Link>
+        <Link
+          to="/member/renewal"
+          className="inline-flex items-center gap-2 rounded-full border border-white/20 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+        >
+          Renewal status
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function GlassInput({
+  label,
+  value,
+  onChange,
+  placeholder,
+  required,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  required?: boolean;
+}) {
+  return (
+    <label className="block text-sm">
+      <span className="font-semibold text-white/85">{label}</span>
+      <input
+        required={required}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="mt-1.5 w-full rounded-xl border border-white/15 bg-white/10 px-3.5 py-2.5 text-white placeholder:text-white/40 outline-none backdrop-blur-md transition focus:border-green focus:bg-white/15"
+      />
+    </label>
   );
 }
