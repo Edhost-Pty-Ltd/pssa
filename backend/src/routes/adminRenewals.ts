@@ -4,6 +4,7 @@ import { z } from "zod";
 import { ensureCertificatePdf } from "../lib/certificatePdf.js";
 import { issueCertificateOnActivation, liveCertificateStatus, serializeCertificate } from "../lib/certificates.js";
 import { conflict, notFound } from "../lib/http.js";
+import { notifyRenewalDecision } from "../lib/notifications.js";
 import { prisma } from "../lib/prisma.js";
 import {
   buildRenewalChecklist,
@@ -263,6 +264,14 @@ adminRenewalsRouter.post("/renewals/:id/decision", async (req, res) => {
       ),
     );
   }
+
+  await notifyRenewalDecision({
+    to: result.member.email,
+    decision: body.decision,
+    reason: body.reason,
+    validUntil: result.member.validUntil,
+    renewalId: result.renewal.id,
+  });
 
   res.json({
     renewal: serializeRenewal(result.renewal),
