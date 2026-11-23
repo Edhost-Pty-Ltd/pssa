@@ -52,9 +52,18 @@ function toMember(raw: RawMember): RegisterMember {
   };
 }
 
-export async function searchRegister(q: string, options: { page?: number; pageSize?: number; signal?: AbortSignal } = {}): Promise<RegisterPage> {
+export async function searchRegister(
+  q: string,
+  options: { scope?: string; city?: string; page?: number; pageSize?: number; signal?: AbortSignal } = {},
+): Promise<RegisterPage> {
   const data = await api<{ items: RawMember[]; page: number; pageSize: number; total: number }>(
-    `/search/members${qs({ q: q.trim() || undefined, page: options.page, pageSize: options.pageSize ?? 10 })}`,
+    `/search/members${qs({
+      q: q.trim() || undefined,
+      scope: options.scope?.trim() || undefined,
+      city: options.city?.trim() || undefined,
+      page: options.page,
+      pageSize: options.pageSize ?? 10,
+    })}`,
     { signal: options.signal },
   );
   return { ...data, items: data.items.map(toMember) };

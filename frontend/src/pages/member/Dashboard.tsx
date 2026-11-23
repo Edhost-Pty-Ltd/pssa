@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { motion } from "motion/react";
 import { getApplication, submitApplication, type ApplicationOverview, type StepKey } from "../../api/member";
 import { Icon, type IconName } from "../../components/Icon";
-import { APPLICATION_STATUS, Button, ButtonLink, Card, DOCUMENT_STATUS, ErrorState, LoadingState, Notice, Panel, Status, type StatusMap } from "../../components/ui";
+import { APPLICATION_STATUS, Button, ButtonLink, DOCUMENT_STATUS, ErrorState, LoadingState, Notice, Status, type StatusMap } from "../../components/ui";
 import { useAuth } from "../../context/auth-context";
 import { ApiError, errorMessage } from "../../lib/api";
 
@@ -21,6 +22,15 @@ const STEP_LINK: Partial<Record<StepKey, string>> = {
   tutorials: "/member/tutorials",
   assessment: "/member/assessment",
   certified: "/member/certificate",
+};
+
+const STEP_WHY: Record<StepKey, string> = {
+  profile: "Your name, trading name, and confirmed channels are what customers check on the public register.",
+  documents: "We verify your identity, address, and bank confirmation privately so customers never have to.",
+  tutorials: "Short conduct lessons prepared by PSASA so every member shares the same customer-care standard.",
+  assessment: "A timed 30-question conduct check (80% pass mark) before your file goes to human review.",
+  review: "A PSASA verification officer reviews your documents and assessment before activating your certificate.",
+  certified: "Your live certificate and QR link are active—customers can check your status in seconds.",
 };
 
 const ACTION_STATUS: StatusMap = {
@@ -77,184 +87,282 @@ export default function Dashboard() {
   const firstName = user?.firstName?.trim();
 
   return (
-    <>
-      <div className="workspace-title">
-        <div>
-          <span>{firstName ? `${greeting()}, ${firstName}` : greeting()}</span>
-          <h1>Your application</h1>
-          <p>Complete each step below. Your application goes to review once every step before Review has passed.</p>
-        </div>
-        {state.kind === "ready" && <Status of={APPLICATION_STATUS} value={state.data.application.status} />}
-      </div>
-
-      {state.kind === "loading" && <LoadingState rows={2} label="Loading your application" />}
-      {state.kind === "error" && <ErrorState title="We couldn't load your application" text={state.message} onRetry={reload} />}
-      {state.kind === "not_available" && <NotAvailable />}
+    <div className="space-y-6">
+      {state.kind === "loading" && <LoadingState rows={3} label="Loading your verification journey" />}
+      {state.kind === "error" && <ErrorState title="We couldn't load your verification journey" text={state.message} onRetry={reload} />}
+      {state.kind === "not_available" && <NotAvailable firstName={firstName} />}
 
       {state.kind === "ready" && (
-        <>
-          <Progress data={state.data} />
+        <JourneyView
+          firstName={firstName}
+          data={state.data}
+          submitting={submitting}
+          submitError={submitError}
+          onSubmit={onSubmit}
+        />
+      )}
+    </div>
+  );
+}
 
-          <div className="workspace-grid">
-            <div style={{ display: "grid", gap: 18, alignContent: "start" }}>
-              <ActionNeeded data={state.data} />
-              <Agreement data={state.data} />
-              {state.data.application.status === "draft" && (
-                <Card>
-                  <h3 style={{ marginBottom: 6 }}>Submit for review</h3>
-                  <p className="muted" style={{ marginBottom: 16 }}>
-                    {state.data.progress.canSubmit
-                      ? "Every step before Review has passed. A PSASA reviewer will check your file."
-                      : "You can submit once every step before Review has passed."}
-                  </p>
-                  {submitError && <Notice tone="red" title="We couldn't submit your application">{submitError}</Notice>}
-                  <Button variant="green" iconRight="arrow" disabled={!state.data.progress.canSubmit} loading={submitting} onClick={() => void onSubmit()}>
-                    Submit for review
-                  </Button>
-                </Card>
+function JourneyView({
+  firstName,
+  data,
+  submitting,
+  submitError,
+  onSubmit,
+}: {
+  firstName?: string;
+  data: ApplicationOverview;
+  submitting: boolean;
+  submitError: string | null;
+  onSubmit: () => void;
+}) {
+  const { application, progress } = data;
+  const pct = Math.round(Math.min(100, Math.max(0, progress.percent)));
+  const activeIndex = progress.steps.findIndex((s) => s.state !== "complete");
+  const currentStep = activeIndex === -1 ? progress.steps[progress.steps.length - 1] : progress.steps[activeIndex];
+  const nextLink = currentStep ? STEP_LINK[currentStep.key] : undefined;
+  const isCertified = application.status === "approved" && progress.steps.every((s) => s.state === "complete");
+  const completedCount = progress.steps.filter((s) => s.state === "complete").length;
+
+  return (
+    <>
+      <motion.section
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-navy via-navy-2 to-navy-3 p-7 text-white shadow-xl sm:p-9"
+      >
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-green/20 blur-3xl"
+        />
+        <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em] text-green">
+                <span className="size-2 rounded-full bg-green" />
+                {isCertified ? "Verified PSASA Member" : "Verification Journey"}
+              </span>
+              <Status of={APPLICATION_STATUS} value={application.status} />
+            </div>
+            <h1 className="mt-4 font-display text-3xl font-semibold text-white sm:text-4xl">
+              {firstName ? `${greeting()}, ${firstName}.` : `${greeting()}.`}
+            </h1>
+            <p className="mt-2 text-base leading-relaxed text-white/75">
+              {isCertified
+                ? "Your profile, verification checks, and conduct assessment are complete. Customers can check your live status anytime."
+                : "Follow each step at your own pace—your progress saves automatically so you can pause and continue anytime."}
+            </p>
+          </div>
+
+          <div className="min-w-[210px] rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur-md">
+            <div className="flex items-baseline justify-between gap-4">
+              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-white/70">Journey progress</span>
+              <strong className="font-display text-2xl font-bold text-green">{pct}%</strong>
+            </div>
+            <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-white/15" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${pct}%` }}
+                transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+                className="h-full rounded-full bg-gradient-to-r from-green to-[#6ee7b7]"
+              />
+            </div>
+            <p className="mt-2 text-xs text-white/70">
+              {completedCount} of {progress.steps.length} milestones complete
+            </p>
+          </div>
+        </div>
+
+        <ol className="relative z-10 mt-8 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-6" aria-label="Onboarding steps">
+          {progress.steps.map((step, i) => {
+            const done = step.state === "complete";
+            const current = i === activeIndex;
+            const locked = step.state === "locked";
+            const link = STEP_LINK[step.key];
+            const card = (
+              <div
+                className={`flex h-full flex-col justify-between rounded-2xl border p-3.5 transition ${
+                  current
+                    ? "border-green bg-white text-navy shadow-lg"
+                    : done
+                      ? "border-green/40 bg-green/15 text-white hover:bg-green/25"
+                      : "border-white/10 bg-white/5 text-white/65"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span
+                    className={`flex size-8 items-center justify-center rounded-xl text-xs font-bold ${
+                      current
+                        ? "bg-green text-white"
+                        : done
+                          ? "bg-green text-white"
+                          : "bg-white/10 text-white/70"
+                    }`}
+                  >
+                    <Icon name={done ? "check" : locked ? "lock" : STEP_ICON[step.key]} size={15} />
+                  </span>
+                  <span className={`text-[10.5px] font-bold uppercase tracking-[0.14em] ${current ? "text-green-dark" : "text-white/50"}`}>
+                    Step {i + 1}
+                  </span>
+                </div>
+                <div className="mt-3">
+                  <p className={`text-sm font-semibold leading-snug ${current ? "text-navy" : "text-white"}`}>{step.label}</p>
+                  <p className={`mt-1 line-clamp-2 text-xs ${current ? "text-muted" : "text-white/65"}`}>{step.detail}</p>
+                </div>
+              </div>
+            );
+
+            return (
+              <li key={step.key}>
+                {link && !locked ? <Link to={link} className="block h-full">{card}</Link> : card}
+              </li>
+            );
+          })}
+        </ol>
+      </motion.section>
+
+      <div className="grid gap-6 lg:grid-cols-[1.35fr_0.9fr] lg:items-start">
+        <div className="space-y-6">
+          {progress.actions.length > 0 ? (
+            <section className="rounded-3xl border border-amber-200 bg-white p-6 shadow-sm sm:p-7">
+              <div className="flex items-center gap-3">
+                <span className="flex size-10 items-center justify-center rounded-2xl bg-[var(--amber-soft)] text-[#9a6700]">
+                  <Icon name="warning" size={20} />
+                </span>
+                <div>
+                  <h2 className="font-display text-2xl font-semibold text-navy">Action needed</h2>
+                  <p className="text-sm text-muted">Resolve these items to keep your verification moving forward.</p>
+                </div>
+              </div>
+              <div className="mt-5 space-y-3">
+                {progress.actions.map((item) => {
+                  const link = STEP_LINK[item.step];
+                  return (
+                    <div key={`${item.step}-${item.title}`} className="flex flex-col justify-between gap-3 rounded-2xl border border-line bg-soft/60 p-4 sm:flex-row sm:items-center">
+                      <div>
+                        <Status of={ACTION_STATUS} value={item.status} />
+                        <p className="mt-2 font-semibold text-navy">{item.title}</p>
+                        {item.detail && <p className="mt-0.5 text-sm text-muted">{item.detail}</p>}
+                      </div>
+                      {link && (
+                        <ButtonLink to={link} variant="green" iconRight="arrow">
+                          Fix now
+                        </ButtonLink>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ) : (
+            currentStep && (
+              <section className="rounded-3xl border border-line bg-white p-6 shadow-sm sm:p-8">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-green-dark">
+                  {isCertified ? "You're verified" : `Up next · Step ${activeIndex + 1} of ${progress.steps.length}`}
+                </p>
+                <h2 className="mt-2 font-display text-3xl font-semibold text-navy">{currentStep.label}</h2>
+                <p className="mt-2 text-base leading-relaxed text-ink/80">{currentStep.detail}</p>
+                <p className="mt-4 rounded-2xl bg-sand/45 px-4 py-3 text-sm text-navy/85">
+                  <strong>Why we ask for this:</strong> {STEP_WHY[currentStep.key]}
+                </p>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  {nextLink && (
+                    <ButtonLink to={nextLink} variant="green" iconRight="arrow">
+                      {isCertified ? "View certificate & QR" : currentStep.state === "not_started" ? `Start ${currentStep.label}` : `Continue ${currentStep.label}`}
+                    </ButtonLink>
+                  )}
+                  {isCertified && (
+                    <ButtonLink to="/member/renewal" variant="outline">
+                      Check renewal status
+                    </ButtonLink>
+                  )}
+                </div>
+              </section>
+            )
+          )}
+
+          {application.status === "draft" && (
+            <section className="rounded-3xl border border-line bg-white p-6 shadow-sm sm:p-7">
+              <h3 className="font-display text-xl font-semibold text-navy">Ready to submit for review?</h3>
+              <p className="mt-1.5 text-sm leading-relaxed text-muted">
+                {progress.canSubmit
+                  ? "Every pre-review milestone is complete. Submit your application to enter the PSASA verification queue."
+                  : "Once your profile, documents, confirmed channel, and membership agreement are complete, you can submit here."}
+              </p>
+              {submitError && (
+                <div className="mt-4">
+                  <Notice tone="red" title="We couldn't submit your application">{submitError}</Notice>
+                </div>
+              )}
+              <div className="mt-5">
+                <Button variant="green" iconRight="arrow" disabled={!progress.canSubmit} loading={submitting} onClick={() => void onSubmit()}>
+                  Submit for review
+                </Button>
+              </div>
+            </section>
+          )}
+        </div>
+
+        <aside className="space-y-5">
+          <div className="rounded-3xl border border-line bg-white p-6 shadow-sm">
+            <h3 className="font-display text-lg font-semibold text-navy">Membership agreement</h3>
+            <p className="mt-1 text-sm text-muted">Accepted before your file enters review.</p>
+            <div className="mt-4">
+              {application.agreementAcceptedAt ? (
+                <Notice
+                  tone="green"
+                  title={`Accepted on ${new Date(application.agreementAcceptedAt).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}`}
+                >
+                  Version {application.agreementVersion}
+                </Notice>
+              ) : (
+                <Notice tone="blue" title="Pending acceptance">
+                  You can accept the membership agreement once your profile and documents are ready.
+                </Notice>
               )}
             </div>
-            <HelpPanel />
           </div>
-        </>
-      )}
+
+          <div className="rounded-3xl border border-sand-dark/60 bg-sand/50 p-6">
+            <span className="flex size-11 items-center justify-center rounded-2xl bg-navy text-green">
+              <Icon name="book" size={20} />
+            </span>
+            <h3 className="mt-4 font-display text-lg font-semibold text-navy">How PSASA verification works</h3>
+            <p className="mt-1.5 text-sm leading-relaxed text-ink/75">
+              Uploading a document isn't the same as passing a check. Every item is reviewed against the PSASA Verification Standard—and fees never buy approval.
+            </p>
+            <div className="mt-4">
+              <ButtonLink to="/#membership" variant="outline" full>
+                Read the four gates
+              </ButtonLink>
+            </div>
+          </div>
+        </aside>
+      </div>
     </>
   );
 }
 
-function Progress({ data }: { data: ApplicationOverview }) {
-  const { percent, steps, actions } = data.progress;
-  const attention = actions.length;
+function NotAvailable({ firstName }: { firstName?: string }) {
   return (
-    <section className="progress-card" aria-label="Application progress">
-      <div className="progress-head">
-        <div>
-          <span>Overall progress</span>
-          <strong>{Math.round(percent)}%</strong>
-        </div>
-        <p>{attention === 0 ? "Nothing needs your attention right now" : `${attention} ${attention === 1 ? "item needs" : "items need"} your attention`}</p>
-      </div>
-      <div className="progress-track" role="progressbar" aria-valuenow={Math.round(percent)} aria-valuemin={0} aria-valuemax={100}>
-        <i style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
-      </div>
-      <ol className="application-steps">
-        {steps.map((step) => {
-          const done = step.state === "complete";
-          const current = step.state === "in_progress" || step.state === "action_needed";
-          const link = STEP_LINK[step.key];
-          return (
-            <li key={step.key} className={`app-step ${done ? "done" : current ? "current" : ""}`}>
-              <span className="app-step-icon">
-                <Icon name={done ? "check" : step.state === "locked" ? "lock" : STEP_ICON[step.key]} />
-              </span>
-              <div>
-                <b>{step.label}</b>
-                <small>{step.detail}</small>
-              </div>
-              {current && link && (
-                <Link to={link} className="app-step-link">
-                  Continue <Icon name="chevron" size={15} />
-                </Link>
-              )}
-            </li>
-          );
-        })}
-      </ol>
-    </section>
-  );
-}
-
-function ActionNeeded({ data }: { data: ApplicationOverview }) {
-  const { actions, steps } = data.progress;
-
-  if (actions.length === 0) {
-    const next = steps.find((s) => s.state === "in_progress" || s.state === "not_started" || s.state === "action_needed");
-    const link = next && STEP_LINK[next.key];
-    return (
-      <Panel
-        icon={next ? "arrow" : "check"}
-        title={next ? "Your next step" : "You're up to date"}
-        subtitle={next ? `${next.label}: ${next.detail}` : "Nothing is waiting on you right now."}
-      >
-        {next && link && (
-          <ButtonLink to={link} variant="green" iconRight="arrow">
-            {next.state === "not_started" ? `Start: ${next.label}` : `Continue: ${next.label}`}
+    <div className="mx-auto max-w-3xl space-y-6">
+      <div className="rounded-3xl bg-navy p-8 text-white shadow-xl">
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-green">Step 1 of 6</p>
+        <h1 className="mt-2 font-display text-3xl font-semibold text-white">
+          {firstName ? `${greeting()}, ${firstName}.` : "Welcome to PSASA."}
+        </h1>
+        <p className="mt-2 text-base text-white/75">
+          Start your verification journey by completing your personal shopper profile. Your progress saves automatically as you go.
+        </p>
+        <div className="mt-6">
+          <ButtonLink to="/member/profile" variant="green" iconRight="arrow">
+            Start with your profile
           </ButtonLink>
-        )}
-        {next && !link && <p className="muted">There's nothing for you to do on this step yet.</p>}
-      </Panel>
-    );
-  }
-
-  return (
-    <Panel icon="warning" title="Action needed" subtitle="These items are holding up your application.">
-      {actions.map((item) => {
-        const link = STEP_LINK[item.step];
-        return (
-          <div className="task-row" key={`${item.step}-${item.title}`}>
-            <div>
-              <Status of={ACTION_STATUS} value={item.status} />
-              <b>{item.title}</b>
-              {item.detail && <p>{item.detail}</p>}
-            </div>
-            {link && (
-              <Link to={link} className="app-step-link">
-                Fix now <Icon name="arrow" size={15} />
-              </Link>
-            )}
-          </div>
-        );
-      })}
-    </Panel>
-  );
-}
-
-function Agreement({ data }: { data: ApplicationOverview }) {
-  const accepted = data.application.agreementAcceptedAt;
-  return (
-    <Panel icon="file" title="Membership agreement" subtitle="You accept it before your application goes to review">
-      {accepted ? (
-        <Notice tone="green" title={`Accepted on ${new Date(accepted).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}`}>
-          Version {data.application.agreementVersion}
-        </Notice>
-      ) : (
-        <Notice tone="blue" title="The membership agreement isn't published yet.">
-          It will appear here once PSASA has approved it. Everything else in your application can go ahead in the meantime.
-        </Notice>
-      )}
-    </Panel>
-  );
-}
-
-function HelpPanel() {
-  return (
-    <aside className="panel help-panel">
-      <span className="help-art">
-        <Icon name="book" size={30} />
-      </span>
-      <h3>How verification works</h3>
-      <p className="muted" style={{ marginBottom: 16 }}>
-        Uploading a document isn't the same as passing a check. Every item is reviewed against the PSASA Verification Standard.
-      </p>
-      <ButtonLink to="/#membership" variant="outline" full>
-        Read the four gates
-      </ButtonLink>
-    </aside>
-  );
-}
-
-function NotAvailable() {
-  return (
-    <div style={{ display: "grid", gap: 18, maxWidth: 820 }}>
-      <Notice tone="blue" title="Your progress tracker is being connected.">
-        The six steps of your application will appear here soon. You can already complete your profile.
-      </Notice>
-      <Panel icon="user" title="Start with your profile" subtitle="Step 1 of 6">
-        <p className="muted" style={{ marginBottom: 16 }}>Your name, trading details, ID number, address and the social pages you sell on.</p>
-        <ButtonLink to="/member/profile" variant="green" iconRight="arrow">
-          Complete your profile
-        </ButtonLink>
-      </Panel>
+        </div>
+      </div>
     </div>
   );
 }
