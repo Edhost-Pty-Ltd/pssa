@@ -368,12 +368,13 @@ tutorialsRouter.post("/:id/activate", async (req, res) => {
 tutorialsRouter.delete("/:id", async (req, res) => {
   const existing = await prisma.tutorialVideo.findUnique({
     where: { id: String(req.params.id) },
-    select: { id: true, storagePath: true },
+    select: { id: true, title: true, storagePath: true },
   });
   if (!existing) throw notFound("Tutorial not found.");
 
   await prisma.tutorialVideo.delete({ where: { id: existing.id } });
   await removePrivateFile(existing.storagePath).catch(() => {});
+  await recordTutorialAudit(req.user!.id, "tutorial.delete", existing.id, `Deleted tutorial "${existing.title}"`);
 
   const count = await prisma.tutorialVideo.count();
   res.json({
