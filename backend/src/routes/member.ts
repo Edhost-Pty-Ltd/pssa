@@ -209,7 +209,7 @@ function latestDocsByType(documents: LoadedMember["documents"]) {
 
 function documentsComplete(
   documents: LoadedMember["documents"],
-  channels: NonNullable<LoadedMember["memberProfile"]>["channels"],
+  _channels: NonNullable<LoadedMember["memberProfile"]>["channels"],
 ) {
   const latest = latestDocsByType(documents);
   const usable = (type: DocumentType) => {
@@ -219,9 +219,7 @@ function documentsComplete(
   const hasId = usable("id_document");
   const hasAddressOrBiz = usable("proof_of_residence") || usable("business_registration");
   const hasBank = usable("bank_evidence");
-  const hasChannel =
-    channels.some((channel: { status: string }) => channel.status === "confirmed") || usable("channel_evidence");
-  return hasId && hasAddressOrBiz && hasBank && hasChannel;
+  return hasId && hasAddressOrBiz && hasBank;
 }
 
 function documentActions(documents: LoadedMember["documents"]): ProgressAction[] {
