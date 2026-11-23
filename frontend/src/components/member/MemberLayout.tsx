@@ -76,7 +76,7 @@ export function MemberLayout() {
             <Icon name={menuOpen ? "close" : "menu"} />
           </button>
           <div>
-            <span className="mobile-logo">PSSA</span>
+            <span className="mobile-logo">PSASA</span>
           </div>
           <div className="top-actions">
             <span className="top-avatar" title={user.email} aria-hidden="true">
