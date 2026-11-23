@@ -97,6 +97,7 @@ export default function Tutorials() {
                   <b>{t.title}</b>
                   <small>
                     <Icon name="clock" size={13} /> {formatTime(t.durationSeconds)}
+                    {t.version ? ` · v${t.version}` : ""}
                     {!t.completed && t.maxPositionSeconds > 0 && t.durationSeconds
                       ? ` · ${Math.min(99, Math.floor((t.maxPositionSeconds / t.durationSeconds) * 100))}% watched`
                       : ""}
@@ -180,7 +181,15 @@ function Player({ tutorial, onProgress }: { tutorial: Tutorial; onProgress: (cha
       </video>
       <div className="video-info">
         <div>
-          <h3>{tutorial.title}</h3>
+          <h3>
+            {tutorial.title}
+            {tutorial.version ? (
+              <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 500, color: "var(--muted, #647386)" }}>
+                v{tutorial.version}
+              </span>
+            ) : null}
+          </h3>
+          {tutorial.description && <p style={{ marginBottom: 6 }}>{tutorial.description}</p>}
           <p>{tutorial.completed ? "Lesson complete. You can watch it again any time." : "Watch to the end to complete this lesson."}</p>
         </div>
         <span>{formatTime(tutorial.durationSeconds)}</span>
