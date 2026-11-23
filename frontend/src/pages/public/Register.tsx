@@ -129,7 +129,7 @@ function Results({ q, data, onPage }: { q: string; data: RegisterPage; onPage: (
         </h2>
         <p className="mx-auto mt-2 max-w-xl text-muted">
           {q
-            ? "Check the spelling or try a certificate number. If someone claims to be a PSSA member but isn't listed here, they are not a current member."
+            ? "Check the spelling or try a certificate number. If someone claims to be a PSASA member but isn't listed here, they are not a current member."
             : "Members appear here once they have been verified and approved."}
         </p>
         {q && (
@@ -238,7 +238,7 @@ function MemberCard({ member: m }: { member: RegisterMember }) {
 
           {!active && (
             <p className="mt-4 rounded-xl bg-[var(--amber-soft)] px-4 py-3 text-sm text-ink">
-              Not a current PSSA member. Don't pay anyone on the strength of a PSSA badge or certificate for this person.
+              Not a current PSASA member. Don't pay anyone on the strength of a PSASA badge or certificate for this person.
             </p>
           )}
 

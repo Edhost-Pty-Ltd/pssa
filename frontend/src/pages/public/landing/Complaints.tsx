@@ -22,7 +22,7 @@ export function Complaints() {
           </div>
           <p className="text-lg leading-relaxed text-ink/70">
             Raising a concern is free. We review the evidence, give the member a chance to respond and give both sides
-            reasons and an appeal route. PSSA can't guarantee repayment or replace the police, courts or consumer bodies, but
+            reasons and an appeal route. PSASA can't guarantee repayment or replace the police, courts or consumer bodies, but
             we can hold members to the standard they signed up for.
           </p>
         </div>

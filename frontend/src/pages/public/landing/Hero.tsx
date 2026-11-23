@@ -137,7 +137,7 @@ export function Hero() {
             className="mt-5 text-[15px] leading-relaxed text-white/70"
           >
             Personal shoppers and sourcing traders make life easier, but you often pay a stranger before you see the goods.
-            PSSA verifies who they are, the account you pay into and the channels they trade on, then shows their live
+            PSASA verifies who they are, the account you pay into and the channels they trade on, then shows their live
             status for anyone to check.
           </motion.p>
           <motion.div
@@ -169,7 +169,7 @@ export function Hero() {
       </div>
 
       <div className="absolute inset-x-0 bottom-0 z-20 border-t border-white/10 bg-navy/70 backdrop-blur-md">
-        <div className="marquee flex overflow-hidden py-4" aria-label="What PSSA checks">
+        <div className="marquee flex overflow-hidden py-4" aria-label="What PSASA checks">
           {[0, 1].map((dup) => (
             <ul key={dup} className="marquee-track flex shrink-0 items-center gap-10 pr-10" aria-hidden={dup === 1}>
               {TRUST_TICKER.map((item) => (

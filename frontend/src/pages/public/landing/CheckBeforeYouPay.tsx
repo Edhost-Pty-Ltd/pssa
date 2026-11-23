@@ -100,7 +100,7 @@ export function CheckBeforeYouPay() {
               <div className="overflow-hidden rounded-[30px] bg-white">
                 <div className="flex items-center justify-between bg-navy px-5 pb-4 pt-5 text-white">
                   <p className="font-display text-lg font-bold">
-                    PSSA<span className="text-green">.</span>
+                    PSASA<span className="text-green">.</span>
                   </p>
                   <span className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold text-white/70">Step {active + 1} of 4</span>
                 </div>

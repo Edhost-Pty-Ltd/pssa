@@ -123,7 +123,7 @@ function StateSection({ data, onChanged }: { data: RenewalOverview; onChanged: (
       return (
         <Notice tone="amber" title="Renewal isn't available right now">
           {data.validUntil
-            ? "Renewal is only available while your membership is active. If your membership is suspended, it must be lifted first. Contact PSSA if you think this is wrong."
+            ? "Renewal is only available while your membership is active. If your membership is suspended, it must be lifted first. Contact PSASA if you think this is wrong."
             : "Renewal opens once your membership is active and you have a certificate."}
         </Notice>
       );
@@ -140,7 +140,7 @@ function StateSection({ data, onChanged }: { data: RenewalOverview; onChanged: (
       return (
         <>
           <Notice tone="green" title="Your renewal has been submitted" icon="check">
-            {data.renewal?.submittedAt ? `Submitted on ${formatDate(data.renewal.submittedAt)}. ` : ""}A PSSA reviewer will check it. You'll hear from us
+            {data.renewal?.submittedAt ? `Submitted on ${formatDate(data.renewal.submittedAt)}. ` : ""}A PSASA reviewer will check it. You'll hear from us
             by email, and your new valid-until date will show here once it's approved.
           </Notice>
           <Checklist items={data.checklist} />
@@ -168,7 +168,7 @@ function StateSection({ data, onChanged }: { data: RenewalOverview; onChanged: (
     case "rejected":
       return (
         <Notice tone="red" title="Your renewal was not approved">
-          {data.renewal?.decisionReason ?? "Contact PSSA for the reasons and what you can do next."}
+          {data.renewal?.decisionReason ?? "Contact PSASA for the reasons and what you can do next."}
         </Notice>
       );
   }
@@ -186,7 +186,7 @@ function LastDecision({ data }: { data: RenewalOverview }) {
   }
   return (
     <Notice tone="red" title="Your last renewal was not approved">
-      Decided on {formatDate(last.decidedAt)}. {last.decisionReason ?? "Contact PSSA for the reasons and what you can do next."}
+      Decided on {formatDate(last.decidedAt)}. {last.decisionReason ?? "Contact PSASA for the reasons and what you can do next."}
     </Notice>
   );
 }

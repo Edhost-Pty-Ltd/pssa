@@ -158,7 +158,7 @@ function ComplaintView({ complaint: c, email, checkedAt, onChanged }: { complain
 
         <p className="mt-6 text-sm text-muted">
           {c.evidenceCount} evidence file{c.evidenceCount === 1 ? "" : "s"} on file · {c.responseCount} member response
-          {c.responseCount === 1 ? "" : "s"}. Evidence stays private to PSSA reviewers.
+          {c.responseCount === 1 ? "" : "s"}. Evidence stays private to PSASA reviewers.
         </p>
       </div>
 

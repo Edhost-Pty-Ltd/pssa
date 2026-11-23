@@ -26,7 +26,7 @@ export function FinalCta() {
             </span>
           </h2>
           <p className="mt-8 max-w-xl text-lg leading-relaxed text-white/75">
-            Every delivery you make builds a reputation. PSSA makes it one your customers can verify in seconds. Apply, pass
+            Every delivery you make builds a reputation. PSASA makes it one your customers can verify in seconds. Apply, pass
             the four gates and give every customer the certainty they're looking for.
           </p>
           <div className="mt-10 flex flex-wrap items-center gap-4">

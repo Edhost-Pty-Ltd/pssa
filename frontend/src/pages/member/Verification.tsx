@@ -209,7 +209,7 @@ export default function Verification() {
       ) : (
         <>
           <Notice tone="blue" title="Uploading is not the same as passing verification.">
-            Each item is reviewed against the PSSA Verification Standard. We'll tell you if anything needs to be replaced. Your files are private: only you and PSSA reviewers can open them.
+            Each item is reviewed against the PSASA Verification Standard. We'll tell you if anything needs to be replaced. Your files are private: only you and PSASA reviewers can open them.
           </Notice>
           {notice && <Notice tone="green" title="File uploaded">{notice}</Notice>}
 

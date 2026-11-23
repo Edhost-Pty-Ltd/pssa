@@ -64,7 +64,7 @@ export default function Certificate() {
         <EmptyState
           icon="badge"
           title="No certificate yet"
-          text="Your certificate is issued once every step is complete and a PSSA reviewer approves your application."
+          text="Your certificate is issued once every step is complete and a PSASA reviewer approves your application."
           actionLabel="See your progress"
           onAction={() => navigate("/member")}
         />
@@ -84,7 +84,7 @@ function CertificateView({ certificate: c, profile, now }: { certificate: Member
     <div style={{ display: "grid", gap: 18 }}>
       {!active && (
         <Notice tone="red" title="Your membership is not active">
-          Don't use the PSSA name, certificate or badge until your membership is active again. Anyone who checks your
+          Don't use the PSASA name, certificate or badge until your membership is active again. Anyone who checks your
           number will see that you are not an active member.
         </Notice>
       )}
@@ -174,7 +174,7 @@ function BadgePanel({ number, liveUrl, validUntil }: { number: string; liveUrl: 
       <div className="badge-preview">
         <Icon name="shield" size={38} />
         <div>
-          <b>PSSA MEMBER</b>
+          <b>PSASA MEMBER</b>
           <span>
             {number} · VALID TO {year}
           </span>

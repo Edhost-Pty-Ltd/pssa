@@ -37,12 +37,12 @@ const COPY: Record<ExamType, {
   entrance: {
     kicker: "Application · Step 4 of 6",
     title: "Entrance assessment",
-    intro: "A short test on the PSSA Code of Conduct. You need to pass it before your application goes to review.",
+    intro: "A short test on the PSASA Code of Conduct. You need to pass it before your application goes to review.",
     passedTitle: "You've passed the entrance assessment",
     passedText: "Nothing more to do here. Your application moves on to review once every other step is complete.",
     lockedLink: { to: "/member/tutorials", label: "Go to tutorials" },
     resultPassTitle: "Your application can move to review",
-    resultPassText: "We'll let you know once a PSSA reviewer has checked everything.",
+    resultPassText: "We'll let you know once a PSASA reviewer has checked everything.",
     doneLink: "/member",
     doneLabel: "Return to your application",
     retryLink: "/member/tutorials",
@@ -439,7 +439,7 @@ function Result({
         <h1>{passed ? `Well done${user?.firstName ? `, ${user.firstName}` : ""}.` : "Not this time."}</h1>
         <p>
           {passed
-            ? "You showed a sound understanding of the PSSA Code of Conduct."
+            ? "You showed a sound understanding of the PSASA Code of Conduct."
             : attempt.criticalFailed
               ? "You missed at least one critical question. Those must all be right to pass, whatever the overall score."
               : `You need at least ${EXAM_RULES.passPercent}% to pass. Go over the lessons before your next attempt.`}

@@ -120,7 +120,7 @@ function SpecimenCard({ active, onSelect }: { active: string; onSelect: (id: str
 
         <div className="flex items-center justify-between" style={{ transform: "translateZ(30px)" }}>
           <p className="font-display text-2xl font-bold">
-            PSSA<span className="text-green">.</span>
+            PSASA<span className="text-green">.</span>
           </p>
           <span className="rounded-full border border-white/15 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-white/60">Live member page</span>
         </div>

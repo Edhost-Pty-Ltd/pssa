@@ -61,7 +61,7 @@ export default function Tutorials() {
         <div>
           <span>Application · Step 3 of 6</span>
           <h1>Conduct tutorials</h1>
-          <p>Learn the minimum conduct expected of every PSSA member. Watch each lesson to the end; you can't skip ahead.</p>
+          <p>Learn the minimum conduct expected of every PSASA member. Watch each lesson to the end; you can't skip ahead.</p>
         </div>
       </div>
 

@@ -5,7 +5,7 @@ const COLUMNS = [
   {
     title: "Association",
     links: [
-      { label: "About PSSA", href: "/#about" },
+      { label: "About PSASA", href: "/#about" },
       { label: "How membership works", href: "/#membership" },
       { label: "Apply to join", href: "/member" },
       { label: "Member login", href: "/member/sign-in" },
@@ -41,7 +41,7 @@ export function SiteFooter() {
           <Wordmark />
           <p className="mt-6 max-w-xs text-sm leading-relaxed text-white/65">
             A voluntary membership association for personal shoppers and sourcing traders. Membership does not make
-            PSSA the seller or guarantee a transaction.
+            PSASA the seller or guarantee a transaction.
           </p>
         </div>
         {COLUMNS.map((column) => (
@@ -64,7 +64,7 @@ export function SiteFooter() {
       <div className="border-t border-white/10">
         <div className="mx-auto flex max-w-7xl flex-col gap-2 px-6 py-6 text-xs text-white/50 md:flex-row md:justify-between">
           <p>© {new Date().getFullYear()} Personal Shoppers and Sourcing Association</p>
-          <p>Policies are drafts pending board approval. PSSA is not a government body.</p>
+          <p>Policies are drafts pending board approval. PSASA is not a government body.</p>
         </div>
       </div>
     </footer>

@@ -89,7 +89,7 @@ function toValues(profile: MemberProfile): Values {
 const REQUIRED: Partial<Record<keyof Values, string>> = {
   firstName: "Enter your first name.",
   lastName: "Enter your last name.",
-  phone: "Enter a phone number customers and PSSA can reach you on.",
+  phone: "Enter a phone number customers and PSASA can reach you on.",
   scope: "Tell us what you source.",
   physicalAddress: "Enter your address.",
   city: "Enter your city or town.",
@@ -328,7 +328,7 @@ export default function Profile() {
           />
         </Panel>
 
-        <Panel icon="lock" title="Identity and address" subtitle="Private: only you and PSSA reviewers can see these">
+        <Panel icon="lock" title="Identity and address" subtitle="Private: only you and PSASA reviewers can see these">
           <SelectField
             label="Identity document"
             placeholder="Choose one"

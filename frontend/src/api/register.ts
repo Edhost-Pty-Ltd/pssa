@@ -39,7 +39,7 @@ interface RawMember {
 }
 
 function toMember(raw: RawMember): RegisterMember {
-  const name = raw.name?.trim() || [raw.firstName, raw.lastName].filter(Boolean).join(" ") || raw.tradingName || "PSSA member";
+  const name = raw.name?.trim() || [raw.firstName, raw.lastName].filter(Boolean).join(" ") || raw.tradingName || "PSASA member";
   return {
     id: raw.id,
     name,

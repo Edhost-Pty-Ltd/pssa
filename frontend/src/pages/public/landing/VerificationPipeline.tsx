@@ -32,7 +32,7 @@ export function VerificationPipeline() {
         <div className="mt-16 grid gap-12 lg:grid-cols-2 lg:gap-20">
           <div className="lg:sticky lg:top-28 lg:h-[calc(100svh-9rem)]">
             <div className="relative h-[420px] overflow-hidden rounded-[32px] shadow-[0_40px_80px_-30px_rgba(7,9,13,0.45)] lg:h-full">
-              <img src={IMG.officer} alt="A PSSA verification officer carefully reviewing an applicant's documents at her desk" className="h-full w-full object-cover" loading="lazy" />
+              <img src={IMG.officer} alt="A PSASA verification officer carefully reviewing an applicant's documents at her desk" className="h-full w-full object-cover" loading="lazy" />
               <div className="absolute inset-0 bg-gradient-to-t from-noir/85 via-noir/10 to-transparent" />
 
               <div className="absolute inset-x-4 bottom-4 rounded-3xl border border-white/20 bg-noir/60 p-5 text-white backdrop-blur-xl sm:inset-x-6 sm:bottom-6">

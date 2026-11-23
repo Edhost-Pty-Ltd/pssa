@@ -44,7 +44,7 @@ export function TrustGap() {
             </h2>
             <p className="mt-6 text-lg leading-relaxed text-white/65">
               Same sneakers. Same price. Two very different conversations. Flip the switch and see what changes when your
-              shopper is a verified PSSA member.
+              shopper is a verified PSASA member.
             </p>
           </div>
 
@@ -65,7 +65,7 @@ export function TrustGap() {
                     transition={{ type: "spring", stiffness: 300, damping: 28 }}
                   />
                 )}
-                {m === "without" ? "Unverified shopper" : "PSSA member"}
+                {m === "without" ? "Unverified shopper" : "PSASA member"}
               </button>
             ))}
           </div>
@@ -91,7 +91,7 @@ export function TrustGap() {
                       >
                         {withPssa ? (
                           <>
-                            <Icon name="check" size={11} /> Active PSSA member
+                            <Icon name="check" size={11} /> Active PSASA member
                           </>
                         ) : (
                           "Status unknown"
