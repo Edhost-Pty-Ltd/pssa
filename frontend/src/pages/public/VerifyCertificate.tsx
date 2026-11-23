@@ -55,11 +55,11 @@ export default function VerifyCertificate() {
       <main className="bg-soft">
         <div className="mx-auto max-w-5xl px-6 py-14 sm:py-20">
           <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.22em] text-green-dark">
-            <Icon name="shield" size={16} /> Live PSSA verification
+            <Icon name="shield" size={16} /> Live PSASA verification
           </p>
           <h1 className="mt-3 font-display text-4xl font-semibold text-navy sm:text-5xl">Check a certificate</h1>
           <p className="mt-3 max-w-2xl text-lg text-muted">
-            Enter the number on a PSSA certificate or badge to see the member's status right now.
+            Enter the number on a PSASA certificate or badge to see the member's status right now.
           </p>
 
           <CheckForm initial={params.number ?? ""} />
@@ -162,10 +162,10 @@ function CertificateResult({ certificate: c }: { certificate: CertificateCheck }
     return (
       <section className="rounded-2xl border border-line bg-white p-6 sm:p-8">
         <Status of={PUBLIC_MEMBER_STATUS} value={c.status} />
-        <h2 className="mt-4 font-display text-3xl font-semibold text-navy">{name} is not an active PSSA member</h2>
+        <h2 className="mt-4 font-display text-3xl font-semibold text-navy">{name} is not an active PSASA member</h2>
         <p className="mt-3 text-muted">
           Certificate <span className="font-mono font-semibold text-ink">{c.number}</span> is no longer valid. Don't
-          pay anyone on the strength of this certificate or a PSSA badge.
+          pay anyone on the strength of this certificate or a PSASA badge.
         </p>
         <ReportLink />
         <CheckedAt value={c.checkedAt} />
@@ -176,7 +176,7 @@ function CertificateResult({ certificate: c }: { certificate: CertificateCheck }
   return (
     <section className="overflow-hidden rounded-2xl border border-line bg-white">
       <div className="flex items-center gap-2 bg-green-soft px-6 py-3 text-sm font-semibold text-green-dark sm:px-8">
-        <Icon name="shield" size={18} /> Verified by PSSA. This result is live.
+        <Icon name="shield" size={18} /> Verified by PSASA. This result is live.
       </div>
       <div className="p-6 sm:p-8">
         <Status of={PUBLIC_MEMBER_STATUS} value={c.status} />
@@ -248,8 +248,8 @@ function NotFound({ number }: { number: string }) {
       </span>
       <h2 className="mt-4 font-display text-3xl font-semibold text-navy">No certificate with this number</h2>
       <p className="mt-3 text-muted">
-        <span className="font-mono font-semibold text-ink">{number}</span> isn't a PSSA certificate. Check that you
-        typed it correctly. If someone showed you this number, they may not be a PSSA member. Don't pay them on the
+        <span className="font-mono font-semibold text-ink">{number}</span> isn't a PSASA certificate. Check that you
+        typed it correctly. If someone showed you this number, they may not be a PSASA member. Don't pay them on the
         strength of it.
       </p>
       <ReportLink />
@@ -260,7 +260,7 @@ function NotFound({ number }: { number: string }) {
 function InvalidNumber({ value }: { value: string }) {
   return (
     <Message title="That doesn't look like a certificate number">
-      “{value}” isn't in the PSSA format. Certificate numbers look like PSSA-2026-004821.
+      “{value}” isn't in the right format. Certificate numbers look like PSSA-2026-004821.
     </Message>
   );
 }
@@ -284,7 +284,7 @@ function HowItWorks() {
       <ul className="mt-4 space-y-3 text-muted">
         <li className="flex gap-3">
           <span className="text-green-dark"><Icon name="file" size={18} /></span>
-          On the member's PSSA certificate, under the certificate number.
+          On the member's PSASA certificate, under the certificate number.
         </li>
         <li className="flex gap-3">
           <span className="text-green-dark"><Icon name="badge" size={18} /></span>

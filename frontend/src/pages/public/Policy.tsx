@@ -13,27 +13,27 @@ const POLICIES: Record<string, PolicyInfo> = {
   "code-of-conduct": {
     title: "Code of Conduct",
     icon: "book",
-    covers: "The standards every PSSA member agrees to follow when sourcing and selling for customers.",
+    covers: "The standards every PSASA member agrees to follow when sourcing and selling for customers.",
   },
   verification: {
     title: "Verification Standard",
     icon: "shield",
-    covers: "What PSSA checks before a member is verified: identity, address or business registration, banking and trading channels.",
+    covers: "What PSASA checks before a member is verified: identity, address or business registration, banking and trading channels.",
   },
   complaints: {
     title: "Complaints and Appeals",
     icon: "flag",
-    covers: "How to raise a concern about a member, how PSSA handles it, the time limits, and how to appeal a decision.",
+    covers: "How to raise a concern about a member, how PSASA handles it, the time limits, and how to appeal a decision.",
   },
   privacy: {
     title: "Privacy and Retention",
     icon: "lock",
-    covers: "What personal information PSSA collects, why, who can see it, and how long it is kept.",
+    covers: "What personal information PSASA collects, why, who can see it, and how long it is kept.",
   },
   "badge-rules": {
     title: "Badge Rules",
     icon: "badge",
-    covers: "When and how members may use the PSSA name, certificate and badge, and what happens if they are misused.",
+    covers: "When and how members may use the PSASA name, certificate and badge, and what happens if they are misused.",
   },
   "order-template": {
     title: "Customer order template",
@@ -54,7 +54,7 @@ export default function Policy() {
           {policy ? (
             <article>
               <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.22em] text-green-dark">
-                <Icon name={policy.icon} size={16} /> PSSA standards
+                <Icon name={policy.icon} size={16} /> PSASA standards
               </p>
               <h1 className="mt-3 font-display text-4xl font-semibold text-navy sm:text-5xl">{policy.title}</h1>
               <p className="mt-4 text-lg text-muted">{policy.covers}</p>
@@ -63,7 +63,7 @@ export default function Policy() {
                 <div>
                   <p className="font-semibold text-ink">The official text is being finalised</p>
                   <p className="mt-1 text-muted">
-                    PSSA will publish the approved {policy.title.toLowerCase()} on this page. Until then, nothing else
+                    PSASA will publish the approved {policy.title.toLowerCase()} on this page. Until then, nothing else
                     should be treated as the official version.
                   </p>
                 </div>

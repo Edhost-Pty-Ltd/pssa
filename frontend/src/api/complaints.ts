@@ -29,8 +29,8 @@ export interface PublicComplaint {
 
 export const COMPLAINT_TYPES: { value: ComplaintType; label: string; hint: string }[] = [
   { value: "misconduct", label: "Misconduct", hint: "Unfair or harmful conduct by a member" },
-  { value: "impersonation", label: "Impersonation", hint: "Someone posing as a PSSA member" },
-  { value: "badge_misuse", label: "Badge misuse", hint: "Wrong use of the PSSA name, certificate or badge" },
+  { value: "impersonation", label: "Impersonation", hint: "Someone posing as a PSASA member" },
+  { value: "badge_misuse", label: "Badge misuse", hint: "Wrong use of the PSASA name, certificate or badge" },
 ];
 
 export const OUTCOME_LABELS: Record<ComplaintOutcome, string> = {

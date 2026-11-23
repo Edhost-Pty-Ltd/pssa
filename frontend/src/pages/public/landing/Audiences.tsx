@@ -11,13 +11,13 @@ export function Audiences() {
       <div className="mx-auto max-w-7xl px-6">
         <div className="mx-auto max-w-3xl text-center">
           <div className="flex justify-center">
-            <Eyebrow tone="navy">Who PSSA is for</Eyebrow>
+            <Eyebrow tone="navy">Who PSASA is for</Eyebrow>
           </div>
           <h2 className="mt-6 font-display text-[clamp(2.5rem,5.5vw,4.5rem)] font-semibold leading-[1] text-navy">
             <SplitWords text="One standard." /> <span className="italic text-green-dark"><SplitWords text="Everyone protected." delay={0.15} /></span>
           </h2>
           <p className="mt-6 text-lg leading-relaxed text-ink/70">
-            Honest shoppers deserve to stand out. Customers deserve certainty. PSSA gives both a shared language of trust.
+            Honest shoppers deserve to stand out. Customers deserve certainty. PSASA gives both a shared language of trust.
           </p>
         </div>
 

@@ -104,7 +104,7 @@ export default function Dashboard() {
                   <h3 style={{ marginBottom: 6 }}>Submit for review</h3>
                   <p className="muted" style={{ marginBottom: 16 }}>
                     {state.data.progress.canSubmit
-                      ? "Every step before Review has passed. A PSSA reviewer will check your file."
+                      ? "Every step before Review has passed. A PSASA reviewer will check your file."
                       : "You can submit once every step before Review has passed."}
                   </p>
                   {submitError && <Notice tone="red" title="We couldn't submit your application">{submitError}</Notice>}
@@ -219,7 +219,7 @@ function Agreement({ data }: { data: ApplicationOverview }) {
         </Notice>
       ) : (
         <Notice tone="blue" title="The membership agreement isn't published yet.">
-          It will appear here once PSSA has approved it. Everything else in your application can go ahead in the meantime.
+          It will appear here once PSASA has approved it. Everything else in your application can go ahead in the meantime.
         </Notice>
       )}
     </Panel>
@@ -234,7 +234,7 @@ function HelpPanel() {
       </span>
       <h3>How verification works</h3>
       <p className="muted" style={{ marginBottom: 16 }}>
-        Uploading a document isn't the same as passing a check. Every item is reviewed against the PSSA Verification Standard.
+        Uploading a document isn't the same as passing a check. Every item is reviewed against the PSASA Verification Standard.
       </p>
       <ButtonLink to="/#membership" variant="outline" full>
         Read the four gates

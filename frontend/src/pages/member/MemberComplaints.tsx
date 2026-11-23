@@ -64,7 +64,7 @@ export default function MemberComplaints() {
           <>
             {waiting > 0 && (
               <Notice tone="amber" title={`${waiting} complaint${waiting === 1 ? " is" : "s are"} waiting for your response`}>
-                Reply before the due date. If you don't, PSSA will decide using the information it has.
+                Reply before the due date. If you don't, PSASA will decide using the information it has.
               </Notice>
             )}
             {data.complaints.map((c) => (
@@ -116,7 +116,7 @@ function ComplaintCard({ complaint: c, now, onChanged }: { complaint: PublicComp
 
         {c.outcome && (
           <Notice tone={c.outcome === "no_breach" ? "green" : "amber"} title={`Outcome: ${OUTCOME_LABELS[c.outcome]}`}>
-            {c.outcome === "no_breach" ? "PSSA found no breach of the Code of Conduct." : "PSSA will contact you about what happens next."}
+            {c.outcome === "no_breach" ? "PSASA found no breach of the Code of Conduct." : "PSASA will contact you about what happens next."}
           </Notice>
         )}
 
@@ -231,7 +231,7 @@ function ResponseForm({ complaintId, onSent }: { complaintId: string; onSent: ()
           }}
         />
       </div>
-      <p style={{ margin: 0, fontSize: 13, color: "var(--muted, #647386)" }}>Only PSSA reviewers see your response and files.</p>
+      <p style={{ margin: 0, fontSize: 13, color: "var(--muted, #647386)" }}>Only PSASA reviewers see your response and files.</p>
       {error && <Notice tone="red" title="We couldn't send your response">{error}</Notice>}
       <div style={{ display: "flex", gap: 10 }}>
         <Button type="submit" variant="green" loading={sending}>

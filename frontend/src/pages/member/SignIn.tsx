@@ -134,7 +134,7 @@ export default function SignIn() {
             </div>
             <div className="otp-note">
               <Icon name="mail" />
-              <p>We'll send a one-time code to your email. No password needed. New to PSSA? Enter your email to start an application.</p>
+              <p>We'll send a one-time code to your email. No password needed. New to PSASA? Enter your email to start an application.</p>
             </div>
           </>
         ) : (

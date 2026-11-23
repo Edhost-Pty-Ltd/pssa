@@ -11,7 +11,7 @@ const STORY =
 const PRINCIPLES: { icon: IconName; title: string; text: string }[] = [
   { icon: "shield", title: "We verify members", text: "Who applicants are, how they trade, the receiving accounts they use and the channels they control." },
   { icon: "book", title: "We set conduct standards", text: "Honest advertising, responsible sourcing, transparent prices, careful payment handling and fair service." },
-  { icon: "people", title: "We are not the seller", text: "You buy directly from the member. Membership does not make PSSA the seller or guarantee the transaction." },
+  { icon: "people", title: "We are not the seller", text: "You buy directly from the member. Membership does not make PSASA the seller or guarantee the transaction." },
   { icon: "bank", title: "Fees never buy approval", text: "Fees are separate from decisions. The same standards apply to founders, sponsors and every applicant." },
 ];
 
@@ -26,13 +26,13 @@ export function WhatIsShopper() {
 
         <div className="mt-28 grid gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:items-end">
           <div>
-            <Eyebrow tone="navy">Where PSSA comes in</Eyebrow>
+            <Eyebrow tone="navy">Where PSASA comes in</Eyebrow>
             <h2 className="mt-5 font-display text-[clamp(2.25rem,4.5vw,3.75rem)] font-semibold leading-[1.02] text-navy">
               An association, <span className="italic text-green-dark">not a marketplace.</span>
             </h2>
           </div>
           <p className="text-lg leading-relaxed text-ink/75">
-            PSSA is a voluntary membership body for personal shoppers and sourcing traders. Members earn their place
+            PSASA is a voluntary membership body for personal shoppers and sourcing traders. Members earn their place
             through verification and a conduct assessment, and customers can check their status at any time. We exist so
             that trusting your shopper is a decision you can make with evidence, not hope.
           </p>

@@ -23,7 +23,7 @@ export function LiveStatus() {
             <SplitWords text="A badge is only as good as" /> <span className="italic text-green"><SplitWords text="its live status." delay={0.25} /></span>
           </h2>
           <p className="mt-6 max-w-lg text-lg leading-relaxed text-white/70">
-            Every PSSA badge must identify the member and link to their live page on PSSA.site. When membership expires or
+            Every PSASA badge must identify the member and link to their live page on PSSA.site. When membership expires or
             is suspended, that page changes straight away. A copied logo can't fake that.
           </p>
 

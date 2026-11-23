@@ -286,19 +286,19 @@ export const POLICIES = [
 
 export const FAQS: { q: string; a: string }[] = [
   {
-    q: "What exactly does PSSA do?",
-    a: "PSSA is a voluntary membership association for personal shoppers and sourcing traders. We verify who members are, how they trade, the receiving accounts they use and the channels they control. Members pass a conduct assessment, and customers can check their live status at any time.",
+    q: "What exactly does PSASA do?",
+    a: "PSASA is a voluntary membership association for personal shoppers and sourcing traders. We verify who members are, how they trade, the receiving accounts they use and the channels they control. Members pass a conduct assessment, and customers can check their live status at any time.",
   },
   {
-    q: "Is PSSA the seller? Do you guarantee my order?",
-    a: "No. You buy directly from the member. Membership does not make PSSA the seller or guarantee a transaction, and we can't guarantee repayment or replace the police, courts or consumer bodies. What we do is make sure the person you're paying has been checked, and give you a fair process if something goes wrong.",
+    q: "Is PSASA the seller? Do you guarantee my order?",
+    a: "No. You buy directly from the member. Membership does not make PSASA the seller or guarantee a transaction, and we can't guarantee repayment or replace the police, courts or consumer bodies. What we do is make sure the person you're paying has been checked, and give you a fair process if something goes wrong.",
   },
   {
     q: "How do I check if a shopper is a member?",
     a: "Search their name or business name in the member register on this page, or follow the badge on their profile to their live page on PSSA.site. If they aren't listed, they are not currently an active member.",
   },
   {
-    q: "Someone sent me a screenshot of their PSSA certificate. Is that enough?",
+    q: "Someone sent me a screenshot of their PSASA certificate. Is that enough?",
     a: "No. Screenshots and old certificates don't prove current approval. Always check the live register. If someone claims to be a member and isn't listed, please report it.",
   },
   {

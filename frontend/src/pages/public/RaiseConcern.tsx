@@ -45,7 +45,7 @@ export default function RaiseConcern() {
     if (description.trim().length < 20) e.description = "Tell us what happened in a few sentences (at least 20 characters).";
     if (!contactName.trim()) e.contactName = "Enter your name.";
     if (!EMAIL.test(contactEmail.trim())) e.contactEmail = "Enter a valid email address. We'll use it to update you.";
-    if (!consent) e.consent = "Please confirm you agree to PSSA using this information to handle your report.";
+    if (!consent) e.consent = "Please confirm you agree to PSASA using this information to handle your report.";
     return e;
   }
 
@@ -99,7 +99,7 @@ export default function RaiseConcern() {
             <aside className="self-start">
               <p className="text-xs font-bold uppercase tracking-[0.22em] text-green-dark">Complaints and concerns</p>
               <h1 className="mt-3 font-display text-4xl font-semibold text-navy">Tell us what happened.</h1>
-              <p className="mt-3 text-muted">Reports are handled fairly and confidentially under the PSSA complaints process.</p>
+              <p className="mt-3 text-muted">Reports are handled fairly and confidentially under the PSASA complaints process.</p>
               <div className="mt-6 flex gap-3 rounded-2xl bg-green-soft p-4">
                 <span className="text-green-dark"><Icon name="check" /></span>
                 <div>
@@ -191,7 +191,7 @@ export default function RaiseConcern() {
 
               <Section title="Your contact details">
                 <p className="-mt-2 mb-4 text-sm text-muted">
-                  Only PSSA reviewers see these. We never share them with the member without your permission.
+                  Only PSASA reviewers see these. We never share them with the member without your permission.
                 </p>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field id="contactName" label="Your full name" error={errors.contactName}>
@@ -240,7 +240,7 @@ export default function RaiseConcern() {
                     className="mt-1 size-4 accent-[var(--color-green)]"
                   />
                   <span>
-                    I agree to PSSA using this information to assess and manage my report. I've read the{" "}
+                    I agree to PSASA using this information to assess and manage my report. I've read the{" "}
                     <Link to="/policies/privacy" className="font-semibold text-green-dark underline">
                       Privacy policy
                     </Link>
@@ -532,7 +532,7 @@ function EvidencePicker({ files, onChange, onError }: { files: File[]; onChange:
           e.target.value = "";
         }}
       />
-      <p className="mt-2 text-xs text-muted">Evidence is private: only PSSA reviewers can open it.</p>
+      <p className="mt-2 text-xs text-muted">Evidence is private: only PSASA reviewers can open it.</p>
     </div>
   );
 }
