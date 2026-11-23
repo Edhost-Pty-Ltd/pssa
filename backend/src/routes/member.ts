@@ -16,6 +16,7 @@ import { badRequest, conflict, forbidden, notFound } from "../lib/http.js";
 import { isValidIdentityNumber, maskIdNumber, nextApplicationNumber } from "../lib/members.js";
 import { prisma } from "../lib/prisma.js";
 import { applyPrivateFileHeaders, logPrivateFileAccess } from "../lib/privateFiles.js";
+import { retainUntilForDocument } from "../lib/retentionQueries.js";
 import { assertFileSignature, complaintUpload, documentUpload, privateFilePath, removePrivateFile } from "../lib/uploads.js";
 import { requireRole } from "../middleware/auth.js";
 
@@ -629,6 +630,7 @@ async function storeDocument(userId: string, file: Express.Multer.File | undefin
         // Multer decodes the multipart filename as latin1; re-decode as utf8 for em dash etc.
         originalName: Buffer.from(file.originalname, "latin1").toString("utf8").slice(0, 180),
         status: "uploaded",
+        retainUntil: retainUntilForDocument(type),
       },
       select: documentSelect,
     });

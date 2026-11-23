@@ -139,9 +139,9 @@ Member sign-in is passwordless: send a code, then verify the code. Phase 1 build
 | --- | --- | --- | --- | --- |
 | POST | `/api/auth/otp/send` | Public | **In:** `{ email }`. Phone: `{ email, channel: "phone" }` returns 400 until an SMS service exists. **Out:** `200 { sent, destination (masked), expiresAt }`. Stores the OTP against the email only — it does **not** create a user yet (avoids bots/typos filling `users`). Do not reveal whether the email is already registered. Rate-limited. Do not return a `devCode` in production. | Exists |
 | POST | `/api/auth/otp/verify` | Public | **In:** `{ email, code }` (six digits). **Out:** `200 { user }` and `Set-Cookie: ec_session`. On a correct code, **creates** a passwordless `MEMBER` if needed (or resumes an existing one), sets `emailVerifiedAt`, and issues the session. Wrong, expired or over-attempted codes return 400 with a field error on `code`. | Exists |
-| POST | `/api/auth/login` | Public | **In:** `{ email, password }`. **Out:** `200 { user }` and `Set-Cookie: ec_session`. Updates `lastLoginAt`. This is the admin sign-in. Members who use OTP may have no password and must not be required to use this endpoint. Rate-limited. | To build |
-| POST | `/api/auth/logout` | Signed in | **In:** none. **Out:** `200 { ok: true }`. Clears the cookie and increments `tokenVersion`. Safe to call when signed out. | To build |
-| GET | `/api/auth/me` | Public | **In:** cookie only. **Out:** `200 { user }` or `200 { user: null }` if there is no valid session. The frontend calls this on load to restore a session. | To build |
+| POST | `/api/auth/login` | Public | **In:** `{ email, password }`. **Out:** `200 { user }` and `Set-Cookie: ec_session`. Updates `lastLoginAt`. This is the admin sign-in. Members who use OTP may have no password and must not be required to use this endpoint. Rate-limited. | Exists |
+| POST | `/api/auth/logout` | Signed in | **In:** none. **Out:** `200 { ok: true }`. Clears the cookie and increments `tokenVersion`. Safe to call when signed out. | Exists |
+| GET | `/api/auth/me` | Public | **In:** cookie only. **Out:** `200 { user }` or `200 { user: null }` if there is no valid session. The frontend calls this on load to restore a session. | Exists |
 
 Do not use `POST /api/auth/register` for the member portal; it is **not** the Figma member flow. Passwordless send-code and verify-code are the member sign-in. A public form must never accept an `ADMIN` role.
 
@@ -342,9 +342,9 @@ Policy pages (Code of Conduct, Privacy Policy, Complaints and Appeals, Badge Rul
 | Expiry | KG, with Ryan on mail | When `validUntil` is reached, member status becomes `expired`. The live badge and public register must not show Active, even if this job failed — compute status from the stored date as well as from a flag. Ryan’s `npm run jobs:mails` sends an expiry confirmation email (deduped via `AuditLog`); status flag updates remain KG’s expiry job. |
 | Renewal reminders | Ryan, with KG on dates | `npm run jobs:mails` emails the member 60, 30 and 7 calendar days before expiry (Africa/Johannesburg day match), deduped via `AuditLog`. These are a service target, not a right that keeps a badge Active. |
 | Complaint deadline mail | Ryan | `npm run jobs:mails` reminds admins when the two-business-day acknowledgement or the 30-business-day decision target is within ~24 hours or overdue. |
-| Privacy and retention | Ryan, with KG on queries | Remove or archive identity and bank files according to the published retention schedule. Do not keep private evidence for ever. |
+| Privacy and retention | Ryan, with KG on queries | `npm run jobs:retention` deletes identity and bank private files whose `retainUntil` has passed, then clears `storagePath` and sets `purgedAt` (audited). New `id_document` / `bank_evidence` uploads set `retainUntil` to upload date + 7 years (interim until the published Privacy Policy schedule replaces that constant). Older rows without a date are backfilled on the first job run from `createdAt` + 7 years. |
 
-**Immediate (request-time) mail** — sent after the API action when SMTP is configured; failures are logged and never fail the HTTP request: application decision → applicant; member status change → member; complaint decision / appeal decision → complainant and named member. Renewal decision helper `notifyRenewalDecision` is ready to call from the renewal decision route once that PR is on `main`. Run scheduled mail with `npm run jobs:mails` in `backend/`.
+**Immediate (request-time) mail** — sent after the API action when SMTP is configured; failures are logged and never fail the HTTP request: application decision → applicant; member status change → member; complaint decision / appeal decision → complainant and named member; renewal decision → member. Run scheduled mail with `npm run jobs:mails` and retention with `npm run jobs:retention` in `backend/`.
 
 ---
 

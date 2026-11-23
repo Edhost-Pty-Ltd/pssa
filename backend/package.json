@@ -15,7 +15,8 @@
     "start": "node dist/src/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --test src/lib/*.test.ts",
-    "jobs:mails": "tsx src/jobs/runScheduledMails.ts"
+    "jobs:mails": "tsx src/jobs/runScheduledMails.ts",
+    "jobs:retention": "tsx src/jobs/runRetention.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
