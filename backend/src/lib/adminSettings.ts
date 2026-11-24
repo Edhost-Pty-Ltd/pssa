@@ -7,6 +7,7 @@ export const DEFAULT_ASSOCIATION_SETTINGS = {
   verificationSlaHours: 48,
   autoPublishApprovedListings: false,
   requireIdVerification: true,
+  practicalPassThreshold: 70,
 } as const;
 
 export type AssociationSettingsInput = {
@@ -16,6 +17,7 @@ export type AssociationSettingsInput = {
   verificationSlaHours: number;
   autoPublishApprovedListings: boolean;
   requireIdVerification: boolean;
+  practicalPassThreshold?: number;
 };
 
 export function serializeAssociationSettings(row: AssociationSettingsInput) {
@@ -26,6 +28,7 @@ export function serializeAssociationSettings(row: AssociationSettingsInput) {
     verificationSlaHours: row.verificationSlaHours,
     autoPublishApprovedListings: row.autoPublishApprovedListings,
     requireIdVerification: row.requireIdVerification,
+    practicalPassThreshold: row.practicalPassThreshold ?? DEFAULT_ASSOCIATION_SETTINGS.practicalPassThreshold,
   };
 }
 

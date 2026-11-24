@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   EXAM_RULES,
   getExamAttempts,
@@ -10,66 +10,885 @@ import {
   type ExamStatus,
   type ExamType,
 } from "../../api/learning";
-import { Icon } from "../../components/Icon";
+import {
+  deletePracticalEvidence,
+  getPracticalState,
+  savePracticalDraft,
+  submitPracticalAssessment,
+  uploadPracticalEvidence,
+  type PracticalAnswers,
+  type PracticalOptionItem,
+  type PracticalState,
+  type PracticalTrack,
+} from "../../api/practicalAssessment";
 import { Button, ButtonLink, ErrorState, LoadingState, Notice, Panel, StatusBadge } from "../../components/ui";
+import type { NoticeTone } from "../../components/ui/Notice";
+import type { StatusTone } from "../../components/ui/StatusBadge";
 import { useAuth } from "../../context/auth-context";
-import { errorMessage } from "../../lib/api";
+import { ApiError, errorMessage } from "../../lib/api";
 
+const FIELD_STYLE: CSSProperties = {
+  width: "100%",
+  padding: 10,
+  borderRadius: 10,
+  border: "1px solid #cfd8e3",
+  backgroundColor: "#ffffff",
+  color: "#0f233c",
+  fontFamily: "inherit",
+  fontSize: 14,
+};
+
+const COMPACT_FIELD_STYLE: CSSProperties = {
+  ...FIELD_STYLE,
+  padding: 9,
+  borderRadius: 8,
+};
+
+type SaveStatus = "idle" | "saving" | "saved" | "offline";
+
+interface LocalPracticalDraft {
+  serviceTrack: PracticalTrack | null;
+  answers: PracticalAnswers;
+  savedAt: string;
+}
+
+const EMPTY_OPTION = (): PracticalOptionItem => ({
+  name: "",
+  retailer: "",
+  url: "",
+  price: "",
+  suitability: "",
+});
+
+function buildInitialAnswers(existing: Partial<PracticalAnswers> | null | undefined): PracticalAnswers {
+  const existingOptions = Array.isArray(existing?.options) ? existing.options : [];
+  const options =
+    existingOptions.length >= 3
+      ? existingOptions.map((o) => ({
+          name: o?.name ?? "",
+          retailer: o?.retailer ?? "",
+          url: o?.url ?? "",
+          price: o?.price ?? "",
+          suitability: o?.suitability ?? "",
+        }))
+      : [
+          ...existingOptions.map((o) => ({
+            name: o?.name ?? "",
+            retailer: o?.retailer ?? "",
+            url: o?.url ?? "",
+            price: o?.price ?? "",
+            suitability: o?.suitability ?? "",
+          })),
+          ...Array.from({ length: Math.max(0, 3 - existingOptions.length) }, EMPTY_OPTION),
+        ];
+
+  return {
+    briefSummary: existing?.briefSummary ?? "",
+    options,
+    budget: {
+      estimatedTotal: existing?.budget?.estimatedTotal ?? "",
+      additionalCosts: existing?.budget?.additionalCosts ?? "",
+      remainingOrOver: existing?.budget?.remainingOrOver ?? "",
+      assumptions: existing?.budget?.assumptions ?? "",
+      priceCheckedDate: existing?.budget?.priceCheckedDate ?? new Date().toISOString().slice(0, 10),
+    },
+    recommendation: {
+      preferredPlan: existing?.recommendation?.preferredPlan ?? "",
+      backupOption: existing?.recommendation?.backupOption ?? "",
+    },
+    customerMessage: existing?.customerMessage ?? "",
+    responsibility: {
+      priceChanges: existing?.responsibility?.priceChanges ?? "",
+      commissionDisclosure: existing?.responsibility?.commissionDisclosure ?? "",
+      privacyProtection: existing?.responsibility?.privacyProtection ?? "",
+    },
+  };
+}
+
+const STATUS_BADGE: Record<string, { label: string; tone: StatusTone }> = {
+  NOT_STARTED: { label: "Not started", tone: "grey" },
+  IN_PROGRESS: { label: "Draft saved", tone: "blue" },
+  SUBMITTED: { label: "Submitted — awaiting review", tone: "blue" },
+  UNDER_REVIEW: { label: "Under review", tone: "blue" },
+  NEEDS_RESUBMISSION: { label: "Resubmission requested", tone: "amber" },
+  PASSED: { label: "Passed", tone: "green" },
+  NOT_PASSED: { label: "Not passed", tone: "red" },
+};
+
+export default function Assessment() {
+  const { user } = useAuth();
+  const [state, setState] = useState<PracticalState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
+
+  const [serviceTrack, setServiceTrack] = useState<PracticalTrack | null>(null);
+  const [answers, setAnswers] = useState<PracticalAnswers>(() => buildInitialAnswers(null));
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [feedbackBanner, setFeedbackBanner] = useState<{ tone: NoticeTone; title: string; text: string } | null>(null);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const idempotencyKeyRef = useRef<string>(crypto.randomUUID());
+  const hydratedRef = useRef(false);
+  const dirtyRef = useRef(false);
+  const latestDraftRef = useRef<{ serviceTrack: PracticalTrack | null; answers: PracticalAnswers }>({
+    serviceTrack: null,
+    answers: buildInitialAnswers(null),
+  });
+
+  const draftStorageKey = `pssa:practical-draft:${user?.id ?? "member"}`;
+
+  useEffect(() => {
+    latestDraftRef.current = { serviceTrack, answers };
+  }, [serviceTrack, answers]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    hydratedRef.current = false;
+    dirtyRef.current = false;
+    getPracticalState(controller.signal)
+      .then((data) => {
+        setState(data);
+        const serverStatus = data.submission.status;
+        const locked = serverStatus === "SUBMITTED" || serverStatus === "UNDER_REVIEW" || serverStatus === "PASSED";
+        let nextTrack: PracticalTrack | null = data.submission.serviceTrack ?? data.suggestedTrack ?? null;
+        let nextAnswers = buildInitialAnswers(data.submission.answers);
+        let restoredLocal = false;
+
+        if (locked) {
+          try {
+            localStorage.removeItem(draftStorageKey);
+          } catch {
+            // ignore storage errors
+          }
+        } else {
+          try {
+            const raw = localStorage.getItem(draftStorageKey);
+            if (raw) {
+              const local = JSON.parse(raw) as LocalPracticalDraft;
+              const localTime = local.savedAt ? new Date(local.savedAt).getTime() : 0;
+              const serverTime = data.submission.updatedAt ? new Date(data.submission.updatedAt).getTime() : 0;
+              if (local?.answers && localTime > serverTime) {
+                nextTrack = local.serviceTrack ?? nextTrack;
+                nextAnswers = buildInitialAnswers(local.answers);
+                restoredLocal = true;
+              }
+            }
+          } catch {
+            // ignore corrupt localStorage
+          }
+        }
+
+        setServiceTrack(nextTrack);
+        setAnswers(nextAnswers);
+        latestDraftRef.current = { serviceTrack: nextTrack, answers: nextAnswers };
+        if (restoredLocal) {
+          dirtyRef.current = true;
+          setSaveStatus("offline");
+        } else if (data.submission.updatedAt) {
+          setSaveStatus("saved");
+          setLastSavedAt(data.submission.updatedAt);
+        }
+        hydratedRef.current = true;
+        setError(null);
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted) setError(errorMessage(err));
+      });
+    return () => controller.abort();
+  }, [reload, draftStorageKey]);
+
+  const editableStatus =
+    state?.submission.status !== "SUBMITTED" &&
+    state?.submission.status !== "UNDER_REVIEW" &&
+    state?.submission.status !== "PASSED";
+
+  const persistToServer = useCallback(
+    async (track: PracticalTrack | null, draftAnswers: PracticalAnswers) => {
+      setSaveStatus("saving");
+      try {
+        const res = await savePracticalDraft(track, draftAnswers);
+        dirtyRef.current = false;
+        setState((prev) => (prev ? { ...prev, submission: res.submission } : prev));
+        setSaveStatus("saved");
+        setLastSavedAt(new Date().toISOString());
+      } catch {
+        setSaveStatus("offline");
+      }
+    },
+    [],
+  );
+
+  // Instant localStorage backup + 2s debounced server autosave
+  useEffect(() => {
+    if (!hydratedRef.current || !state || !editableStatus) return;
+    if (!dirtyRef.current) return;
+
+    try {
+      const payload: LocalPracticalDraft = {
+        serviceTrack,
+        answers,
+        savedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(draftStorageKey, JSON.stringify(payload));
+    } catch {
+      // ignore storage quota errors
+    }
+
+    const timer = setTimeout(() => {
+      void persistToServer(serviceTrack, answers);
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [serviceTrack, answers, state, editableStatus, draftStorageKey, persistToServer]);
+
+  // Retry server sync automatically when network reconnects
+  useEffect(() => {
+    const onOnline = () => {
+      if (hydratedRef.current && editableStatus && (dirtyRef.current || saveStatus === "offline")) {
+        void persistToServer(latestDraftRef.current.serviceTrack, latestDraftRef.current.answers);
+      }
+    };
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [editableStatus, saveStatus, persistToServer]);
+
+  const updateAnswers = (nextAnswers: PracticalAnswers) => {
+    dirtyRef.current = true;
+    setAnswers(nextAnswers);
+  };
+
+  const updateTrack = (track: PracticalTrack) => {
+    dirtyRef.current = true;
+    setServiceTrack(track);
+  };
+
+  const selectedTrackInfo = useMemo(
+    () => state?.tracks.find((t) => t.id === serviceTrack) ?? null,
+    [state, serviceTrack],
+  );
+
+  if (error) {
+    return (
+      <ErrorState
+        title="We couldn't load the practical assessment"
+        text={error}
+        onRetry={() => {
+          setError(null);
+          setReload((n) => n + 1);
+        }}
+      />
+    );
+  }
+  if (!state) return <LoadingState rows={4} label="Loading practical assessment" />;
+
+  const { submission, assignment } = state;
+  const badge = STATUS_BADGE[submission.status] ?? STATUS_BADGE.NOT_STARTED;
+  const isLockedSubmitted =
+    submission.status === "SUBMITTED" || submission.status === "UNDER_REVIEW" || submission.status === "PASSED";
+  const editable = !isLockedSubmitted;
+
+  const handleSaveDraft = async () => {
+    setSavingDraft(true);
+    setSaveStatus("saving");
+    setFeedbackBanner(null);
+    setValidationErrors([]);
+    try {
+      const res = await savePracticalDraft(serviceTrack, answers);
+      dirtyRef.current = false;
+      setState((prev) => (prev ? { ...prev, submission: res.submission } : prev));
+      setSaveStatus("saved");
+      setLastSavedAt(new Date().toISOString());
+      setFeedbackBanner({
+        tone: "blue",
+        title: "Draft saved",
+        text: "Your answers have been saved. You can sign out or refresh and continue later.",
+      });
+    } catch (err) {
+      setSaveStatus("offline");
+      setFeedbackBanner({ tone: "red", title: "Could not save draft", text: errorMessage(err) });
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  const handleUploadEvidence = async (file: File | null) => {
+    if (!file) return;
+    setUploadingFile(true);
+    setFeedbackBanner(null);
+    try {
+      const res = await uploadPracticalEvidence(file);
+      setState((prev) => (prev ? { ...prev, submission: res.submission } : prev));
+      setFeedbackBanner({
+        tone: "green",
+        title: "Supporting file attached",
+        text: `${file.name} is attached (optional supporting evidence).`,
+      });
+    } catch (err) {
+      setFeedbackBanner({ tone: "red", title: "Could not attach file", text: errorMessage(err) });
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const handleRemoveEvidence = async () => {
+    setUploadingFile(true);
+    try {
+      const res = await deletePracticalEvidence();
+      setState((prev) => (prev ? { ...prev, submission: res.submission } : prev));
+    } catch (err) {
+      setFeedbackBanner({ tone: "red", title: "Could not remove file", text: errorMessage(err) });
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editable || submitting) return;
+    setValidationErrors([]);
+    setFeedbackBanner(null);
+
+    const missing: string[] = [];
+    if (!serviceTrack) missing.push("Select the service track that matches your service category.");
+    if (answers.briefSummary.trim().length < 20) missing.push("Customer brief summary (at least 20 characters).");
+    if (answers.options.length < 3) missing.push("At least 3 product/basket options.");
+    answers.options.forEach((opt, idx) => {
+      if (!opt.name.trim() || !opt.retailer.trim() || !opt.url.trim() || !opt.price.trim() || !opt.suitability.trim()) {
+        missing.push(`Option ${idx + 1}: fill in name, retailer/source, public URL, price, and suitability.`);
+      }
+    });
+    if (!answers.budget.estimatedTotal.trim()) missing.push("Budget: estimated total.");
+    if (!answers.budget.additionalCosts.trim()) missing.push("Budget: delivery, travel, or additional costs.");
+    if (!answers.budget.remainingOrOver.trim()) missing.push("Budget: remaining budget or difference explanation.");
+    if (answers.budget.assumptions.trim().length < 5) missing.push("Budget: costing assumptions.");
+    if (!answers.budget.priceCheckedDate.trim()) missing.push("Budget: date prices were checked.");
+    if (answers.recommendation.preferredPlan.trim().length < 15) missing.push("Recommendation: preferred plan and reasons.");
+    if (answers.recommendation.backupOption.trim().length < 10) missing.push("Recommendation: at least one backup/substitute option.");
+    if (answers.customerMessage.trim().length < 20) missing.push("Sample customer approval message (at least 20 characters).");
+    if (answers.responsibility.priceChanges.trim().length < 10) missing.push("Responsible practice: handling price changes.");
+    if (answers.responsibility.commissionDisclosure.trim().length < 10) missing.push("Responsible practice: commission/commercial disclosure.");
+    if (answers.responsibility.privacyProtection.trim().length < 10) missing.push("Responsible practice: customer privacy protection.");
+
+    if (missing.length > 0 || !serviceTrack) {
+      setValidationErrors(missing);
+      setFeedbackBanner({
+        tone: "red",
+        title: "Please complete the required fields before submitting",
+        text: "Review the missing items listed below.",
+      });
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await submitPracticalAssessment({
+        serviceTrack,
+        ...answers,
+        idempotencyKey: idempotencyKeyRef.current,
+      });
+      dirtyRef.current = false;
+      try {
+        localStorage.removeItem(draftStorageKey);
+      } catch {
+        // ignore storage errors
+      }
+      setSaveStatus("saved");
+      setState((prev) => (prev ? { ...prev, submission: res.submission } : prev));
+      setFeedbackBanner({
+        tone: "green",
+        title: "Practical assessment submitted",
+        text: "Your responses have been saved and queued for PSSA review. You may continue to the next application step while your assessment is reviewed.",
+      });
+    } catch (err) {
+      if (err instanceof ApiError && err.details && Array.isArray((err.details as { fieldErrors?: unknown[] }).fieldErrors)) {
+        const list = (err.details as { fieldErrors: { path: string; message: string }[] }).fieldErrors.map(
+          (f) => `${f.path}: ${f.message}`,
+        );
+        setValidationErrors(list);
+      }
+      setFeedbackBanner({ tone: "red", title: "Submission failed", text: errorMessage(err) });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const saveStatusText =
+    saveStatus === "saving"
+      ? "Saving draft…"
+      : saveStatus === "saved"
+        ? `All changes saved${lastSavedAt ? ` · ${new Date(lastSavedAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })}` : ""}`
+        : saveStatus === "offline"
+          ? "Saved locally (offline — will sync when connected)"
+          : null;
+
+  return (
+    <>
+      <div className="workspace-title">
+        <div>
+          <span>Application · Step 4 of 6</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <h1 style={{ margin: 0 }}>Practical Assessment</h1>
+            <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
+            {editable && saveStatusText && (
+              <span
+                aria-live="polite"
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: saveStatus === "offline" ? "#b45309" : "var(--muted, #647386)",
+                }}
+              >
+                {saveStatusText}
+              </span>
+            )}
+          </div>
+          <p>
+            Complete one fictional shopping simulation track matching your service category. Your structured responses are the required submission; file upload is optional.
+          </p>
+        </div>
+      </div>
+
+      {!submission.tutorialWatched && (
+        <Notice tone="amber" title="Watch the 1-minute tutorial first">
+          Please watch and complete the practical assessment tutorial before submitting your assignment.{" "}
+          <ButtonLink to="/member/tutorials" variant="outline" style={{ marginLeft: 8 }}>
+            Go to tutorial
+          </ButtonLink>
+        </Notice>
+      )}
+
+      {(submission.status === "SUBMITTED" || submission.status === "UNDER_REVIEW") && (
+        <Notice tone="green" title="Assessment submitted — awaiting PSSA review">
+          Submitted on {submission.submittedAt ? new Date(submission.submittedAt).toLocaleString("en-ZA") : "—"} (Tutorial v{submission.tutorialVersion} · Assignment v{submission.assignmentVersion}).
+          Submission does not approve membership or verification on its own — you may continue to the next non-dependent application step while PSSA reviews your submission.
+          <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <ButtonLink to="/member" variant="dark" iconRight="arrow">
+              Continue to Application Overview
+            </ButtonLink>
+            <ButtonLink to="/member/verification" variant="outline">
+              Review Verification &amp; Documents
+            </ButtonLink>
+          </div>
+        </Notice>
+      )}
+
+      {submission.status === "PASSED" && (
+        <Notice tone="green" title="Practical assessment passed">
+          Your practical assessment has been reviewed and passed
+          {submission.totalScore !== null ? ` (${submission.totalScore}/100)` : ""}.
+          {submission.reviewerFeedback ? ` Reviewer note: ${submission.reviewerFeedback}` : ""}
+          <div style={{ marginTop: 12 }}>
+            <ButtonLink to="/member" variant="dark" iconRight="arrow">
+              Return to Application Overview
+            </ButtonLink>
+          </div>
+        </Notice>
+      )}
+
+      {(submission.status === "NEEDS_RESUBMISSION" || submission.status === "NOT_PASSED") && submission.reviewerFeedback && (
+        <Notice tone="amber" title={submission.status === "NEEDS_RESUBMISSION" ? "Clarification / resubmission requested" : "Assessment not passed"}>
+          <strong>Reviewer feedback:</strong> {submission.reviewerFeedback}
+          {submission.totalScore !== null && ` (Score: ${submission.totalScore}/100)`}
+        </Notice>
+      )}
+
+      {feedbackBanner && (
+        <Notice tone={feedbackBanner.tone} title={feedbackBanner.title}>
+          {feedbackBanner.text}
+          {validationErrors.length > 0 && (
+            <ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+              {validationErrors.map((msg, i) => (
+                <li key={i}>{msg}</li>
+              ))}
+            </ul>
+          )}
+        </Notice>
+      )}
+
+      {/* Assignment Brief Inline + Download */}
+      <Panel
+        title={`Assignment Brief (v${assignment.version})`}
+        action={
+          <a
+            href={assignment.downloadUrl}
+            download={assignment.fileName}
+            style={{ fontSize: 13, fontWeight: 600, color: "var(--green-dark, #0f764b)", textDecoration: "underline" }}
+          >
+            Download Assignment PDF
+          </a>
+        }
+      >
+        <p style={{ marginTop: 0, fontSize: 13, color: "var(--muted, #647386)" }}>
+          This is a fictional simulation. Do not contact a real customer, place an order, spend money, or share anyone&apos;s personal information.
+        </p>
+        <div style={{ border: "1px solid #d9e1e8", borderRadius: 12, overflow: "hidden", background: "#f8fafb" }}>
+          <iframe
+            title="PSSA Practical Assignment Brief"
+            src={assignment.inlineUrl}
+            style={{ width: "100%", height: 420, border: 0, display: "block" }}
+          />
+        </div>
+      </Panel>
+
+      {/* Structured Response Form */}
+      <form onSubmit={handleSubmit} style={{ marginTop: 20, display: "grid", gap: 20 }}>
+        <Panel title="1. Select your service track">
+          {state.declaredScope && (
+            <p style={{ marginTop: 0, fontSize: 13, color: "var(--muted, #647386)" }}>
+              Your declared service scope: <strong>{state.declaredScope}</strong>
+            </p>
+          )}
+          <div style={{ display: "grid", gap: 10 }}>
+            {state.tracks.map((track) => {
+              const checked = serviceTrack === track.id;
+              return (
+                <label
+                  key={track.id}
+                  style={{
+                    display: "flex",
+                    gap: 12,
+                    alignItems: "flex-start",
+                    padding: 14,
+                    borderRadius: 12,
+                    border: checked ? "2px solid #18a269" : "1px solid #d9e1e8",
+                    background: checked ? "#f1fbf6" : "#fff",
+                    cursor: editable ? "pointer" : "default",
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="serviceTrack"
+                    value={track.id}
+                    checked={checked}
+                    disabled={!editable}
+                    onChange={() => updateTrack(track.id)}
+                    style={{ marginTop: 4 }}
+                  />
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>
+                      Track {track.code}: {track.label} (Max R{track.budgetZar.toLocaleString("en-ZA")})
+                    </div>
+                    <div style={{ fontSize: 13, color: "var(--muted, #647386)", marginTop: 4 }}>{track.summary}</div>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+          {selectedTrackInfo && (
+            <p style={{ margin: "10px 0 0", fontSize: 12, color: "var(--green-dark, #0f764b)", fontWeight: 600 }}>
+              Selected: Track {selectedTrackInfo.code} — {selectedTrackInfo.label}
+            </p>
+          )}
+        </Panel>
+
+        <Panel title="2. Customer brief summary">
+          <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+            Restate the fictional customer&apos;s needs, preferences, budget, deadline, and restrictions in your own words *
+          </label>
+          <textarea
+            rows={4}
+            disabled={!editable}
+            value={answers.briefSummary}
+            onChange={(e) => updateAnswers({ ...answers, briefSummary: e.target.value })}
+            placeholder="Summarise the key requirements, budget cap, sizes/preferences, and constraints..."
+            style={FIELD_STYLE}
+          />
+        </Panel>
+
+        <Panel
+          title="3. Research & options (minimum 3)"
+          action={
+            editable && answers.options.length < 10 ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => updateAnswers({ ...answers, options: [...answers.options, EMPTY_OPTION()] })}
+              >
+                + Add option
+              </Button>
+            ) : undefined
+          }
+        >
+          <div style={{ display: "grid", gap: 14 }}>
+            {answers.options.map((opt, idx) => (
+              <div key={idx} style={{ padding: 14, borderRadius: 12, border: "1px solid #d9e1e8", background: "#fbfcfd", color: "#0f233c" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <strong style={{ fontSize: 13 }}>Option {idx + 1} *</strong>
+                  {editable && answers.options.length > 3 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateAnswers({ ...answers, options: answers.options.filter((_, i) => i !== idx) })
+                      }
+                      style={{ background: "none", border: 0, color: "#b42318", fontSize: 12, cursor: "pointer" }}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
+                  <input
+                    type="text"
+                    disabled={!editable}
+                    placeholder="Item / basket option name"
+                    value={opt.name}
+                    onChange={(e) => {
+                      const next = [...answers.options];
+                      next[idx] = { ...opt, name: e.target.value };
+                      updateAnswers({ ...answers, options: next });
+                    }}
+                    style={COMPACT_FIELD_STYLE}
+                  />
+                  <input
+                    type="text"
+                    disabled={!editable}
+                    placeholder="Retailer or source"
+                    value={opt.retailer}
+                    onChange={(e) => {
+                      const next = [...answers.options];
+                      next[idx] = { ...opt, retailer: e.target.value };
+                      updateAnswers({ ...answers, options: next });
+                    }}
+                    style={COMPACT_FIELD_STYLE}
+                  />
+                  <input
+                    type="url"
+                    disabled={!editable}
+                    placeholder="Public source URL (https://...)"
+                    value={opt.url}
+                    onChange={(e) => {
+                      const next = [...answers.options];
+                      next[idx] = { ...opt, url: e.target.value };
+                      updateAnswers({ ...answers, options: next });
+                    }}
+                    style={COMPACT_FIELD_STYLE}
+                  />
+                  <input
+                    type="text"
+                    disabled={!editable}
+                    placeholder="Listed price (e.g. R499)"
+                    value={opt.price}
+                    onChange={(e) => {
+                      const next = [...answers.options];
+                      next[idx] = { ...opt, price: e.target.value };
+                      updateAnswers({ ...answers, options: next });
+                    }}
+                    style={COMPACT_FIELD_STYLE}
+                  />
+                </div>
+                <textarea
+                  rows={2}
+                  disabled={!editable}
+                  placeholder="Why this option fits the brief..."
+                  value={opt.suitability}
+                  onChange={(e) => {
+                    const next = [...answers.options];
+                    next[idx] = { ...opt, suitability: e.target.value };
+                    updateAnswers({ ...answers, options: next });
+                  }}
+                  style={{ ...COMPACT_FIELD_STYLE, marginTop: 8 }}
+                />
+              </div>
+            ))}
+          </div>
+        </Panel>
+
+        <Panel title="4. Budget calculation">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Estimated total *</label>
+              <input
+                type="text"
+                disabled={!editable}
+                value={answers.budget.estimatedTotal}
+                onChange={(e) => updateAnswers({ ...answers, budget: { ...answers.budget, estimatedTotal: e.target.value } })}
+                placeholder="e.g. R1,640"
+                style={COMPACT_FIELD_STYLE}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Delivery / travel / extra costs *</label>
+              <input
+                type="text"
+                disabled={!editable}
+                value={answers.budget.additionalCosts}
+                onChange={(e) => updateAnswers({ ...answers, budget: { ...answers.budget, additionalCosts: e.target.value } })}
+                placeholder="e.g. R99 courier delivery"
+                style={COMPACT_FIELD_STYLE}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Remaining budget or difference *</label>
+              <input
+                type="text"
+                disabled={!editable}
+                value={answers.budget.remainingOrOver}
+                onChange={(e) => updateAnswers({ ...answers, budget: { ...answers.budget, remainingOrOver: e.target.value } })}
+                placeholder="e.g. R61 under budget"
+                style={COMPACT_FIELD_STYLE}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Date prices checked *</label>
+              <input
+                type="date"
+                disabled={!editable}
+                value={answers.budget.priceCheckedDate}
+                onChange={(e) => updateAnswers({ ...answers, budget: { ...answers.budget, priceCheckedDate: e.target.value } })}
+                style={COMPACT_FIELD_STYLE}
+              />
+            </div>
+          </div>
+          <label style={{ display: "block", fontSize: 12, fontWeight: 600, margin: "12px 0 4px" }}>Costing assumptions *</label>
+          <textarea
+            rows={2}
+            disabled={!editable}
+            value={answers.budget.assumptions}
+            onChange={(e) => updateAnswers({ ...answers, budget: { ...answers.budget, assumptions: e.target.value } })}
+            placeholder="State any delivery zones, stock assumptions, or bundle pricing..."
+            style={COMPACT_FIELD_STYLE}
+          />
+        </Panel>
+
+        <Panel title="5. Recommendation & backup option">
+          <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Recommended option or combination and why *</label>
+          <textarea
+            rows={3}
+            disabled={!editable}
+            value={answers.recommendation.preferredPlan}
+            onChange={(e) => updateAnswers({ ...answers, recommendation: { ...answers.recommendation, preferredPlan: e.target.value } })}
+            style={COMPACT_FIELD_STYLE}
+          />
+          <label style={{ display: "block", fontSize: 12, fontWeight: 600, margin: "12px 0 4px" }}>Backup / substitute option (if unavailable or price changes) *</label>
+          <textarea
+            rows={2}
+            disabled={!editable}
+            value={answers.recommendation.backupOption}
+            onChange={(e) => updateAnswers({ ...answers, recommendation: { ...answers.recommendation, backupOption: e.target.value } })}
+            style={COMPACT_FIELD_STYLE}
+          />
+        </Panel>
+
+        <Panel title="6. Sample customer approval message (draft simulation only)">
+          <p style={{ marginTop: 0, fontSize: 12, color: "var(--muted, #647386)" }}>
+            This is a written draft for assessor review only. It will never be sent to any real customer.
+          </p>
+          <textarea
+            rows={4}
+            disabled={!editable}
+            value={answers.customerMessage}
+            onChange={(e) => updateAnswers({ ...answers, customerMessage: e.target.value })}
+            placeholder="Write a clear, courteous message explaining your recommendation and asking for approval before any purchase..."
+            style={COMPACT_FIELD_STYLE}
+          />
+        </Panel>
+
+        <Panel title="7. Responsible practice">
+          <div style={{ display: "grid", gap: 12 }}>
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4 }}>How would you handle a price change before purchase? *</label>
+              <textarea
+                rows={2}
+                disabled={!editable}
+                value={answers.responsibility.priceChanges}
+                onChange={(e) => updateAnswers({ ...answers, responsibility: { ...answers.responsibility, priceChanges: e.target.value } })}
+                style={COMPACT_FIELD_STYLE}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4 }}>How would you disclose any commission or commercial relationship? *</label>
+              <textarea
+                rows={2}
+                disabled={!editable}
+                value={answers.responsibility.commissionDisclosure}
+                onChange={(e) => updateAnswers({ ...answers, responsibility: { ...answers.responsibility, commissionDisclosure: e.target.value } })}
+                style={COMPACT_FIELD_STYLE}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4 }}>How do you protect customer personal information? *</label>
+              <textarea
+                rows={2}
+                disabled={!editable}
+                value={answers.responsibility.privacyProtection}
+                onChange={(e) => updateAnswers({ ...answers, responsibility: { ...answers.responsibility, privacyProtection: e.target.value } })}
+                style={COMPACT_FIELD_STYLE}
+              />
+            </div>
+          </div>
+        </Panel>
+
+        <Panel title="Optional supporting evidence (not required)">
+          <p style={{ marginTop: 0, fontSize: 13, color: "var(--muted, #647386)" }}>
+            You may optionally attach a supporting PDF or screenshot (max 10 MB). Do not upload ID documents, bank details, or private customer information. You can submit without attaching any file.
+          </p>
+          {submission.evidence ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: 12, borderRadius: 10, border: "1px solid #d9e1e8", background: "#f8fafb" }}>
+              <div>
+                <a href={submission.evidence.url} target="_blank" rel="noreferrer" style={{ fontWeight: 600, fontSize: 13 }}>
+                  {submission.evidence.fileName}
+                </a>
+                <span style={{ marginLeft: 8, fontSize: 12, color: "var(--muted, #647386)" }}>
+                  {submission.evidence.sizeBytes ? `${Math.round(submission.evidence.sizeBytes / 1024)} KB` : ""}
+                </span>
+              </div>
+              {editable && (
+                <Button type="button" variant="outline" disabled={uploadingFile} onClick={() => void handleRemoveEvidence()}>
+                  Remove file
+                </Button>
+              )}
+            </div>
+          ) : editable ? (
+            <input
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+              disabled={uploadingFile}
+              onChange={(e) => void handleUploadEvidence(e.target.files?.[0] ?? null)}
+            />
+          ) : (
+            <p style={{ fontSize: 13, color: "var(--muted, #647386)", margin: 0 }}>No optional file attached.</p>
+          )}
+        </Panel>
+
+        {editable && (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <Button type="button" variant="outline" disabled={savingDraft || submitting} onClick={() => void handleSaveDraft()}>
+                {savingDraft ? "Saving draft..." : "Save draft"}
+              </Button>
+              {saveStatusText && (
+                <span
+                  aria-live="polite"
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: saveStatus === "offline" ? "#b45309" : "var(--muted, #647386)",
+                  }}
+                >
+                  {saveStatusText}
+                </span>
+              )}
+            </div>
+            <Button type="submit" variant="dark" disabled={submitting || savingDraft || !submission.tutorialWatched}>
+              {submitting ? "Submitting..." : "Submit Assessment"}
+            </Button>
+          </div>
+        )}
+      </form>
+    </>
+  );
+}
+
+/* Kept for annual refresher MCQ assessments (/member/renewal/refresher) */
 type Sitting = { attempt: ExamAttempt; questions: ExamQuestion[]; expiresAt: string };
 type View = { kind: "overview" } | { kind: "taking"; sitting: Sitting } | { kind: "result"; attempt: ExamAttempt; total: number };
 
 const formatDate = (value: string) => new Date(value).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" });
 
-const COPY: Record<ExamType, {
-  kicker: string;
-  title: string;
-  intro: string;
-  passedTitle: string;
-  passedText: string;
-  lockedLink: { to: string; label: string };
-  resultPassTitle: string;
-  resultPassText: string;
-  doneLink: string;
-  doneLabel: string;
-  retryLink: string;
-  retryLabel: string;
-}> = {
-  entrance: {
-    kicker: "Application · Step 4 of 6",
-    title: "Entrance assessment",
-    intro: "A short test on the PSASA Code of Conduct. You need to pass it before your application goes to review.",
-    passedTitle: "You've passed the entrance assessment",
-    passedText: "Nothing more to do here. Your application moves on to review once every other step is complete.",
-    lockedLink: { to: "/member/tutorials", label: "Go to tutorials" },
-    resultPassTitle: "Your application can move to review",
-    resultPassText: "We'll let you know once a PSASA reviewer has checked everything.",
-    doneLink: "/member",
-    doneLabel: "Return to your application",
-    retryLink: "/member/tutorials",
-    retryLabel: "Review the lessons",
-  },
-  refresher: {
-    kicker: "Annual renewal",
-    title: "Refresher assessment",
-    intro: "A short test on the current Code of Conduct. You need to pass it once each year to renew your membership.",
-    passedTitle: "You've passed the refresher assessment",
-    passedText: "This counts for this year's renewal. Go back to Renewal to finish the remaining steps.",
-    lockedLink: { to: "/member/renewal", label: "Back to renewal" },
-    resultPassTitle: "This counts towards your renewal",
-    resultPassText: "Go back to Renewal to finish the remaining steps.",
-    doneLink: "/member/renewal",
-    doneLabel: "Back to renewal",
-    retryLink: "/member/tutorials",
-    retryLabel: "Watch the lessons again",
-  },
-};
-
-export default function Assessment() {
-  return <ExamPage type="entrance" />;
-}
-
 export function ExamPage({ type }: { type: ExamType }) {
-  const copy = COPY[type];
   const [status, setStatus] = useState<ExamStatus | null>(null);
   const [attempts, setAttempts] = useState<ExamAttempt[]>([]);
   const [hasOpenAttempt, setHasOpenAttempt] = useState(false);
@@ -96,7 +915,21 @@ export function ExamPage({ type }: { type: ExamType }) {
     return () => controller.abort();
   }, [reload, type]);
 
-  async function begin() {
+  if (error) {
+    return (
+      <ErrorState
+        title="We couldn't load the refresher assessment"
+        text={error}
+        onRetry={() => {
+          setError(null);
+          setReload((n) => n + 1);
+        }}
+      />
+    );
+  }
+  if (!status) return <LoadingState rows={4} label="Loading refresher assessment" />;
+
+  const begin = async () => {
     setStarting(true);
     setStartError(null);
     try {
@@ -107,403 +940,111 @@ export function ExamPage({ type }: { type: ExamType }) {
     } finally {
       setStarting(false);
     }
-  }
-
-  if (view.kind === "taking") {
-    return (
-      <TakeExam
-        sitting={view.sitting}
-        onExit={() => setView({ kind: "overview" })}
-        onDone={(attempt) => {
-          setView({ kind: "result", attempt, total: view.sitting.questions.length });
-          setReload((n) => n + 1);
-        }}
-      />
-    );
-  }
-  if (view.kind === "result") {
-    return <Result attempt={view.attempt} total={view.total} status={status} copy={copy} onBack={() => setView({ kind: "overview" })} />;
-  }
-
-  if (error) {
-    return (
-      <ErrorState
-        title="We couldn't load the assessment"
-        text={error}
-        onRetry={() => {
-          setError(null);
-          setReload((n) => n + 1);
-        }}
-      />
-    );
-  }
-  if (!status) return <LoadingState rows={3} label="Loading the assessment" />;
+  };
 
   return (
     <>
       <div className="workspace-title">
         <div>
-          <span>{copy.kicker}</span>
-          <h1>{copy.title}</h1>
-          <p>{copy.intro}</p>
+          <span>Annual renewal</span>
+          <h1>Refresher assessment</h1>
+          <p>A short test on the current Code of Conduct. You need to pass it once each year to renew your membership.</p>
         </div>
-        {status.passed && <StatusBadge tone="green">Passed</StatusBadge>}
       </div>
 
-      <div style={{ display: "grid", gap: 18, maxWidth: 820 }}>
-        {status.passed ? (
-          <Notice tone="green" title={copy.passedTitle}>
-            {copy.passedText}
-          </Notice>
-        ) : status.canStart ? (
-          <Notice tone="blue" title={hasOpenAttempt ? "You have an assessment in progress" : "You're ready to take the assessment"}>
-            {hasOpenAttempt
-              ? "Continue where you left off. The timer kept running while you were away."
-              : "Set aside 45 minutes somewhere quiet. Once you start, the timer can't be paused."}
-          </Notice>
-        ) : (
-          <Notice tone="amber" title="The assessment isn't open yet">
-            {status.reason ?? "Complete the earlier steps first."}
-            {status.retakeOpensAt ? ` You can try again from ${formatDate(status.retakeOpensAt)}.` : ""}
-          </Notice>
-        )}
+      {view.kind === "taking" && (
+        <ExamSitting
+          sitting={view.sitting}
+          onSubmitted={(attempt) => {
+            setView({ kind: "result", attempt, total: view.sitting.questions.length });
+            setReload((n) => n + 1);
+          }}
+        />
+      )}
 
-        <Panel icon="book" title="How the assessment works">
-          <ul style={{ margin: 0, paddingLeft: 20, display: "grid", gap: 6 }}>
-            <li>
-              {EXAM_RULES.questions} multiple-choice questions, {EXAM_RULES.minutes} minutes.
-            </li>
-            <li>
-              To pass you need at least {EXAM_RULES.passPercent}% <b>and</b> every critical question right.
-            </li>
-            <li>Answers submitted after the time runs out are scored as a fail.</li>
-            <li>If you don't pass, you can retake it once, after at least seven days.</li>
-            <li>After two failed attempts, further training and a reviewer's approval are needed.</li>
-          </ul>
+      {view.kind === "result" && (
+        <Panel title={view.attempt.passed ? "Refresher passed" : "Not passed"}>
+          <p>
+            Score: {view.attempt.score ?? 0} of {view.total} ({view.attempt.percent ?? 0}%).
+          </p>
+          <ButtonLink to="/member/renewal" variant="dark">
+            Back to renewal
+          </ButtonLink>
         </Panel>
+      )}
 
-        {startError && <Notice tone="red" title="We couldn't start the assessment">{startError}</Notice>}
-
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          {!status.passed && (
-            <Button variant="green" onClick={begin} loading={starting} disabled={!status.canStart} iconRight="arrow">
-              {hasOpenAttempt ? "Continue assessment" : "Start assessment"}
-            </Button>
-          )}
-          {!status.canStart && !status.passed && (
-            <ButtonLink to={copy.lockedLink.to} variant="outline">
-              {copy.lockedLink.label}
-            </ButtonLink>
-          )}
-        </div>
-
-        {attempts.some((a) => a.submittedAt) && <History attempts={attempts.filter((a) => a.submittedAt)} />}
-      </div>
-    </>
-  );
-}
-
-/* Taking the exam */
-
-const storageKey = (attemptId: string) => `pssa-exam-${attemptId}`;
-
-function loadAnswers(attemptId: string): Record<string, string> {
-  try {
-    return JSON.parse(sessionStorage.getItem(storageKey(attemptId)) ?? "{}") as Record<string, string>;
-  } catch {
-    return {};
-  }
-}
-
-function tryStorage(action: () => void) {
-  try {
-    action();
-  } catch {
-    return;
-  }
-}
-
-function TakeExam({ sitting, onExit, onDone }: { sitting: Sitting; onExit: () => void; onDone: (attempt: ExamAttempt) => void }) {
-  const { questions, attempt } = sitting;
-  const deadline = new Date(sitting.expiresAt).getTime();
-  const [answers, setAnswers] = useState<Record<string, string>>(() => loadAnswers(attempt.id));
-  const [index, setIndex] = useState(0);
-  const [reviewing, setReviewing] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const submittedRef = useRef(false);
-
-  const remaining = Math.max(0, deadline - now);
-  const answered = questions.filter((q) => answers[q.id]).length;
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  function submit() {
-    if (submittedRef.current) return;
-    submittedRef.current = true;
-    setSubmitting(true);
-    setError(null);
-    submitExam(attempt.id, answers)
-      .then(({ attempt: result }) => {
-        tryStorage(() => sessionStorage.removeItem(storageKey(attempt.id)));
-        onDone(result);
-      })
-      .catch((err) => {
-        submittedRef.current = false;
-        setSubmitting(false);
-        setError(errorMessage(err));
-      });
-  }
-
-  useEffect(() => {
-    if (remaining === 0 && !submittedRef.current) {
-      const t = window.setTimeout(submit, 0);
-      return () => window.clearTimeout(t);
-    }
-  });
-
-  function choose(questionId: string, optionId: string) {
-    const next = { ...answers, [questionId]: optionId };
-    setAnswers(next);
-    tryStorage(() => sessionStorage.setItem(storageKey(attempt.id), JSON.stringify(next)));
-  }
-
-  const minutes = Math.floor(remaining / 60000);
-  const seconds = Math.floor((remaining % 60000) / 1000);
-  const clock = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-  const lowTime = remaining < 5 * 60000;
-
-  const top = (
-    <>
-      <div className="exam-top">
-        <button type="button" onClick={onExit}>
-          ← Leave for now
-        </button>
-        <span>{reviewing ? "Review your answers" : `Question ${index + 1} of ${questions.length}`}</span>
-        <b style={lowTime ? { color: "#b42318" } : undefined} role="timer" aria-live={lowTime ? "polite" : "off"}>
-          {clock} remaining
-        </b>
-      </div>
-      <div className="exam-progress">
-        <i style={{ width: `${(answered / questions.length) * 100}%` }} />
-      </div>
-    </>
-  );
-
-  if (remaining === 0 || submitting) {
-    return (
-      <div className="exam-wrap">
-        {top}
-        <section className="exam-card">
-          <LoadingState rows={2} label={remaining === 0 ? "Time's up. Handing in your answers" : "Handing in your answers"} />
-          {error && (
-            <Notice tone="red" title="We couldn't hand in your answers">
-              {error}
+      {view.kind === "overview" && (
+        <Panel title="Refresher status">
+          {startError && <Notice tone="red" title="Could not start">{startError}</Notice>}
+          {status.passed ? (
+            <Notice tone="green" title="You've passed the refresher assessment">
+              This counts towards your renewal.
             </Notice>
-          )}
-        </section>
-      </div>
-    );
-  }
-
-  if (reviewing) {
-    const unanswered = questions.length - answered;
-    return (
-      <div className="exam-wrap">
-        {top}
-        <section className="exam-card">
-          <span className="question-no">CHECK BEFORE YOU SUBMIT</span>
-          <h1>
-            You've answered {answered} of {questions.length} questions.
-          </h1>
-          {unanswered > 0 && (
-            <Notice tone="amber" title={`${unanswered} question${unanswered === 1 ? "" : "s"} still unanswered`}>
-              Unanswered questions count as wrong. Tap a number to go back to it.
-            </Notice>
-          )}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "18px 0" }}>
-            {questions.map((q, i) => (
-              <button
-                type="button"
-                key={q.id}
-                onClick={() => {
-                  setIndex(i);
-                  setReviewing(false);
-                }}
-                aria-label={`Question ${i + 1}${answers[q.id] ? ", answered" : ", not answered"}`}
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 10,
-                  border: "1px solid var(--line, #dde4e9)",
-                  background: answers[q.id] ? "var(--green-soft, #eaf8f1)" : "white",
-                  fontWeight: 700,
-                }}
-              >
-                {i + 1}
-              </button>
-            ))}
-          </div>
-          {error && <Notice tone="red" title="We couldn't hand in your answers">{error}</Notice>}
-          <div className="exam-actions">
-            <Button variant="ghost" onClick={() => setReviewing(false)}>
-              Back to questions
-            </Button>
-            <Button variant="green" onClick={submit} iconRight="check">
-              Submit assessment
-            </Button>
-          </div>
-        </section>
-      </div>
-    );
-  }
-
-  const q = questions[index];
-  const last = index === questions.length - 1;
-
-  return (
-    <div className="exam-wrap">
-      {top}
-      <section className="exam-card">
-        <span className="question-no">
-          QUESTION {String(index + 1).padStart(2, "0")}
-          {q.topic ? ` · ${q.topic.toUpperCase()}` : ""}
-        </span>
-        <h1 id={`q-${q.id}`}>{q.prompt}</h1>
-        <div className="answer-list" role="radiogroup" aria-labelledby={`q-${q.id}`}>
-          {q.options.map((option, i) => {
-            const picked = answers[q.id] === option.id;
-            return (
-              <button
-                type="button"
-                role="radio"
-                aria-checked={picked}
-                className={picked ? "selected" : ""}
-                onClick={() => choose(q.id, option.id)}
-                key={option.id}
-              >
-                <span>{String.fromCharCode(65 + i)}</span>
-                {option.text}
-                <i>{picked && <Icon name="check" />}</i>
-              </button>
-            );
-          })}
-        </div>
-        <div className="exam-actions">
-          <Button variant="ghost" onClick={() => setIndex((i) => Math.max(0, i - 1))} disabled={index === 0}>
-            Previous
-          </Button>
-          {last ? (
-            <Button variant="dark" onClick={() => setReviewing(true)} iconRight="arrow">
-              Review answers
+          ) : status.canStart || hasOpenAttempt ? (
+            <Button type="button" variant="dark" disabled={starting} onClick={() => void begin()}>
+              {starting ? "Starting..." : hasOpenAttempt ? "Resume refresher" : "Start refresher"}
             </Button>
           ) : (
-            <Button variant="dark" onClick={() => setIndex((i) => i + 1)} iconRight="arrow">
-              Next question
-            </Button>
+            <Notice tone="amber" title="Unavailable">{status.reason ?? "Not available yet."}</Notice>
           )}
-        </div>
-      </section>
-    </div>
+          {attempts.length > 0 && (
+            <p style={{ fontSize: 13, color: "var(--muted, #647386)", marginTop: 12 }}>
+              Latest attempt: {attempts[0].submittedAt ? formatDate(attempts[0].submittedAt) : "In progress"} — {attempts[0].percent ?? 0}%
+            </p>
+          )}
+        </Panel>
+      )}
+    </>
   );
 }
 
-/* Result */
-
-function Result({
-  attempt,
-  total,
-  status,
-  copy,
-  onBack,
-}: {
-  attempt: ExamAttempt;
-  total: number;
-  status: ExamStatus | null;
-  copy: (typeof COPY)[ExamType];
-  onBack: () => void;
-}) {
+function ExamSitting({ sitting, onSubmitted }: { sitting: Sitting; onSubmitted: (a: ExamAttempt) => void }) {
   const { user } = useAuth();
-  const passed = attempt.passed === true;
-  return (
-    <div className="result-wrap">
-      <section className={`result-card ${passed ? "" : "failed"}`}>
-        <span className="result-icon">
-          <Icon name={passed ? "check" : "close"} size={36} />
-        </span>
-        <span className="kicker">{passed ? "Assessment passed" : "Not passed yet"}</span>
-        <h1>{passed ? `Well done${user?.firstName ? `, ${user.firstName}` : ""}.` : "Not this time."}</h1>
-        <p>
-          {passed
-            ? "You showed a sound understanding of the PSASA Code of Conduct."
-            : attempt.criticalFailed
-              ? "You missed at least one critical question. Those must all be right to pass, whatever the overall score."
-              : `You need at least ${EXAM_RULES.passPercent}% to pass. Go over the lessons before your next attempt.`}
-        </p>
-        <div className="score-ring">
-          <strong>{attempt.percent ?? 0}%</strong>
-          <span>Score</span>
-        </div>
-        <div className="score-meta">
-          <div>
-            <span>Pass mark</span>
-            <b>{EXAM_RULES.passPercent}%</b>
-          </div>
-          <div>
-            <span>Correct answers</span>
-            <b>
-              {attempt.score ?? 0} of {total}
-            </b>
-          </div>
-          <div>
-            <span>Critical questions</span>
-            <b>{attempt.criticalFailed ? "Missed" : "All right"}</b>
-          </div>
-        </div>
-        {passed ? (
-          <Notice tone="green" title={copy.resultPassTitle}>
-            {copy.resultPassText}
-          </Notice>
-        ) : (
-          <Notice tone="amber" title="You can try again later" icon="clock">
-            {status?.retakeOpensAt
-              ? `Your retake opens on ${formatDate(status.retakeOpensAt)}.`
-              : "A retake opens at least seven days after this attempt."}
-          </Notice>
-        )}
-        <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
-          <ButtonLink to={passed ? copy.doneLink : copy.retryLink} variant="dark" full>
-            {passed ? copy.doneLabel : copy.retryLabel}
-          </ButtonLink>
-          <Button variant="ghost" full onClick={onBack}>
-            Back to the assessment page
-          </Button>
-        </div>
-      </section>
-    </div>
-  );
-}
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const answered = Object.keys(answers).length;
+  const total = sitting.questions.length;
 
-function History({ attempts }: { attempts: ExamAttempt[] }) {
+  const submit = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await submitExam(sitting.attempt.id, answers);
+      onSubmitted(res.attempt);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
-    <Panel icon="file" title="Your attempts">
-      <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 10 }}>
-        {attempts.map((a, i) => (
-          <li key={a.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <span>
-              Attempt {attempts.length - i} · {a.submittedAt ? formatDate(a.submittedAt) : ""}
-            </span>
-            <span style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <b>{a.percent ?? 0}%</b>
-              <StatusBadge tone={a.passed ? "green" : "red"}>{a.passed ? "Passed" : "Not passed"}</StatusBadge>
-            </span>
-          </li>
+    <Panel title={`Refresher (${answered}/${total} answered)`} action={<span style={{ fontSize: 12 }}>{user?.email} · {EXAM_RULES.passPercent}% pass</span>}>
+      {error && <Notice tone="red" title="Submission failed">{error}</Notice>}
+      <div style={{ display: "grid", gap: 16 }}>
+        {sitting.questions.map((q, idx) => (
+          <div key={q.id} style={{ padding: 12, borderRadius: 10, border: "1px solid #d9e1e8" }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>{idx + 1}. {q.prompt}</div>
+            {q.options.map((opt) => (
+              <label key={opt.id} style={{ display: "flex", gap: 8, marginBottom: 4, cursor: "pointer" }}>
+                <input
+                  type="radio"
+                  name={q.id}
+                  checked={answers[q.id] === opt.id}
+                  onChange={() => setAnswers({ ...answers, [q.id]: opt.id })}
+                />
+                <span>{opt.text}</span>
+              </label>
+            ))}
+          </div>
         ))}
-      </ul>
+      </div>
+      <div style={{ marginTop: 16 }}>
+        <Button type="button" variant="dark" disabled={submitting} onClick={() => void submit()}>
+          {submitting ? "Submitting..." : "Submit answers"}
+        </Button>
+      </div>
     </Panel>
   );
 }

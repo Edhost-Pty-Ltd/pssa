@@ -39,11 +39,11 @@ export default function App() {
           <Route path="/member" element={<RequireMember />}>
             <Route element={<MemberLayout />}>
               <Route index element={<Dashboard />} />
+              <Route path="profile" element={<Profile />} />
+              <Route path="verification" element={<Verification />} />
+              <Route path="tutorials" element={<Tutorials />} />
+              <Route path="assessment" element={<Assessment />} />
               <Route element={<RequireApprovedMember />}>
-                <Route path="profile" element={<Profile />} />
-                <Route path="verification" element={<Verification />} />
-                <Route path="tutorials" element={<Tutorials />} />
-                <Route path="assessment" element={<Assessment />} />
                 <Route path="certificate" element={<Certificate />} />
                 <Route path="complaints" element={<MemberComplaints />} />
                 <Route path="renewal" element={<Renewal />} />

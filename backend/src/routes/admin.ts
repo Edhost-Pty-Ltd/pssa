@@ -465,8 +465,23 @@ adminRouter.get("/applications/:id/tutorial", async (req, res) => {
     res.json({ tutorial: null, reason: "This application has no member profile." });
     return;
   }
-  const tutorial = await tutorialCompletion(application.user.memberProfile.id);
-  res.json({ tutorial });
+  const memberId = application.user.memberProfile.id;
+  const [tutorial, practical] = await Promise.all([
+    tutorialCompletion(memberId),
+    prisma.practicalAssessmentSubmission.findFirst({
+      where: { memberProfileId: memberId },
+      orderBy: { createdAt: "desc" },
+      select: { tutorialWatched: true, tutorialWatchedAt: true, tutorialVersion: true },
+    }),
+  ]);
+  res.json({
+    tutorial: {
+      ...tutorial,
+      practicalWatched: practical?.tutorialWatched ?? false,
+      practicalWatchedAt: practical?.tutorialWatchedAt ?? null,
+      practicalTutorialVersion: practical?.tutorialVersion ?? 1,
+    },
+  });
 });
 
 adminRouter.get("/applications/:id/exam", async (req, res) => {
@@ -481,9 +496,22 @@ adminRouter.get("/applications/:id/exam", async (req, res) => {
   }
 
   const memberProfileId = application.user.memberProfile.id;
-  const [{ attempts, attemptCount }, passed] = await Promise.all([
+  const [{ attempts, attemptCount }, passed, practical] = await Promise.all([
     attemptHistory(memberProfileId, "entrance"),
     hasPassedEntranceExam(memberProfileId),
+    prisma.practicalAssessmentSubmission.findFirst({
+      where: { memberProfileId },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        status: true,
+        serviceTrack: true,
+        submittedAt: true,
+        reviewedAt: true,
+        totalScore: true,
+        passThresholdUsed: true,
+      },
+    }),
   ]);
   const latest = attempts[0] ?? null;
   const timeTakenSeconds =
@@ -508,6 +536,7 @@ adminRouter.get("/applications/:id/exam", async (req, res) => {
           }
         : null,
       attempts,
+      practical,
     },
   });
 });
