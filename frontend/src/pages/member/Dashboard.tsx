@@ -84,6 +84,7 @@ export default function Dashboard() {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [justSubmitted, setJustSubmitted] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -145,10 +146,15 @@ export default function Dashboard() {
       profile={profile}
       currentIdx={currentIdx}
       highestUnlocked={highestUnlocked}
+      justSubmitted={justSubmitted}
       onSelectIndex={(idx) => {
         if (idx <= highestUnlocked) setActiveIndex(idx);
       }}
       onReload={reload}
+      onApplicationSubmitted={() => {
+        setJustSubmitted(true);
+        reload();
+      }}
     />
   );
 }
@@ -159,16 +165,20 @@ function AlbumApplication({
   profile,
   currentIdx,
   highestUnlocked,
+  justSubmitted,
   onSelectIndex,
   onReload,
+  onApplicationSubmitted,
 }: {
   firstName?: string;
   app: ApplicationOverview;
   profile: MemberProfile | null;
   currentIdx: number;
   highestUnlocked: number;
+  justSubmitted: boolean;
   onSelectIndex: (idx: number) => void;
   onReload: (advanceTo?: number) => void;
+  onApplicationSubmitted: () => void;
 }) {
   const { application, progress } = app;
   const steps = progress.steps;
@@ -177,6 +187,55 @@ function AlbumApplication({
   const prevStep = currentIdx > 0 ? steps[currentIdx - 1] : null;
   const nextStep = currentIdx < steps.length - 1 ? steps[currentIdx + 1] : null;
   const nextLocked = currentIdx + 1 > highestUnlocked;
+
+  const isApproved = application.status === "approved" || profile?.memberProfile?.memberStatus === "active";
+  const isUnderReview = !isApproved && (application.status === "submitted" || application.status === "under_review");
+
+  if (isUnderReview) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-6">
+        <div className="rounded-[32px] border border-white/15 bg-white/[0.07] p-8 shadow-[0_30px_90px_-24px_rgba(0,0,0,0.65)] backdrop-blur-2xl sm:p-10">
+          <div className="inline-flex items-center gap-2 rounded-full border border-green/40 bg-green/15 px-3.5 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-green">
+            <span className="size-1.5 rounded-full bg-green" />
+            {justSubmitted ? "Review Submitted" : "Application review in progress"}
+          </div>
+
+          <h1 className="mt-4 font-display text-3xl font-semibold text-white sm:text-4xl">
+            {justSubmitted ? "Review Submitted" : "Application review in progress"}
+          </h1>
+
+          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/75 sm:text-base">
+            {justSubmitted
+              ? "Your entire application, verification documents, and practical assessment have been submitted for review. You can now wait for your PSASA certificate — we will update your account as soon as an officer approves your file."
+              : "Your application, verification documents, and practical assessment are currently being reviewed by a PSASA verification officer. Your certificate will unlock here automatically once approved."}
+          </p>
+
+          <div className="mt-7 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-white/12 bg-white/[0.05] p-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/55">Application</p>
+              <p className="mt-1 font-mono text-sm font-semibold text-white">{application.number ?? "Submitted"}</p>
+            </div>
+            <div className="rounded-2xl border border-white/12 bg-white/[0.05] p-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/55">Submitted</p>
+              <p className="mt-1 text-sm font-semibold text-white">
+                {application.submittedAt
+                  ? new Date(application.submittedAt).toLocaleDateString("en-ZA", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })
+                  : "Recently"}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-white/12 bg-white/[0.05] p-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/55">Next milestone</p>
+              <p className="mt-1 text-sm font-semibold text-green">PSASA Certificate</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -347,7 +406,7 @@ function AlbumApplication({
                 {currentStep.key === "review" && (
                   <SessionAgreementSubmit
                     app={app}
-                    onSubmitted={() => onReload(5)}
+                    onSubmitted={onApplicationSubmitted}
                   />
                 )}
                 {currentStep.key === "certified" && (
@@ -1292,7 +1351,7 @@ function SessionAgreementSubmit({ app, onSubmitted }: { app: ApplicationOverview
 
       {submitted ? (
         <div className="rounded-2xl border border-green/40 bg-green/15 p-5 text-sm text-white">
-          Your application <strong>{application.number}</strong> is currently <strong>{application.status.replace(/_/g, " ")}</strong>. A verification officer will review your file.
+          <strong>Application review in progress</strong> ({application.number}). A verification officer is reviewing your application and practical assessment.
         </div>
       ) : (
         <button
