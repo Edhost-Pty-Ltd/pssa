@@ -1,0 +1,56 @@
+PSSA PRACTICAL ASSESSMENT - IMPLEMENTATION PROMPT
+
+Work within the existing PSSA project. The main website/member application and the administrator dashboard are separate repositories connected to a shared backend/database. Inspect both repositories and the existing assessment/onboarding workflow before changing anything. Trace the current frontend, API, database, storage, and status logic so you fix the actual blockage rather than adding a parallel system.
+
+ASSETS TO USE
+- PSSA_Practical_Assessment_Tutorial.mp4: applicant-facing one-minute tutorial.
+- PSSA_Practical_Assignment.pdf: applicant-facing assignment brief.
+- PSSA_Assessor_Guide.pdf: INTERNAL ONLY; never expose this to applicants or the public.
+- Editable DOCX versions are also supplied for future content editing.
+
+REQUIRED APPLICANT WORKFLOW
+1. Show the tutorial before the practical assessment, with replay controls and a clear watched/completed state. Do not leave a blank video panel if no administrator upload has occurred; use the supplied tutorial as the initial/default asset or a working fallback.
+2. Display the assignment inline and provide a download link. The assignment has three tracks: fashion/personal styling, grocery/food shopping, and household essentials. The applicant completes one track that matches their declared service category.
+3. Complete the assessment inside the application using structured response fields:
+   - selected service track;
+   - summary of the fictional customer brief;
+   - at least three options with public source links, prices, and suitability;
+   - budget calculation including any additional costs;
+   - recommendation and at least one backup option;
+   - sample customer approval message (draft only; it must not send to a real customer);
+   - responsible-practice answers covering price changes, commercial/commission disclosure, and privacy.
+4. Save draft/progress and preserve answers if the applicant refreshes, signs out, or returns later.
+5. File upload is OPTIONAL supporting evidence. Do not require an existing file, image, document, or video from the applicant just to unlock the assessment or submit it. The applicant's structured answers are the required submission.
+6. Validate required response fields. On successful submission, persist the answers, applicant reference, assessment version, submitted timestamp, and optional attachment metadata. Set a dedicated assessment status such as SUBMITTED. Show a clear confirmation.
+7. After successful submission, allow the applicant to continue to the next non-dependent application step while the assessment awaits PSSA review. Do not mark the applicant as an approved member or verified because they submitted the assessment.
+
+ADMIN DASHBOARD
+- Add an authorised admin content-management area for the active tutorial video and assignment brief: preview, upload/replace, activate/deactivate, and version history.
+- Use the project's existing storage and permission patterns. Validate file type and size, store metadata and secure URLs, and record changes in the audit trail.
+- Seed or bundle the supplied tutorial and assignment as initial/default content so a new or empty admin content area does not block applicants.
+- Add an assessment review queue showing applicant, submission date, assessment version, status, and review state.
+- Let authorised reviewers inspect answers and optional evidence, score against the supplied assessor rubric, record feedback, and choose a review outcome. The 70/100 threshold in the guide is only a suggested pilot value: make the threshold configurable and do not hard-code it as policy without approval.
+- Keep the assessor guide private to authorised administrators.
+
+STATUS AND SECURITY RULES
+- Keep assessment status separate from account status, application status, membership status, verification status, and certificate validity.
+- A submitted or passed assessment is not itself a membership or verification approval.
+- Do not expose private assessment answers, uploaded evidence, reviewer notes, or internal case information on public profiles.
+- Do not add customer-to-member messaging, booking, orders, payments, delivery tracking, customer accounts, or other marketplace functionality. This assessment is a fictional simulation only.
+- Apply existing access controls and privacy practices; do not weaken security to make uploads work.
+
+ACCEPTANCE TESTS
+- A new applicant sees the tutorial and assignment even before an administrator has uploaded/replaced assets.
+- Applicant can complete every required response without uploading a file.
+- Applicant cannot submit with required response fields missing; errors identify the missing fields clearly.
+- Applicant can save a draft, refresh, return, and find previous answers intact.
+- Applicant can optionally attach supporting evidence, and the submission still works when no attachment is selected.
+- Successful submission creates one persisted record, displays confirmation, and enables the next non-dependent application step.
+- Duplicate clicks/retries do not create duplicate submissions.
+- Admin can view and review submissions; unauthorised users cannot access them.
+- Admin can replace the tutorial/assignment without breaking applicants who are already in progress; old submissions retain the assessment version they used.
+- Assessment submission does not change membership/verification/certificate status.
+- Public profiles never display internal assessment answers or reviewer notes.
+
+IMPLEMENTATION CONSTRAINTS
+Preserve the existing PSSA branding, theme, navigation, and working application flow. Do not perform a full redesign or unrelated refactoring. Reuse existing components, APIs, storage, validation, and database conventions wherever possible. Before any destructive change, major schema migration, or high-risk restructuring, explain the impact and propose the smallest safe option. After implementation, report exact files changed, data/API changes, test results, and any remaining gaps.
