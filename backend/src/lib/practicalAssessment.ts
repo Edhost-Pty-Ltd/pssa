@@ -118,7 +118,6 @@ export function resolvePracticalAssetPath(storagePath: string): string {
   return privateFilePath(storagePath);
 }
 
-/** Ensures each asset kind has at least a seeded default row if the table has none for that kind. */
 export async function ensureDefaultPracticalAssets() {
   const kinds: PracticalAssetKind[] = ["tutorial_video", "assignment_brief", "assessor_guide"];
   for (const kind of kinds) {

@@ -57,7 +57,6 @@ export async function attemptHistory(memberProfileId: string, type?: "entrance" 
   return { attempts, attemptCount: attempts.length };
 }
 
-/** True when the member has passed the practical entrance assessment (or legacy entrance exam). */
 export async function hasPassedEntranceExam(memberProfileId: string) {
   const [practical, attempt] = await Promise.all([
     prisma.practicalAssessmentSubmission.findFirst({

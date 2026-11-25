@@ -161,7 +161,6 @@ export default function Assessment() {
           try {
             localStorage.removeItem(draftStorageKey);
           } catch {
-            // ignore storage errors
           }
         } else {
           try {
@@ -177,7 +176,6 @@ export default function Assessment() {
               }
             }
           } catch {
-            // ignore corrupt localStorage
           }
         }
 
@@ -221,7 +219,6 @@ export default function Assessment() {
     [],
   );
 
-  // Instant localStorage backup + 2s debounced server autosave
   useEffect(() => {
     if (!hydratedRef.current || !state || !editableStatus) return;
     if (!dirtyRef.current) return;
@@ -234,7 +231,6 @@ export default function Assessment() {
       };
       localStorage.setItem(draftStorageKey, JSON.stringify(payload));
     } catch {
-      // ignore storage quota errors
     }
 
     const timer = setTimeout(() => {
@@ -244,7 +240,6 @@ export default function Assessment() {
     return () => clearTimeout(timer);
   }, [serviceTrack, answers, state, editableStatus, draftStorageKey, persistToServer]);
 
-  // Retry server sync automatically when network reconnects
   useEffect(() => {
     const onOnline = () => {
       if (hydratedRef.current && editableStatus && (dirtyRef.current || saveStatus === "offline")) {
@@ -393,7 +388,6 @@ export default function Assessment() {
       try {
         localStorage.removeItem(draftStorageKey);
       } catch {
-        // ignore storage errors
       }
       setSaveStatus("saved");
       setState((prev) => (prev ? { ...prev, submission: res.submission } : prev));

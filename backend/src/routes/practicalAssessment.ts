@@ -89,7 +89,6 @@ function serializeSubmission(row: Awaited<ReturnType<typeof getOrCreateCurrentPr
   };
 }
 
-/** Applicant practical assessment workspace state (never exposes assessor_guide). */
 practicalAssessmentRouter.get("/state", async (req, res) => {
   const profile = await requireMemberProfile(req.user!.id);
   const [tutorial, assignment, submission] = await Promise.all([

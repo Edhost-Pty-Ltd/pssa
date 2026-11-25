@@ -46,7 +46,6 @@ const PDF_ONLY: Record<string, string> = {
   "application/pdf": ".pdf",
 };
 
-/** Practical assessment PDF briefs & assessor guides — up to 20 MB. */
 export const practicalPdfUpload = multer({
   storage: multer.diskStorage({
     destination: PRIVATE_DIR,
@@ -59,7 +58,6 @@ export const practicalPdfUpload = multer({
   },
 });
 
-/** Optional practical assessment supporting evidence — PDF, JPG, PNG, or WebP up to 10 MB. */
 export const practicalEvidenceUpload = multer({
   storage: documentDiskStorage,
   limits: { fileSize: 10 * 1024 * 1024, files: 1 },
