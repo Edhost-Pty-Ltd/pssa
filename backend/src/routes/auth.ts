@@ -8,6 +8,7 @@ import { verifyPasswordOrDummy } from "../lib/password.js";
 import { prisma } from "../lib/prisma.js";
 import { authLimiter } from "../lib/rateLimit.js";
 import {
+  assertEmailFree,
   createMember,
   findOrCreatePasswordlessMember,
   memberRegistrationSchema,
@@ -67,6 +68,8 @@ const emailSchema = z
   .min(1, "is required")
   .pipe(z.email("must be a valid email address"));
 
+const otpCodeSchema = z.string({ error: "is required" }).trim().regex(/^\d{6}$/, "must be the 6-digit code");
+
 const sendOtpSchema = z.object({
   email: emailSchema,
   channel: z.enum(["email", "phone"], { error: 'must be "email" or "phone"' }).optional().default("email"),
@@ -74,12 +77,111 @@ const sendOtpSchema = z.object({
 
 const verifyOtpSchema = z.object({
   email: emailSchema,
-  code: z.string({ error: "is required" }).trim().regex(/^\d{6}$/, "must be the 6-digit code"),
+  code: otpCodeSchema,
+});
+
+const registerVerifySchema = memberRegistrationSchema.extend({
+  code: otpCodeSchema,
 });
 
 function fakeExpiresAt() {
   return new Date(Date.now() + OTP_SETTINGS.expiresInMinutes * 60_000);
 }
+
+/**
+ * Generates, stores, and emails a 6-digit OTP for `email`, enforcing the resend cooldown.
+ * Returns the public response payload (including `devCode` in non-prod when SMTP is unconfigured).
+ */
+async function sendEmailOtp(email: string) {
+  const recent = await prisma.otpCode.findFirst({
+    where: { email, channel: "email", createdAt: { gt: new Date(Date.now() - OTP_SETTINGS.resendAfterSeconds * 1000) } },
+    select: { id: true },
+  });
+  if (recent) {
+    throw badRequest(`Please wait ${OTP_SETTINGS.resendAfterSeconds} seconds before requesting another code.`);
+  }
+
+  const code = generateOtp();
+  const expiresAt = fakeExpiresAt();
+  const [, created] = await prisma.$transaction([
+    prisma.otpCode.deleteMany({ where: { email, channel: "email", consumedAt: null } }),
+    prisma.otpCode.create({
+      data: { email, channel: "email", codeHash: await hashOtp(code), expiresAt },
+      select: { id: true },
+    }),
+  ]);
+
+  let mailSent = false;
+  try {
+    await emailOtp(email, code);
+    mailSent = true;
+  } catch (error) {
+    if (!config.isProd) {
+      const reason = error instanceof MailNotConfiguredError ? "SMTP not configured" : `SMTP unavailable (${error instanceof Error ? error.message : String(error)})`;
+      console.warn(`[mail] ${reason} — dev OTP for ${maskDestination("email", email)}: ${code}`);
+    } else {
+      await prisma.otpCode.delete({ where: { id: created.id } }).catch(() => {});
+      console.error("[mail] Could not send the verification email:", error instanceof MailNotConfiguredError ? error.message : error);
+      throw new HttpError(503, "We couldn't send the email. Please try again in a moment.");
+    }
+  }
+
+  const body: { sent: true; destination: string; expiresAt: Date; devCode?: string } = {
+    sent: true,
+    destination: maskDestination("email", email),
+    expiresAt,
+  };
+  // Local/dev only when mail did not leave the box — never in production.
+  if (!config.isProd && !mailSent) body.devCode = code;
+  return body;
+}
+
+/** Validates the latest unconsumed email OTP for `email` and returns its record id. */
+async function verifyEmailOtpRecord(email: string, code: string) {
+  const record = await prisma.otpCode.findFirst({
+    where: { email, channel: "email", consumedAt: null },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!record || record.expiresAt < new Date()) {
+    throw badRequest("That code has expired. Request a new one.", { fields: { code: "has expired" } });
+  }
+  if (record.attempts >= OTP_SETTINGS.maxAttempts) {
+    throw badRequest("Too many incorrect attempts. Request a new code.", { fields: { code: "has had too many attempts" } });
+  }
+  if (!(await otpMatches(code, record.codeHash))) {
+    await prisma.otpCode.update({ where: { id: record.id }, data: { attempts: { increment: 1 } } });
+    throw badRequest("That code is incorrect.", { fields: { code: "is incorrect" } });
+  }
+  return record;
+}
+
+/**
+ * POST /api/auth/register/otp — validates member registration fields, checks email availability,
+ * and sends a 6-digit email OTP before creating the account.
+ */
+authRouter.post("/register/otp", authLimiter, async (req, res) => {
+  const input = memberRegistrationSchema.parse(req.body ?? {});
+  await assertEmailFree(input.email);
+  const body = await sendEmailOtp(input.email);
+  res.json(body);
+});
+
+/**
+ * POST /api/auth/register/verify — verifies the 6-digit email OTP, creates the MEMBER account
+ * with `emailVerifiedAt` stamped, and issues a session cookie.
+ */
+authRouter.post("/register/verify", authLimiter, async (req, res) => {
+  const { code, ...registration } = registerVerifySchema.parse(req.body ?? {});
+  await assertEmailFree(registration.email);
+  const record = await verifyEmailOtpRecord(registration.email, code);
+
+  const now = new Date();
+  const user = await createMember(registration, { emailVerifiedAt: now, lastLoginAt: now });
+  await prisma.otpCode.update({ where: { id: record.id }, data: { consumedAt: now } });
+
+  issueSession(res, user);
+  res.status(201).json({ message: "Member registered successfully", user: serializeUser(user) });
+});
 
 /**
  * POST /api/auth/otp/send — public send-code for passwordless member sign-in.
@@ -109,46 +211,7 @@ authRouter.post("/otp/send", authLimiter, async (req, res) => {
     });
   }
 
-  const recent = await prisma.otpCode.findFirst({
-    where: { email, channel: "email", createdAt: { gt: new Date(Date.now() - OTP_SETTINGS.resendAfterSeconds * 1000) } },
-    select: { id: true },
-  });
-  if (recent) {
-    throw badRequest(`Please wait ${OTP_SETTINGS.resendAfterSeconds} seconds before requesting another code.`);
-  }
-
-  const code = generateOtp();
-  const expiresAt = fakeExpiresAt();
-  const [, created] = await prisma.$transaction([
-    prisma.otpCode.deleteMany({ where: { email, channel: "email", consumedAt: null } }),
-    prisma.otpCode.create({
-      data: { email, channel: "email", codeHash: await hashOtp(code), expiresAt },
-      select: { id: true },
-    }),
-  ]);
-
-  let mailSent = false;
-  try {
-    await emailOtp(email, code);
-    mailSent = true;
-  } catch (error) {
-    if (error instanceof MailNotConfiguredError && !config.isProd) {
-      console.warn(`[mail] SMTP not configured — OTP for ${maskDestination("email", email)}: ${code}`);
-    } else {
-      await prisma.otpCode.delete({ where: { id: created.id } }).catch(() => {});
-      console.error("[mail] Could not send the verification email:", error instanceof MailNotConfiguredError ? error.message : error);
-      throw new HttpError(503, "We couldn't send the email. Please try again in a moment.");
-    }
-  }
-
-  const body: { sent: true; destination: string; expiresAt: Date; devCode?: string } = {
-    sent: true,
-    destination: maskDestination("email", email),
-    expiresAt,
-  };
-  // Local/dev only when mail did not leave the box — never in production.
-  if (!config.isProd && !mailSent) body.devCode = code;
-
+  const body = await sendEmailOtp(email);
   res.json(body);
 });
 
@@ -158,21 +221,7 @@ authRouter.post("/otp/send", authLimiter, async (req, res) => {
  */
 authRouter.post("/otp/verify", authLimiter, async (req, res) => {
   const { email, code } = verifyOtpSchema.parse(req.body ?? {});
-
-  const record = await prisma.otpCode.findFirst({
-    where: { email, channel: "email", consumedAt: null },
-    orderBy: { createdAt: "desc" },
-  });
-  if (!record || record.expiresAt < new Date()) {
-    throw badRequest("That code has expired. Request a new one.", { fields: { code: "has expired" } });
-  }
-  if (record.attempts >= OTP_SETTINGS.maxAttempts) {
-    throw badRequest("Too many incorrect attempts. Request a new code.", { fields: { code: "has had too many attempts" } });
-  }
-  if (!(await otpMatches(code, record.codeHash))) {
-    await prisma.otpCode.update({ where: { id: record.id }, data: { attempts: { increment: 1 } } });
-    throw badRequest("That code is incorrect.", { fields: { code: "is incorrect" } });
-  }
+  const record = await verifyEmailOtpRecord(email, code);
 
   const existing = await prisma.user.findUnique({ where: { email }, select: { id: true, role: true } });
   if (existing && existing.role !== "MEMBER") {

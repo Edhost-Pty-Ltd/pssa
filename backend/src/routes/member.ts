@@ -248,11 +248,16 @@ async function buildProgress(user: LoadedMember) {
   const certified = application?.status === "approved" || user.memberProfile!.memberStatus === "active";
 
   const memberId = user.memberProfile!.id;
-  const tutorials = await tutorialCompletion(memberId);
-  const tutorialsDone = tutorials.complete;
-  const tutorialsTotal = tutorials.total;
-  const tutorialsCompleted = tutorials.completedCount;
-  const examDone = await hasPassedEntranceExam(memberId);
+  const [practicalSubmission, examDone] = await Promise.all([
+    prisma.practicalAssessmentSubmission.findFirst({
+      where: { memberProfileId: memberId },
+      orderBy: { createdAt: "desc" },
+      select: { status: true, tutorialWatched: true, submittedAt: true },
+    }),
+    hasPassedEntranceExam(memberId),
+  ]);
+  const tutorialsDone = practicalSubmission?.tutorialWatched === true;
+  const practicalStatus = practicalSubmission?.status ?? "NOT_STARTED";
 
   const profileStep: ProgressStep = profileDone
     ? { key: "profile", label: "Profile", state: "complete", detail: "Complete" }
@@ -281,43 +286,45 @@ async function buildProgress(user: LoadedMember) {
   let tutorialsStep: ProgressStep;
   if (!profileDone) {
     tutorialsStep = { key: "tutorials", label: "Conduct tutorials", state: "locked", detail: "Locked" };
-  } else if (tutorialsTotal === 0) {
-    tutorialsStep = {
-      key: "tutorials",
-      label: "Conduct tutorials",
-      state: "not_started",
-      detail: "Waiting for official tutorials",
-    };
   } else if (tutorialsDone) {
     tutorialsStep = {
       key: "tutorials",
       label: "Conduct tutorials",
       state: "complete",
-      detail: `${tutorialsCompleted} of ${tutorialsTotal} complete`,
-    };
-  } else if (tutorialsCompleted > 0) {
-    tutorialsStep = {
-      key: "tutorials",
-      label: "Conduct tutorials",
-      state: "in_progress",
-      detail: `${tutorialsCompleted} of ${tutorialsTotal} complete`,
+      detail: "1 of 1 complete",
     };
   } else {
     tutorialsStep = {
       key: "tutorials",
       label: "Conduct tutorials",
       state: "not_started",
-      detail: `${tutorialsCompleted} of ${tutorialsTotal} complete`,
+      detail: "0 of 1 complete",
     };
   }
 
   let assessmentStep: ProgressStep;
   if (!tutorialsDone) {
-    assessmentStep = { key: "assessment", label: "Entrance assessment", state: "locked", detail: "Locked" };
-  } else if (examDone) {
-    assessmentStep = { key: "assessment", label: "Entrance assessment", state: "complete", detail: "Complete" };
+    assessmentStep = { key: "assessment", label: "Practical assessment", state: "locked", detail: "Locked" };
+  } else if (examDone || practicalStatus === "PASSED") {
+    assessmentStep = { key: "assessment", label: "Practical assessment", state: "complete", detail: "Passed" };
+  } else if (practicalStatus === "SUBMITTED" || practicalStatus === "UNDER_REVIEW") {
+    assessmentStep = {
+      key: "assessment",
+      label: "Practical assessment",
+      state: "in_progress",
+      detail: practicalStatus === "UNDER_REVIEW" ? "Under review" : "Submitted — awaiting review",
+    };
+  } else if (practicalStatus === "NEEDS_RESUBMISSION" || practicalStatus === "NOT_PASSED") {
+    assessmentStep = {
+      key: "assessment",
+      label: "Practical assessment",
+      state: "action_needed",
+      detail: practicalStatus === "NEEDS_RESUBMISSION" ? "Resubmission requested" : "Not passed",
+    };
+  } else if (practicalStatus === "IN_PROGRESS") {
+    assessmentStep = { key: "assessment", label: "Practical assessment", state: "in_progress", detail: "Draft saved" };
   } else {
-    assessmentStep = { key: "assessment", label: "Entrance assessment", state: "not_started", detail: "Not started" };
+    assessmentStep = { key: "assessment", label: "Practical assessment", state: "not_started", detail: "Not started" };
   }
 
   let reviewStep: ProgressStep;
@@ -327,7 +334,7 @@ async function buildProgress(user: LoadedMember) {
     reviewStep = { key: "review", label: "Review", state: "action_needed", detail: "Action needed" };
   } else if (submitted) {
     reviewStep = { key: "review", label: "Review", state: "in_progress", detail: "Under review" };
-  } else if (profileDone && docsDone && agreementDone) {
+  } else if (profileDone && docsDone) {
     reviewStep = { key: "review", label: "Review", state: "not_started", detail: "Ready to submit" };
   } else {
     reviewStep = { key: "review", label: "Review", state: "locked", detail: "Locked" };

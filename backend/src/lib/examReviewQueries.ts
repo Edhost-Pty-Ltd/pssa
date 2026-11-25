@@ -57,13 +57,18 @@ export async function attemptHistory(memberProfileId: string, type?: "entrance" 
   return { attempts, attemptCount: attempts.length };
 }
 
-/** True when the member has a submitted, passed entrance attempt. */
 export async function hasPassedEntranceExam(memberProfileId: string) {
-  const attempt = await prisma.examAttempt.findFirst({
-    where: { memberProfileId, type: "entrance", passed: true, submittedAt: { not: null } },
-    select: { id: true },
-  });
-  return Boolean(attempt);
+  const [practical, attempt] = await Promise.all([
+    prisma.practicalAssessmentSubmission.findFirst({
+      where: { memberProfileId, status: "PASSED" },
+      select: { id: true },
+    }),
+    prisma.examAttempt.findFirst({
+      where: { memberProfileId, type: "entrance", passed: true, submittedAt: { not: null } },
+      select: { id: true },
+    }),
+  ]);
+  return Boolean(practical || attempt);
 }
 
 /**

@@ -1,31 +1,23 @@
 import { useEffect, useRef, useState } from "react";
-import { getTutorials, reportProgress, tutorialStreamUrl, type Tutorial } from "../../api/learning";
+import { getPracticalState, reportPracticalTutorial, type PracticalState } from "../../api/practicalAssessment";
 import { Icon } from "../../components/Icon";
-import { ButtonLink, EmptyState, ErrorState, LoadingState, Notice } from "../../components/ui";
+import { Button, ButtonLink, ErrorState, LoadingState, Notice, StatusBadge } from "../../components/ui";
 import { errorMessage } from "../../lib/api";
 
-const REPORT_EVERY_SECONDS = 4;
-const SEEK_SLACK_SECONDS = 2;
-
-const formatTime = (seconds: number | null) => {
-  if (!seconds) return "--:--";
-  const s = Math.round(seconds);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-};
-
 export default function Tutorials() {
-  const [tutorials, setTutorials] = useState<Tutorial[] | null>(null);
-  const [reason, setReason] = useState<string | undefined>();
+  const [state, setState] = useState<PracticalState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const lastReportRef = useRef(0);
 
   useEffect(() => {
     const controller = new AbortController();
-    getTutorials(controller.signal)
+    getPracticalState(controller.signal)
       .then((data) => {
-        setTutorials(data.tutorials);
-        setReason(data.reason);
+        setState(data);
         setError(null);
       })
       .catch((err) => {
@@ -37,7 +29,7 @@ export default function Tutorials() {
   if (error) {
     return (
       <ErrorState
-        title="We couldn't load the tutorials"
+        title="We couldn't load the tutorial"
         text={error}
         onRetry={() => {
           setError(null);
@@ -46,168 +38,135 @@ export default function Tutorials() {
       />
     );
   }
-  if (!tutorials) return <LoadingState rows={3} label="Loading tutorials" />;
+  if (!state) return <LoadingState rows={3} label="Loading practical assessment tutorial" />;
 
-  const doneCount = tutorials.filter((t) => t.completed).length;
-  const allDone = tutorials.length > 0 && doneCount === tutorials.length;
-  const selected = tutorials.find((t) => t.id === selectedId) ?? tutorials.find((t) => !t.completed) ?? tutorials[0];
+  const { tutorial, submission } = state;
+  const watched = submission.tutorialWatched;
 
-  const updateTutorial = (id: string, change: Partial<Tutorial>) =>
-    setTutorials((list) => list?.map((t) => (t.id === id ? { ...t, ...change } : t)) ?? list);
+  const sendProgress = async (seconds: number, completed: boolean) => {
+    setSaving(true);
+    try {
+      const res = await reportPracticalTutorial(seconds, completed);
+      setState((prev) => (prev ? { ...prev, submission: res.submission } : prev));
+      setSaveError(null);
+    } catch (err) {
+      setSaveError(errorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleReplay = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = 0;
+    void video.play();
+  };
 
   return (
     <>
       <div className="workspace-title">
         <div>
           <span>Application · Step 3 of 6</span>
-          <h1>Conduct tutorials</h1>
-          <p>Learn the minimum conduct expected of every PSASA member. Watch each lesson to the end; you can't skip ahead.</p>
+          <h1>Practical Assessment Tutorial</h1>
+          <p>
+            Watch this short one-minute walkthrough before starting your practical shopping simulation. You can replay it at any time.
+          </p>
         </div>
       </div>
 
-      {tutorials.length === 0 ? (
-        <EmptyState
-          icon="play"
-          title="Waiting for the official tutorials"
-          text={reason ?? "The conduct lessons haven't been published yet. We'll let you know when they're ready."}
-        />
-      ) : (
-        <div className="tutorial-layout">
-          {selected && <Player key={selected.id} tutorial={selected} onProgress={(change) => updateTutorial(selected.id, change)} />}
-
-          <aside className="lesson-list">
-            <div className="lesson-head">
-              <h3>Course content</h3>
-              <span>
-                {doneCount} of {tutorials.length} complete
-              </span>
-            </div>
-            {tutorials.map((t, i) => (
-              <button
-                type="button"
-                key={t.id}
-                className={t.id === selected?.id ? "current" : ""}
-                aria-current={t.id === selected?.id ? "true" : undefined}
-                onClick={() => setSelectedId(t.id)}
-              >
-                <span className={t.completed ? "lesson-check done" : "lesson-check"}>
-                  {t.completed ? <Icon name="check" /> : i + 1}
-                </span>
-                <div>
-                  <b>{t.title}</b>
-                  <small>
-                    <Icon name="clock" size={13} /> {formatTime(t.durationSeconds)}
-                    {t.version ? ` · v${t.version}` : ""}
-                    {!t.completed && t.maxPositionSeconds > 0 && t.durationSeconds
-                      ? ` · ${Math.min(99, Math.floor((t.maxPositionSeconds / t.durationSeconds) * 100))}% watched`
-                      : ""}
-                  </small>
-                </div>
-                {!t.completed && <Icon name="play" />}
-              </button>
-            ))}
-            {allDone ? (
-              <ButtonLink to="/member/assessment" variant="dark" full iconRight="arrow" className="exam-button">
-                Go to assessment
-              </ButtonLink>
-            ) : (
-              <p style={{ margin: "12px 0 0", fontSize: 13, color: "var(--muted, #647386)" }}>
-                Finish every lesson to unlock the assessment.
+      <div className="tutorial-layout">
+        <section className="video-card">
+          <video
+            ref={videoRef}
+            src={tutorial.streamUrl}
+            controls
+            preload="metadata"
+            playsInline
+            style={{ width: "100%", display: "block", background: "#0a2035", aspectRatio: "16 / 9" }}
+            onTimeUpdate={(e) => {
+              const video = e.currentTarget;
+              const current = Math.floor(video.currentTime);
+              const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
+              const reachedEnd = duration > 0 && video.currentTime / duration >= 0.9;
+              if (reachedEnd && !watched) {
+                lastReportRef.current = current;
+                void sendProgress(current, true);
+              } else if (current - lastReportRef.current >= 5) {
+                lastReportRef.current = current;
+                void sendProgress(current, false);
+              }
+            }}
+            onEnded={(e) => {
+              const current = Math.floor(e.currentTarget.currentTime || e.currentTarget.duration || 60);
+              void sendProgress(current, true);
+            }}
+          />
+          <div style={{ padding: "16px 20px", display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <h2 style={{ margin: 0, fontSize: 16 }}>{tutorial.title}</h2>
+                <StatusBadge tone={watched ? "green" : "blue"}>
+                  {watched ? "Watched & completed" : "Not yet completed"}
+                </StatusBadge>
+              </div>
+              <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--muted, #647386)" }}>
+                Version v{tutorial.version} · {tutorial.fileName}
               </p>
-            )}
-          </aside>
-        </div>
-      )}
-    </>
-  );
-}
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Button type="button" variant="outline" onClick={handleReplay}>
+                <Icon name="play" size={14} /> Replay tutorial
+              </Button>
+              {!watched && (
+                <Button
+                  type="button"
+                  variant="dark"
+                  disabled={saving}
+                  onClick={() => void sendProgress(Math.floor(videoRef.current?.currentTime ?? 60), true)}
+                >
+                  {saving ? "Saving..." : "Mark tutorial watched"}
+                </Button>
+              )}
+            </div>
+          </div>
+          {saveError && (
+            <div style={{ padding: "0 20px 16px" }}>
+              <Notice tone="red" title="Could not save tutorial progress">
+                {saveError}
+              </Notice>
+            </div>
+          )}
+        </section>
 
-function Player({ tutorial, onProgress }: { tutorial: Tutorial; onProgress: (change: Partial<Tutorial>) => void }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const maxRef = useRef(tutorial.maxPositionSeconds);
-  const lastReportRef = useRef(0);
-  const [skipBlocked, setSkipBlocked] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+        <aside className="lesson-list">
+          <div className="lesson-head">
+            <h3>Tutorial checklist</h3>
+            <span>{watched ? "1 of 1 complete" : "0 of 1 complete"}</span>
+          </div>
+          <div className="current" style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 12, background: "#f4f7f5" }}>
+            <span className={watched ? "lesson-check done" : "lesson-check"}>
+              {watched ? <Icon name="check" /> : 1}
+            </span>
+            <div>
+              <b>{tutorial.title}</b>
+              <small style={{ display: "block", color: "var(--muted, #647386)" }}>
+                {watched ? "Completed — ready for the practical assignment" : "Watch to the end to unlock the assessment"}
+              </small>
+            </div>
+          </div>
 
-  function send(position: number) {
-    const video = videoRef.current;
-    const duration = video && Number.isFinite(video.duration) ? video.duration : undefined;
-    lastReportRef.current = position;
-    reportProgress(tutorial.id, position, duration)
-      .then(({ progress }) => {
-        setSaveError(null);
-        onProgress({
-          completed: progress.completed,
-          completedAt: progress.completedAt,
-          maxPositionSeconds: progress.maxPositionSeconds,
-          watchedSeconds: progress.watchedSeconds,
-          ...(duration && !tutorial.durationSeconds ? { durationSeconds: Math.floor(duration) } : {}),
-        });
-      })
-      .catch((err) => setSaveError(errorMessage(err)));
-  }
-
-  return (
-    <section className="video-card">
-      <video
-        ref={videoRef}
-        src={tutorialStreamUrl(tutorial.id)}
-        controls
-        controlsList="nodownload noplaybackrate"
-        disablePictureInPicture
-        preload="metadata"
-        playsInline
-        style={{ width: "100%", display: "block", background: "#0a2035", aspectRatio: "16 / 9" }}
-        onLoadedMetadata={(e) => {
-          if (!tutorial.completed && maxRef.current > 0) e.currentTarget.currentTime = maxRef.current;
-        }}
-        onSeeking={(e) => {
-          const video = e.currentTarget;
-          if (tutorial.completed) return;
-          if (video.currentTime > maxRef.current + SEEK_SLACK_SECONDS) {
-            video.currentTime = maxRef.current;
-            setSkipBlocked(true);
-          }
-        }}
-        onTimeUpdate={(e) => {
-          const t = e.currentTarget.currentTime;
-          if (t <= maxRef.current + SEEK_SLACK_SECONDS) maxRef.current = Math.max(maxRef.current, t);
-          if (Math.abs(t - lastReportRef.current) >= REPORT_EVERY_SECONDS) send(t);
-        }}
-        onPause={(e) => send(e.currentTarget.currentTime)}
-        onEnded={(e) => send(e.currentTarget.currentTime)}
-      >
-        Your browser can't play this video.
-      </video>
-      <div className="video-info">
-        <div>
-          <h3>
-            {tutorial.title}
-            {tutorial.version ? (
-              <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 500, color: "var(--muted, #647386)" }}>
-                v{tutorial.version}
-              </span>
-            ) : null}
-          </h3>
-          {tutorial.description && <p style={{ marginBottom: 6 }}>{tutorial.description}</p>}
-          <p>{tutorial.completed ? "Lesson complete. You can watch it again any time." : "Watch to the end to complete this lesson."}</p>
-        </div>
-        <span>{formatTime(tutorial.durationSeconds)}</span>
+          {watched ? (
+            <ButtonLink to="/member/assessment" variant="dark" full iconRight="arrow" className="exam-button" style={{ marginTop: 16 }}>
+              Continue to Practical Assessment
+            </ButtonLink>
+          ) : (
+            <p style={{ margin: "12px 0 0", fontSize: 13, color: "var(--muted, #647386)" }}>
+              Watch the tutorial above (or click &ldquo;Mark tutorial watched&rdquo; after viewing) to unlock the practical assessment.
+            </p>
+          )}
+        </aside>
       </div>
-      {skipBlocked && !tutorial.completed && (
-        <div style={{ padding: "0 20px 16px" }}>
-          <Notice tone="amber" title="You can't skip ahead">
-            Lessons have to be watched in order. You can go back over anything you've already seen.
-          </Notice>
-        </div>
-      )}
-      {saveError && (
-        <div style={{ padding: "0 20px 16px" }}>
-          <Notice tone="red" title="We couldn't save your progress">
-            {saveError} Keep watching; we'll try again in a few seconds.
-          </Notice>
-        </div>
-      )}
-    </section>
+    </>
   );
 }

@@ -9,18 +9,17 @@ import {
   type DocumentType,
 } from "../../api/documents";
 import {
-  EXAM_RULES,
-  getExamStatus,
-  getTutorials,
-  reportProgress,
-  startExam,
-  submitExam,
-  tutorialStreamUrl,
-  type ExamAttempt,
-  type ExamQuestion,
-  type ExamStatus,
-  type Tutorial,
-} from "../../api/learning";
+  deletePracticalEvidence,
+  getPracticalState,
+  reportPracticalTutorial,
+  savePracticalDraft,
+  submitPracticalAssessment,
+  uploadPracticalEvidence,
+  type PracticalAnswers,
+  type PracticalOptionItem,
+  type PracticalState,
+  type PracticalTrack,
+} from "../../api/practicalAssessment";
 import {
   getApplication,
   getProfile,
@@ -51,12 +50,12 @@ const STEP_META: Record<StepKey, { icon: IconName; cover: string; subtitle: stri
   tutorials: {
     icon: "play",
     cover: "/images/landing/sourcing-market.jpg",
-    subtitle: "Watch the official PSASA conduct lessons before unlocking your assessment.",
+    subtitle: "Watch the 1-minute practical assessment tutorial before starting your assignment.",
   },
   assessment: {
     icon: "book",
     cover: "/images/landing/customer-phone.jpg",
-    subtitle: "Complete the timed 30-question conduct assessment (80% pass mark).",
+    subtitle: "Complete one fictional shopping simulation track matching your service category.",
   },
   review: {
     icon: "eye",
@@ -85,6 +84,7 @@ export default function Dashboard() {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [justSubmitted, setJustSubmitted] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -135,8 +135,9 @@ export default function Dashboard() {
   const { app, profile } = state;
   const steps = app.progress.steps;
   const firstIncomplete = steps.findIndex((s) => s.state !== "complete");
-  const highestUnlocked = firstIncomplete === -1 ? steps.length - 1 : firstIncomplete;
-  const currentIdx = Math.min(activeIndex ?? highestUnlocked, highestUnlocked);
+  const lastUnlocked = steps.reduce((acc, s, idx) => (s.state !== "locked" ? idx : acc), 0);
+  const highestUnlocked = Math.max(firstIncomplete === -1 ? steps.length - 1 : firstIncomplete, lastUnlocked);
+  const currentIdx = Math.min(activeIndex ?? (firstIncomplete === -1 ? steps.length - 1 : firstIncomplete), highestUnlocked);
 
   return (
     <AlbumApplication
@@ -145,10 +146,15 @@ export default function Dashboard() {
       profile={profile}
       currentIdx={currentIdx}
       highestUnlocked={highestUnlocked}
+      justSubmitted={justSubmitted}
       onSelectIndex={(idx) => {
         if (idx <= highestUnlocked) setActiveIndex(idx);
       }}
       onReload={reload}
+      onApplicationSubmitted={() => {
+        setJustSubmitted(true);
+        reload();
+      }}
     />
   );
 }
@@ -159,16 +165,20 @@ function AlbumApplication({
   profile,
   currentIdx,
   highestUnlocked,
+  justSubmitted,
   onSelectIndex,
   onReload,
+  onApplicationSubmitted,
 }: {
   firstName?: string;
   app: ApplicationOverview;
   profile: MemberProfile | null;
   currentIdx: number;
   highestUnlocked: number;
+  justSubmitted: boolean;
   onSelectIndex: (idx: number) => void;
   onReload: (advanceTo?: number) => void;
+  onApplicationSubmitted: () => void;
 }) {
   const { application, progress } = app;
   const steps = progress.steps;
@@ -177,6 +187,55 @@ function AlbumApplication({
   const prevStep = currentIdx > 0 ? steps[currentIdx - 1] : null;
   const nextStep = currentIdx < steps.length - 1 ? steps[currentIdx + 1] : null;
   const nextLocked = currentIdx + 1 > highestUnlocked;
+
+  const isApproved = application.status === "approved" || profile?.memberProfile?.memberStatus === "active";
+  const isUnderReview = !isApproved && (application.status === "submitted" || application.status === "under_review");
+
+  if (isUnderReview) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-6">
+        <div className="rounded-[32px] border border-white/15 bg-white/[0.07] p-8 shadow-[0_30px_90px_-24px_rgba(0,0,0,0.65)] backdrop-blur-2xl sm:p-10">
+          <div className="inline-flex items-center gap-2 rounded-full border border-green/40 bg-green/15 px-3.5 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-green">
+            <span className="size-1.5 rounded-full bg-green" />
+            {justSubmitted ? "Review Submitted" : "Application review in progress"}
+          </div>
+
+          <h1 className="mt-4 font-display text-3xl font-semibold text-white sm:text-4xl">
+            {justSubmitted ? "Review Submitted" : "Application review in progress"}
+          </h1>
+
+          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/75 sm:text-base">
+            {justSubmitted
+              ? "Your entire application, verification documents, and practical assessment have been submitted for review. You can now wait for your PSASA certificate — we will update your account as soon as an officer approves your file."
+              : "Your application, verification documents, and practical assessment are currently being reviewed by a PSASA verification officer. Your certificate will unlock here automatically once approved."}
+          </p>
+
+          <div className="mt-7 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-white/12 bg-white/[0.05] p-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/55">Application</p>
+              <p className="mt-1 font-mono text-sm font-semibold text-white">{application.number ?? "Submitted"}</p>
+            </div>
+            <div className="rounded-2xl border border-white/12 bg-white/[0.05] p-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/55">Submitted</p>
+              <p className="mt-1 text-sm font-semibold text-white">
+                {application.submittedAt
+                  ? new Date(application.submittedAt).toLocaleDateString("en-ZA", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })
+                  : "Recently"}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-white/12 bg-white/[0.05] p-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/55">Next milestone</p>
+              <p className="mt-1 text-sm font-semibold text-green">PSASA Certificate</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -347,7 +406,7 @@ function AlbumApplication({
                 {currentStep.key === "review" && (
                   <SessionAgreementSubmit
                     app={app}
-                    onSubmitted={() => onReload(5)}
+                    onSubmitted={onApplicationSubmitted}
                   />
                 )}
                 {currentStep.key === "certified" && (
@@ -662,21 +721,22 @@ function SessionVerification({
   );
 }
 
-/* ---------------- Session 03: Inline Tutorials ---------------- */
+/* ---------------- Session 03: Inline Practical Tutorial ---------------- */
 
 function SessionTutorials({ stepComplete, onContinue }: { stepComplete: boolean; onContinue: () => void }) {
-  const [tutorials, setTutorials] = useState<Tutorial[]>([]);
-  const [active, setActive] = useState<Tutorial | null>(null);
+  const [state, setState] = useState<PracticalState | null>(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const lastSent = useRef(0);
 
   useEffect(() => {
     const controller = new AbortController();
-    getTutorials(controller.signal)
+    getPracticalState(controller.signal)
       .then((res) => {
-        setTutorials(res.tutorials);
-        setActive(res.tutorials.find((t) => !t.completed) ?? res.tutorials[0] ?? null);
+        setState(res);
+        setError(null);
       })
       .catch((err) => {
         if (!controller.signal.aborted) setError(errorMessage(err));
@@ -687,70 +747,84 @@ function SessionTutorials({ stepComplete, onContinue }: { stepComplete: boolean;
     return () => controller.abort();
   }, []);
 
-  async function syncProgress(video: HTMLVideoElement, force = false) {
-    if (!active) return;
-    const now = Date.now();
-    if (!force && now - lastSent.current < 3500) return;
-    lastSent.current = now;
+  async function syncProgress(seconds: number, completed: boolean) {
+    if (completed) setSaving(true);
     try {
-      const res = await reportProgress(active.id, video.currentTime, Number.isFinite(video.duration) ? video.duration : undefined);
-      if (res.progress.completed) {
-        setTutorials((prev) => prev.map((t) => (t.id === active.id ? { ...t, completed: true } : t)));
-      }
-    } catch {
-      // ignore transient heartbeat errors
+      const res = await reportPracticalTutorial(seconds, completed);
+      setState((prev) => (prev ? { ...prev, submission: res.submission } : prev));
+    } catch (err) {
+      if (completed) setError(errorMessage(err));
+    } finally {
+      if (completed) setSaving(false);
     }
   }
 
-  const allDone = stepComplete || (tutorials.length > 0 && tutorials.every((t) => t.completed));
+  const allDone = stepComplete || state?.submission.tutorialWatched === true;
 
   return (
     <div className="space-y-5">
-      {loading && <p className="text-sm text-white/70">Loading official PSASA tutorials…</p>}
+      {loading && <p className="text-sm text-white/70">Loading practical assessment tutorial…</p>}
       {error && <div className="rounded-2xl border border-red-400/40 bg-red-950/50 p-4 text-sm text-red-100">{error}</div>}
-      {!loading && tutorials.length === 0 && (
-        <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-5 text-sm text-white/75">
-          No active tutorial videos are published yet. Please check back shortly.
-        </div>
-      )}
 
-      {active && (
+      {state && (
         <div className="space-y-4">
           <div className="overflow-hidden rounded-2xl border border-white/15 bg-black/50">
             <video
-              key={active.id}
+              ref={videoRef}
               controls
               playsInline
-              src={tutorialStreamUrl(active.id)}
-              onTimeUpdate={(e) => void syncProgress(e.currentTarget)}
-              onEnded={(e) => void syncProgress(e.currentTarget, true)}
+              preload="metadata"
+              src={state.tutorial.streamUrl}
+              onTimeUpdate={(e) => {
+                const v = e.currentTarget;
+                const current = Math.floor(v.currentTime);
+                const duration = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : 0;
+                if (duration > 0 && v.currentTime / duration >= 0.9 && !allDone) {
+                  lastSent.current = current;
+                  void syncProgress(current, true);
+                } else if (current - lastSent.current >= 5) {
+                  lastSent.current = current;
+                  void syncProgress(current, false);
+                }
+              }}
+              onEnded={(e) => void syncProgress(Math.floor(e.currentTarget.currentTime || 60), true)}
               className="aspect-video w-full"
             />
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="font-semibold text-white">
-                {active.title} {active.version ? <span className="ml-2 rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-green">v{active.version}</span> : null}
+                {state.tutorial.title}{" "}
+                <span className="ml-2 rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-green">
+                  v{state.tutorial.version}
+                </span>
               </p>
-              {active.description && <p className="mt-1 text-xs text-white/65">{active.description}</p>}
+              <p className="mt-1 text-xs text-white/65">
+                {allDone ? "Watched & completed" : "Watch this 1-minute walkthrough to unlock the practical assignment."}
+              </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              {tutorials.map((t, i) => (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!videoRef.current) return;
+                  videoRef.current.currentTime = 0;
+                  void videoRef.current.play();
+                }}
+                className="rounded-full border border-white/20 px-4 py-1.5 text-xs font-semibold text-white hover:bg-white/10"
+              >
+                Replay tutorial
+              </button>
+              {!allDone && (
                 <button
-                  key={t.id}
                   type="button"
-                  onClick={() => setActive(t)}
-                  className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                    t.id === active.id
-                      ? "bg-green text-white"
-                      : t.completed
-                        ? "border border-green/40 bg-green/15 text-green"
-                        : "border border-white/15 bg-white/5 text-white/75"
-                  }`}
+                  disabled={saving}
+                  onClick={() => void syncProgress(Math.floor(videoRef.current?.currentTime ?? 60), true)}
+                  className="rounded-full bg-white px-4 py-1.5 text-xs font-semibold text-navy hover:bg-green hover:text-white disabled:opacity-50"
                 >
-                  {t.completed ? "✓ " : ""}Lesson {i + 1}
+                  {saving ? "Saving…" : "Mark tutorial watched"}
                 </button>
-              ))}
+              )}
             </div>
           </div>
         </div>
@@ -758,7 +832,7 @@ function SessionTutorials({ stepComplete, onContinue }: { stepComplete: boolean;
 
       <div className="flex items-center justify-between gap-4 pt-2">
         <p className="text-xs text-white/60">
-          {allDone ? "All tutorials completed." : "Watch all active lessons to 95% to unlock 04."}
+          {allDone ? "Tutorial complete." : "Complete the tutorial to unlock 04."}
         </p>
         <button
           type="button"
@@ -773,49 +847,127 @@ function SessionTutorials({ stepComplete, onContinue }: { stepComplete: boolean;
   );
 }
 
-/* ---------------- Session 04: Inline Assessment ---------------- */
+/* ---------------- Session 04: Inline Practical Assessment ---------------- */
+
+const EMPTY_PRACTICAL_OPTION = (): PracticalOptionItem => ({
+  name: "",
+  retailer: "",
+  url: "",
+  price: "",
+  suitability: "",
+});
+
+function initPracticalAnswers(existing: Partial<PracticalAnswers> | null | undefined): PracticalAnswers {
+  const opts = Array.isArray(existing?.options) ? existing.options : [];
+  const normalized =
+    opts.length >= 3
+      ? opts.map((o) => ({
+          name: o?.name ?? "",
+          retailer: o?.retailer ?? "",
+          url: o?.url ?? "",
+          price: o?.price ?? "",
+          suitability: o?.suitability ?? "",
+        }))
+      : [
+          ...opts.map((o) => ({
+            name: o?.name ?? "",
+            retailer: o?.retailer ?? "",
+            url: o?.url ?? "",
+            price: o?.price ?? "",
+            suitability: o?.suitability ?? "",
+          })),
+          ...Array.from({ length: Math.max(0, 3 - opts.length) }, EMPTY_PRACTICAL_OPTION),
+        ];
+
+  return {
+    briefSummary: existing?.briefSummary ?? "",
+    options: normalized,
+    budget: {
+      estimatedTotal: existing?.budget?.estimatedTotal ?? "",
+      additionalCosts: existing?.budget?.additionalCosts ?? "",
+      remainingOrOver: existing?.budget?.remainingOrOver ?? "",
+      assumptions: existing?.budget?.assumptions ?? "",
+      priceCheckedDate: existing?.budget?.priceCheckedDate ?? new Date().toISOString().slice(0, 10),
+    },
+    recommendation: {
+      preferredPlan: existing?.recommendation?.preferredPlan ?? "",
+      backupOption: existing?.recommendation?.backupOption ?? "",
+    },
+    customerMessage: existing?.customerMessage ?? "",
+    responsibility: {
+      priceChanges: existing?.responsibility?.priceChanges ?? "",
+      commissionDisclosure: existing?.responsibility?.commissionDisclosure ?? "",
+      privacyProtection: existing?.responsibility?.privacyProtection ?? "",
+    },
+  };
+}
 
 function SessionAssessment({ stepComplete, onContinue }: { stepComplete: boolean; onContinue: () => void }) {
-  const [status, setStatus] = useState<ExamStatus | null>(null);
-  const [attempt, setAttempt] = useState<ExamAttempt | null>(null);
-  const [questions, setQuestions] = useState<ExamQuestion[]>([]);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [state, setState] = useState<PracticalState | null>(null);
+  const [serviceTrack, setServiceTrack] = useState<PracticalTrack | null>(null);
+  const [answers, setAnswers] = useState<PracticalAnswers>(() => initPracticalAnswers(null));
   const [busy, setBusy] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const idempotencyKeyRef = useRef(crypto.randomUUID());
 
   useEffect(() => {
     const controller = new AbortController();
-    getExamStatus(controller.signal)
-      .then(setStatus)
+    getPracticalState(controller.signal)
+      .then((res) => {
+        setState(res);
+        setServiceTrack(res.submission.serviceTrack ?? res.suggestedTrack ?? null);
+        setAnswers(initPracticalAnswers(res.submission.answers));
+        setError(null);
+      })
       .catch((err) => {
         if (!controller.signal.aborted) setError(errorMessage(err));
       });
     return () => controller.abort();
   }, []);
 
-  async function handleStart() {
-    setBusy(true);
+  const submission = state?.submission;
+  const submittedOrPassed =
+    stepComplete ||
+    submission?.status === "SUBMITTED" ||
+    submission?.status === "UNDER_REVIEW" ||
+    submission?.status === "PASSED";
+  const editable = !submittedOrPassed;
+
+  async function handleSaveDraft() {
+    setSavingDraft(true);
     setError(null);
+    setNotice(null);
     try {
-      const res = await startExam("entrance");
-      setAttempt(res.attempt);
-      setQuestions(res.questions);
+      const res = await savePracticalDraft(serviceTrack, answers);
+      setState((prev) => (prev ? { ...prev, submission: res.submission } : prev));
+      setNotice("Draft saved. Your answers are preserved if you refresh or sign out.");
     } catch (err) {
       setError(errorMessage(err));
     } finally {
-      setBusy(false);
+      setSavingDraft(false);
     }
   }
 
   async function handleSubmit() {
-    if (!attempt) return;
-    setBusy(true);
+    if (!editable || busy) return;
     setError(null);
+    setNotice(null);
+    if (!serviceTrack) {
+      setError("Please select the service track that matches your category.");
+      return;
+    }
+    setBusy(true);
     try {
-      const res = await submitExam(attempt.id, answers);
-      setAttempt(res.attempt);
-      setQuestions([]);
-      setStatus(await getExamStatus());
+      const res = await submitPracticalAssessment({
+        serviceTrack,
+        ...answers,
+        idempotencyKey: idempotencyKeyRef.current,
+      });
+      setState((prev) => (prev ? { ...prev, submission: res.submission } : prev));
+      setNotice("Practical assessment submitted! You can now continue to 05 while PSSA reviews your submission.");
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -823,85 +975,327 @@ function SessionAssessment({ stepComplete, onContinue }: { stepComplete: boolean
     }
   }
 
-  const passed = stepComplete || status?.passed === true || attempt?.passed === true;
-
   return (
     <div className="space-y-5">
       {error && <div className="rounded-2xl border border-red-400/40 bg-red-950/50 p-4 text-sm text-red-100">{error}</div>}
+      {notice && <div className="rounded-2xl border border-green/40 bg-green/15 p-4 text-sm text-white">{notice}</div>}
 
-      {questions.length > 0 && attempt ? (
-        <div className="space-y-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-green">
-            {Object.keys(answers).length} of {questions.length} answered · Pass mark {EXAM_RULES.passPercent}%
-          </p>
-          <div className="max-h-[420px] space-y-4 overflow-y-auto pr-2">
-            {questions.map((q, qi) => (
-              <div key={q.id} className="rounded-2xl border border-white/15 bg-white/[0.05] p-4">
-                <p className="text-sm font-semibold text-white">
-                  {qi + 1}. {q.prompt}
-                </p>
-                <div className="mt-3 space-y-2">
-                  {q.options.map((opt) => (
-                    <label
-                      key={opt.id}
-                      className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-2.5 text-sm transition ${
-                        answers[q.id] === opt.id ? "border-green bg-green/20 text-white" : "border-white/10 bg-white/[0.03] text-white/80 hover:bg-white/[0.08]"
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name={q.id}
-                        checked={answers[q.id] === opt.id}
-                        onChange={() => setAnswers((prev) => ({ ...prev, [q.id]: opt.id }))}
-                      />
-                      {opt.text}
-                    </label>
-                  ))}
-                </div>
+      {state && (
+        <>
+          <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-white">
+                Assignment Brief (v{state.assignment.version})
+              </p>
+              <div className="flex gap-3">
+                <a
+                  href={state.assignment.downloadUrl}
+                  download={state.assignment.fileName}
+                  className="text-xs font-semibold text-green underline"
+                >
+                  Download PDF
+                </a>
+                <Link to="/member/assessment" className="text-xs font-semibold text-white/80 underline">
+                  Full-screen view
+                </Link>
               </div>
-            ))}
+            </div>
+            <iframe
+              title="PSSA Practical Assignment Brief"
+              src={state.assignment.inlineUrl}
+              className="h-64 w-full rounded-xl border border-white/10 bg-white"
+            />
           </div>
-          <button
-            type="button"
-            disabled={busy || Object.keys(answers).length < questions.length}
-            onClick={() => void handleSubmit()}
-            className="rounded-full bg-green px-6 py-3 text-sm font-semibold text-white disabled:opacity-50"
-          >
-            {busy ? "Scoring…" : "Submit assessment"}
-          </button>
-        </div>
-      ) : (
-        <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-5">
-          <p className="text-base font-semibold text-white">
-            {passed
-              ? "Entrance assessment passed."
-              : status?.reason || `${EXAM_RULES.questions} questions · ${EXAM_RULES.minutes} minutes · ${EXAM_RULES.passPercent}% pass mark.`}
-          </p>
-          {!passed && (
-            <div className="mt-4 flex flex-wrap gap-3">
-              <button
-                type="button"
-                disabled={busy || status?.canStart === false}
-                onClick={() => void handleStart()}
-                className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-2.5 text-sm font-semibold text-navy transition hover:bg-green hover:text-white disabled:opacity-50"
-              >
-                {busy ? "Starting…" : "Start assessment"} <Icon name="arrow" size={15} />
-              </button>
-              <Link to="/member/assessment" className="inline-flex items-center rounded-full border border-white/20 px-5 py-2.5 text-sm font-semibold text-white/85">
-                Full-screen view
-              </Link>
+
+          {submittedOrPassed ? (
+            <div className="rounded-2xl border border-green/40 bg-green/15 p-5 text-sm text-white space-y-2">
+              <p className="font-semibold">
+                {submission?.status === "PASSED"
+                  ? `Practical assessment passed${submission.totalScore !== null ? ` (${submission.totalScore}/100)` : ""}.`
+                  : "Practical assessment submitted — awaiting PSSA review."}
+              </p>
+              <p className="text-xs text-white/80">
+                Submitting the practical assessment does not automatically approve membership. You may continue to Step 05 while PSSA reviews your submission.
+              </p>
+            </div>
+          ) : (
+            <div className="max-h-[520px] space-y-4 overflow-y-auto pr-1">
+              <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-green">1. Service Track *</p>
+                {state.tracks.map((t) => (
+                  <label
+                    key={t.id}
+                    className={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 text-xs ${
+                      serviceTrack === t.id ? "border-green bg-green/20 text-white" : "border-white/15 bg-white/[0.03] text-white/80"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="dashTrack"
+                      checked={serviceTrack === t.id}
+                      onChange={() => setServiceTrack(t.id)}
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <div className="font-semibold">
+                        Track {t.code}: {t.label} (Max R{t.budgetZar.toLocaleString("en-ZA")})
+                      </div>
+                      <div className="mt-0.5 opacity-80">{t.summary}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+
+              <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-green">
+                  2. Customer Brief Summary *
+                </label>
+                <textarea
+                  rows={3}
+                  value={answers.briefSummary}
+                  onChange={(e) => setAnswers({ ...answers, briefSummary: e.target.value })}
+                  placeholder="Restate the fictional customer's needs, budget, preferences, and constraints..."
+                  className="w-full rounded-xl border border-white/20 bg-navy/70 p-2.5 text-xs text-white outline-none focus:border-green"
+                />
+              </div>
+
+              <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-green">
+                    3. Research Options (min 3) *
+                  </span>
+                  {answers.options.length < 10 && (
+                    <button
+                      type="button"
+                      onClick={() => setAnswers({ ...answers, options: [...answers.options, EMPTY_PRACTICAL_OPTION()] })}
+                      className="text-xs font-semibold text-green underline"
+                    >
+                      + Add option
+                    </button>
+                  )}
+                </div>
+                {answers.options.map((opt, idx) => (
+                  <div key={idx} className="space-y-2 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <input
+                        placeholder={`Option ${idx + 1} name`}
+                        value={opt.name}
+                        onChange={(e) => {
+                          const next = [...answers.options];
+                          next[idx] = { ...opt, name: e.target.value };
+                          setAnswers({ ...answers, options: next });
+                        }}
+                        className="rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
+                      />
+                      <input
+                        placeholder="Retailer / source"
+                        value={opt.retailer}
+                        onChange={(e) => {
+                          const next = [...answers.options];
+                          next[idx] = { ...opt, retailer: e.target.value };
+                          setAnswers({ ...answers, options: next });
+                        }}
+                        className="rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
+                      />
+                      <input
+                        placeholder="Public URL (https://...)"
+                        value={opt.url}
+                        onChange={(e) => {
+                          const next = [...answers.options];
+                          next[idx] = { ...opt, url: e.target.value };
+                          setAnswers({ ...answers, options: next });
+                        }}
+                        className="rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
+                      />
+                      <input
+                        placeholder="Listed price (e.g. R499)"
+                        value={opt.price}
+                        onChange={(e) => {
+                          const next = [...answers.options];
+                          next[idx] = { ...opt, price: e.target.value };
+                          setAnswers({ ...answers, options: next });
+                        }}
+                        className="rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
+                      />
+                    </div>
+                    <input
+                      placeholder="Why this option fits the brief..."
+                      value={opt.suitability}
+                      onChange={(e) => {
+                        const next = [...answers.options];
+                        next[idx] = { ...opt, suitability: e.target.value };
+                        setAnswers({ ...answers, options: next });
+                      }}
+                      className="w-full rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-green">4. Budget Calculation *</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <input
+                    placeholder="Estimated total"
+                    value={answers.budget.estimatedTotal}
+                    onChange={(e) => setAnswers({ ...answers, budget: { ...answers.budget, estimatedTotal: e.target.value } })}
+                    className="rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
+                  />
+                  <input
+                    placeholder="Delivery / travel / extra costs"
+                    value={answers.budget.additionalCosts}
+                    onChange={(e) => setAnswers({ ...answers, budget: { ...answers.budget, additionalCosts: e.target.value } })}
+                    className="rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
+                  />
+                  <input
+                    placeholder="Remaining budget or difference"
+                    value={answers.budget.remainingOrOver}
+                    onChange={(e) => setAnswers({ ...answers, budget: { ...answers.budget, remainingOrOver: e.target.value } })}
+                    className="rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
+                  />
+                  <input
+                    type="date"
+                    value={answers.budget.priceCheckedDate}
+                    onChange={(e) => setAnswers({ ...answers, budget: { ...answers.budget, priceCheckedDate: e.target.value } })}
+                    className="rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
+                  />
+                </div>
+                <textarea
+                  rows={2}
+                  placeholder="Costing assumptions..."
+                  value={answers.budget.assumptions}
+                  onChange={(e) => setAnswers({ ...answers, budget: { ...answers.budget, assumptions: e.target.value } })}
+                  className="w-full rounded-lg border border-white/20 bg-navy/70 p-2 text-xs text-white"
+                />
+              </div>
+
+              <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-green">5. Recommendation &amp; Backup *</p>
+                <textarea
+                  rows={2}
+                  placeholder="Recommended option or combination and why..."
+                  value={answers.recommendation.preferredPlan}
+                  onChange={(e) => setAnswers({ ...answers, recommendation: { ...answers.recommendation, preferredPlan: e.target.value } })}
+                  className="w-full rounded-lg border border-white/20 bg-navy/70 p-2 text-xs text-white"
+                />
+                <textarea
+                  rows={2}
+                  placeholder="At least one realistic backup/substitute option..."
+                  value={answers.recommendation.backupOption}
+                  onChange={(e) => setAnswers({ ...answers, recommendation: { ...answers.recommendation, backupOption: e.target.value } })}
+                  className="w-full rounded-lg border border-white/20 bg-navy/70 p-2 text-xs text-white"
+                />
+              </div>
+
+              <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-green">
+                  6. Sample Customer Approval Message (Draft Only) *
+                </p>
+                <textarea
+                  rows={2}
+                  placeholder="Write a clear, courteous approval request (simulation only; never sends to a real customer)..."
+                  value={answers.customerMessage}
+                  onChange={(e) => setAnswers({ ...answers, customerMessage: e.target.value })}
+                  className="w-full rounded-lg border border-white/20 bg-navy/70 p-2 text-xs text-white"
+                />
+              </div>
+
+              <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-green">7. Responsible Practice *</p>
+                <textarea
+                  rows={2}
+                  placeholder="How you handle price changes before purchase..."
+                  value={answers.responsibility.priceChanges}
+                  onChange={(e) => setAnswers({ ...answers, responsibility: { ...answers.responsibility, priceChanges: e.target.value } })}
+                  className="w-full rounded-lg border border-white/20 bg-navy/70 p-2 text-xs text-white"
+                />
+                <textarea
+                  rows={2}
+                  placeholder="How you disclose commission or commercial relationships..."
+                  value={answers.responsibility.commissionDisclosure}
+                  onChange={(e) => setAnswers({ ...answers, responsibility: { ...answers.responsibility, commissionDisclosure: e.target.value } })}
+                  className="w-full rounded-lg border border-white/20 bg-navy/70 p-2 text-xs text-white"
+                />
+                <textarea
+                  rows={2}
+                  placeholder="How you protect customer personal information..."
+                  value={answers.responsibility.privacyProtection}
+                  onChange={(e) => setAnswers({ ...answers, responsibility: { ...answers.responsibility, privacyProtection: e.target.value } })}
+                  className="w-full rounded-lg border border-white/20 bg-navy/70 p-2 text-xs text-white"
+                />
+              </div>
+
+              <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-white/80">
+                  Optional Supporting Evidence (not required)
+                </p>
+                {submission?.evidence ? (
+                  <div className="flex items-center justify-between text-xs text-white">
+                    <a href={submission.evidence.url} target="_blank" rel="noreferrer" className="underline">
+                      {submission.evidence.fileName}
+                    </a>
+                    <button
+                      type="button"
+                      disabled={uploadingFile}
+                      onClick={() =>
+                        void deletePracticalEvidence().then((res) =>
+                          setState((prev) => (prev ? { ...prev, submission: res.submission } : prev)),
+                        )
+                      }
+                      className="text-red-300 underline"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <input
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,.webp"
+                    disabled={uploadingFile}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      setUploadingFile(true);
+                      void uploadPracticalEvidence(f)
+                        .then((res) => setState((prev) => (prev ? { ...prev, submission: res.submission } : prev)))
+                        .catch((err) => setError(errorMessage(err)))
+                        .finally(() => setUploadingFile(false));
+                    }}
+                    className="text-xs text-white/80"
+                  />
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  disabled={savingDraft || busy}
+                  onClick={() => void handleSaveDraft()}
+                  className="rounded-full border border-white/25 px-5 py-2.5 text-xs font-semibold text-white hover:bg-white/10 disabled:opacity-50"
+                >
+                  {savingDraft ? "Saving…" : "Save draft"}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || savingDraft}
+                  onClick={() => void handleSubmit()}
+                  className="rounded-full bg-green px-6 py-2.5 text-xs font-semibold text-white hover:bg-green-dark disabled:opacity-50"
+                >
+                  {busy ? "Submitting…" : "Submit Practical Assessment"}
+                </button>
+              </div>
             </div>
           )}
-        </div>
+        </>
       )}
 
       <div className="flex items-center justify-between gap-4 pt-2">
         <p className="text-xs text-white/60">
-          {passed ? "Assessment complete." : "Pass the assessment to unlock 05."}
+          {submittedOrPassed ? "Assessment submitted — you can continue to 05." : "Submit your practical assessment to continue to 05."}
         </p>
         <button
           type="button"
-          disabled={!passed}
+          disabled={!submittedOrPassed}
           onClick={onContinue}
           className="inline-flex items-center gap-2 rounded-full bg-green px-7 py-3 text-sm font-semibold text-white shadow-[0_14px_34px_-10px_rgba(24,162,105,0.8)] transition hover:bg-green-dark disabled:cursor-not-allowed disabled:opacity-45"
         >
@@ -957,7 +1351,7 @@ function SessionAgreementSubmit({ app, onSubmitted }: { app: ApplicationOverview
 
       {submitted ? (
         <div className="rounded-2xl border border-green/40 bg-green/15 p-5 text-sm text-white">
-          Your application <strong>{application.number}</strong> is currently <strong>{application.status.replace(/_/g, " ")}</strong>. A verification officer will review your file.
+          <strong>Application review in progress</strong> ({application.number}). A verification officer is reviewing your application and practical assessment.
         </div>
       ) : (
         <button

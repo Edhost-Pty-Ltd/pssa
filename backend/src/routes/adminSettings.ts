@@ -18,6 +18,7 @@ const settingsSchema = z.object({
   verificationSlaHours: z.number().int().min(1).max(24 * 30),
   autoPublishApprovedListings: z.boolean(),
   requireIdVerification: z.boolean(),
+  practicalPassThreshold: z.number().int().min(1).max(100).optional(),
 });
 
 adminSettingsRouter.get("/settings", async (_req, res) => {

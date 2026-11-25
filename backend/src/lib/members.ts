@@ -119,12 +119,16 @@ export function serializeUser({ tokenVersion: _tv, ...user }: SelectedUser) {
   };
 }
 
-async function assertEmailFree(email: string) {
+export async function assertEmailFree(email: string) {
   if (await prisma.user.findUnique({ where: { email }, select: { id: true } })) {
     throw conflict("An account with this email already exists. Try signing in instead.", { fields: { email: "is already registered" } });
   }
 }
 
+export async function createMember(
+  input: MemberRegistration,
+  options?: { emailVerifiedAt?: Date | null; lastLoginAt?: Date | null },
+) {
 export async function createMember(input: MemberRegistration) {
   await assertEmailFree(input.email);
   if (input.idNumber && (await prisma.memberProfile.findUnique({ where: { idNumber: input.idNumber }, select: { id: true } }))) {
@@ -137,6 +141,8 @@ export async function createMember(input: MemberRegistration) {
       passwordHash: await hashPassword(input.password),
       firstName: input.firstName,
       lastName: input.lastName,
+      ...(options?.emailVerifiedAt !== undefined ? { emailVerifiedAt: options.emailVerifiedAt } : {}),
+      ...(options?.lastLoginAt !== undefined ? { lastLoginAt: options.lastLoginAt } : {}),
       memberProfile: {
         create: {
           firstName: input.firstName,

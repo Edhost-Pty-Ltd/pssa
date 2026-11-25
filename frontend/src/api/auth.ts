@@ -47,6 +47,21 @@ export const registerMember = (input: {
   password: string;
 }) => api<{ user: User; message: string }>("/auth/register", { body: { ...input, role: "MEMBER" } });
 
+export const sendRegistrationCode = (input: {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+}) => api<CodeSent>("/auth/register/otp", { body: input });
+
+export const verifyRegistrationCode = (input: {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  code: string;
+}) => api<{ user: User; message: string }>("/auth/register/verify", { body: input });
+
 export const sendCode = (email: string) => api<CodeSent>("/auth/otp/send", { body: { email } });
 
 export const verifyCode = (email: string, code: string) => api<{ user: User }>("/auth/otp/verify", { body: { email, code } });

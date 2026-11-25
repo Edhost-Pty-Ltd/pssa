@@ -2,10 +2,9 @@ import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent, type 
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
 import {
-  registerMember,
-  sendCode,
+  sendRegistrationCode,
   signInWithPassword,
-  verifyCode,
+  verifyRegistrationCode,
   type CodeSent,
 } from "../../api/auth";
 import { Icon } from "../../components/Icon";
@@ -20,7 +19,7 @@ const RESEND_SECONDS = 30;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const EASE = [0.22, 1, 0.36, 1] as const;
 
-type AuthMode = "password" | "register" | "otp";
+type AuthMode = "password" | "register";
 
 const JOURNEY_GATES = [
   { num: "01", title: "Identity & Scope", desc: "Name, trading profile, and city." },
@@ -82,7 +81,7 @@ export default function SignIn() {
   }, [cooldown]);
 
   useEffect(() => {
-    if (mode === "otp" && sent) {
+    if (mode === "register" && sent) {
       otpRefs.current[0]?.focus();
     }
   }, [mode, sent]);
@@ -93,10 +92,8 @@ export default function SignIn() {
     setMode(nextMode);
     setError(null);
     setFieldError({});
-    if (nextMode !== "otp") {
-      setSent(null);
-      setDigits(["", "", "", "", "", ""]);
-    }
+    setSent(null);
+    setDigits(["", "", "", "", "", ""]);
   }
 
   async function submitPasswordSignIn(e: FormEvent) {
@@ -124,9 +121,7 @@ export default function SignIn() {
     }
   }
 
-  async function submitRegister(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
+  async function sendRegisterOtp() {
     const cleanEmail = email.trim().toLowerCase();
     const nextErrors: typeof fieldError = {};
     if (!firstName.trim()) nextErrors.firstName = "Enter your first name.";
@@ -143,14 +138,16 @@ export default function SignIn() {
     setFieldError({});
     setBusy(true);
     try {
-      const { user: registeredUser } = await registerMember({
+      const result = (await sendRegistrationCode({
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         email: cleanEmail,
         password,
-      });
-      setUser(registeredUser);
-      navigate(next, { replace: true });
+      })) as CodeSentWithDev;
+      setEmail(cleanEmail);
+      setSent(result);
+      setDigits(["", "", "", "", "", ""]);
+      setCooldown(RESEND_SECONDS);
     } catch (err) {
       if (err instanceof ApiError && Object.keys(err.fields).length > 0) {
         setFieldError({
@@ -167,31 +164,10 @@ export default function SignIn() {
     }
   }
 
-  async function requestCode(e?: FormEvent) {
-    e?.preventDefault();
+  async function submitRegister(e: FormEvent) {
+    e.preventDefault();
     setError(null);
-    const value = email.trim().toLowerCase();
-    if (!EMAIL.test(value)) {
-      setFieldError({ email: "Enter a valid email address." });
-      return;
-    }
-    setFieldError({});
-    setBusy(true);
-    try {
-      const result = (await sendCode(value)) as CodeSentWithDev;
-      setEmail(value);
-      setSent(result);
-      setDigits(["", "", "", "", "", ""]);
-      setCooldown(RESEND_SECONDS);
-    } catch (err) {
-      if (err instanceof ApiError && err.fields.email) {
-        setFieldError({ email: fieldMessage("That email address", err.fields.email) });
-      } else {
-        setError(friendlyError(err));
-      }
-    } finally {
-      setBusy(false);
-    }
+    await sendRegisterOtp();
   }
 
   async function submitCode(e: FormEvent) {
@@ -204,12 +180,20 @@ export default function SignIn() {
     setFieldError({});
     setBusy(true);
     try {
-      const { user: signedInUser } = await verifyCode(email, code);
-      setUser(signedInUser);
+      const { user: registeredUser } = await verifyRegistrationCode({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: email.trim().toLowerCase(),
+        password,
+        code,
+      });
+      setUser(registeredUser);
       navigate(next, { replace: true });
     } catch (err) {
       if (err instanceof ApiError && err.fields.code) {
         setFieldError({ code: fieldMessage("That code", err.fields.code) });
+      } else if (err instanceof ApiError && Object.keys(err.fields).length > 0) {
+        setError(friendlyError(err));
       } else {
         setError(friendlyError(err));
       }
@@ -382,7 +366,7 @@ export default function SignIn() {
             </div>
           </motion.section>
 
-          {/* Right: Frosted Glass Auth Card (Sign In / Create Account / OTP) */}
+          {/* Right: Frosted Glass Auth Card (Sign In / Create Account) */}
           <motion.section
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
@@ -390,7 +374,7 @@ export default function SignIn() {
             className="flex flex-col justify-center rounded-3xl border border-white/20 bg-white/94 p-8 text-navy shadow-[0_30px_90px_-20px_rgba(0,0,0,0.55)] backdrop-blur-2xl sm:p-10"
           >
             {/* Mode Switcher */}
-            <div className="mb-6 grid grid-cols-3 gap-1 rounded-2xl bg-navy/6 p-1 text-xs font-semibold">
+            <div className="mb-6 grid grid-cols-2 gap-1 rounded-2xl bg-navy/6 p-1 text-xs font-semibold">
               <button
                 type="button"
                 onClick={() => switchMode("password")}
@@ -408,15 +392,6 @@ export default function SignIn() {
                 }`}
               >
                 Create account
-              </button>
-              <button
-                type="button"
-                onClick={() => switchMode("otp")}
-                className={`rounded-xl py-2 transition ${
-                  mode === "otp" ? "bg-white text-navy shadow-sm" : "text-navy/60 hover:text-navy"
-                }`}
-              >
-                Email OTP
               </button>
             </div>
 
@@ -528,21 +503,10 @@ export default function SignIn() {
                       {!busy && <Icon name="arrow" size={16} />}
                     </button>
                   </form>
-
-                  <p className="mt-5 text-center text-xs text-navy/60">
-                    Prefer a one-time code?{" "}
-                    <button
-                      type="button"
-                      onClick={() => switchMode("otp")}
-                      className="font-semibold text-green-dark underline underline-offset-2 hover:text-green"
-                    >
-                      Sign in with email OTP
-                    </button>
-                  </p>
                 </motion.div>
               )}
 
-              {mode === "register" && (
+              {mode === "register" && !sent && (
                 <motion.div
                   key="mode-register"
                   initial={{ opacity: 0, y: 8 }}
@@ -690,79 +654,14 @@ export default function SignIn() {
                       disabled={busy}
                       className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-green px-6 py-3.5 text-sm font-semibold text-white shadow-[0_14px_32px_-10px_rgba(24,162,105,0.65)] transition hover:bg-green-dark disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {busy ? "Creating account…" : "Create account & start application"}
+                      {busy ? "Sending verification code…" : "Create account"}
                       {!busy && <Icon name="arrow" size={16} />}
                     </button>
                   </form>
                 </motion.div>
               )}
 
-              {mode === "otp" && !sent && (
-                <motion.div
-                  key="mode-otp-email"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.25, ease: EASE }}
-                >
-                  <h2 className="font-display text-3xl font-semibold tracking-tight text-navy">One-time email code</h2>
-                  <p className="mt-1.5 text-sm leading-relaxed text-navy/68">
-                    Enter your email address and we’ll send a 6-digit verification code to sign you in.
-                  </p>
-
-                  {error && (
-                    <div
-                      role="alert"
-                      className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
-                    >
-                      <strong className="font-semibold">We couldn’t send a code.</strong> {error}
-                    </div>
-                  )}
-
-                  <form onSubmit={requestCode} noValidate className="mt-6 space-y-5">
-                    <div>
-                      <label htmlFor="otp-email" className="block text-xs font-bold uppercase tracking-[0.12em] text-navy/70">
-                        Email address
-                      </label>
-                      <div className="relative mt-1.5">
-                        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-navy/40">
-                          <Icon name="mail" size={17} />
-                        </span>
-                        <input
-                          id="otp-email"
-                          type="email"
-                          autoComplete="email"
-                          autoFocus
-                          placeholder="you@example.co.za"
-                          value={email}
-                          onChange={(e) => {
-                            setEmail(e.target.value);
-                            if (fieldError.email) setFieldError({});
-                          }}
-                          className={`w-full rounded-2xl border bg-white py-3.5 pl-11 pr-4 text-sm text-navy outline-none transition placeholder:text-navy/35 focus:ring-4 ${
-                            fieldError.email
-                              ? "border-red-400 focus:border-red-500 focus:ring-red-500/15"
-                              : "border-navy/15 focus:border-green focus:ring-green/15"
-                          }`}
-                          required
-                        />
-                      </div>
-                      {fieldError.email && <p className="mt-1.5 text-xs font-medium text-red-600">{fieldError.email}</p>}
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={busy}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-green px-6 py-3.5 text-sm font-semibold text-white shadow-[0_14px_32px_-10px_rgba(24,162,105,0.65)] transition hover:bg-green-dark disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {busy ? "Sending one-time code…" : "Send one-time code"}
-                      {!busy && <Icon name="arrow" size={16} />}
-                    </button>
-                  </form>
-                </motion.div>
-              )}
-
-              {mode === "otp" && sent && (
+              {mode === "register" && sent && (
                 <motion.div
                   key="mode-otp-verify"
                   initial={{ opacity: 0, x: 12 }}
@@ -837,7 +736,7 @@ export default function SignIn() {
                       disabled={busy}
                       className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-green px-6 py-3.5 text-sm font-semibold text-white shadow-[0_14px_32px_-10px_rgba(24,162,105,0.65)] transition hover:bg-green-dark disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {busy ? "Verifying…" : "Verify & continue"}
+                      {busy ? "Verifying…" : "Verify & create account"}
                       {!busy && <Icon name="arrow" size={16} />}
                     </button>
                   </form>
@@ -848,11 +747,14 @@ export default function SignIn() {
                       onClick={switchEmail}
                       className="text-navy/65 transition hover:text-navy"
                     >
-                      ← Use a different email
+                      ← Edit details
                     </button>
                     <button
                       type="button"
-                      onClick={() => void requestCode()}
+                      onClick={() => {
+                        setError(null);
+                        void sendRegisterOtp();
+                      }}
                       disabled={cooldown > 0 || busy}
                       className="text-green-dark transition hover:text-green disabled:cursor-not-allowed disabled:text-navy/40"
                     >

@@ -42,6 +42,28 @@ export const complaintUpload = multer({
   fileFilter: documentFileFilter,
 });
 
+const PDF_ONLY: Record<string, string> = {
+  "application/pdf": ".pdf",
+};
+
+export const practicalPdfUpload = multer({
+  storage: multer.diskStorage({
+    destination: PRIVATE_DIR,
+    filename: (_req, file, cb) => cb(null, `${randomBytes(16).toString("hex")}${PDF_ONLY[file.mimetype] ?? ".pdf"}`),
+  }),
+  limits: { fileSize: 20 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    if (PDF_ONLY[file.mimetype]) cb(null, true);
+    else cb(badRequest("Unsupported file type. Upload a PDF document."));
+  },
+});
+
+export const practicalEvidenceUpload = multer({
+  storage: documentDiskStorage,
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  fileFilter: documentFileFilter,
+});
+
 const VIDEO_TYPES: Record<string, string> = {
   "video/mp4": ".mp4",
   "video/webm": ".webm",

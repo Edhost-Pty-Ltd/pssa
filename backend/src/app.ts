@@ -17,6 +17,8 @@ import { adminListingsRouter } from "./routes/adminListings.js";
 import { adminSettingsRouter } from "./routes/adminSettings.js";
 import { tutorialsRouter } from "./routes/tutorials.js";
 import { examRouter } from "./routes/exam.js";
+import { practicalAssessmentRouter } from "./routes/practicalAssessment.js";
+import { adminPracticalAssessmentRouter } from "./routes/adminPracticalAssessment.js";
 import { publicMembersRouter } from "./routes/publicMembers.js";
 import { verifyRouter } from "./routes/verify.js";
 import { complaintsRouter } from "./routes/complaints.js";
@@ -53,8 +55,10 @@ export function createApp() {
   api.use("/admin", adminRenewalsRouter);
   api.use("/admin", adminListingsRouter);
   api.use("/admin", adminSettingsRouter);
+  api.use("/admin/practical-assessment", adminPracticalAssessmentRouter);
   api.use("/tutorials", tutorialsRouter);
   api.use("/exam", examRouter);
+  api.use("/practical-assessment", practicalAssessmentRouter);
   api.use(notFoundHandler);
   app.use("/api", api);
 

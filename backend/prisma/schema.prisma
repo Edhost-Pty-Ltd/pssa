@@ -151,8 +151,10 @@ model User {
   adminReviews       AdminReview[]
   statusChanges      StatusHistory[] @relation("StatusActor")
   auditLogs          AuditLog[]      @relation("AuditActor")
-  uploadedVideos     TutorialVideo[]
-  issuedCertificates Certificate[]   @relation("CertificateIssuer")
+  uploadedVideos            TutorialVideo[]
+  practicalAssetsUploaded   PracticalAssessmentAsset[]      @relation("PracticalAssetUploader")
+  practicalReviews          PracticalAssessmentSubmission[] @relation("PracticalSubmissionReviewer")
+  issuedCertificates        Certificate[]   @relation("CertificateIssuer")
   reviewedComplaints Complaint[]       @relation("ComplaintReviewer")
   appealDecisions    ComplaintAppeal[] @relation("AppealReviewer")
 
@@ -185,9 +187,10 @@ model MemberProfile {
 
   channels           Channel[]
   statusHistory      StatusHistory[]
-  videoProgress      VideoProgress[]
-  examAttempts       ExamAttempt[]
-  certificates       Certificate[]
+  videoProgress        VideoProgress[]
+  examAttempts         ExamAttempt[]
+  practicalSubmissions PracticalAssessmentSubmission[]
+  certificates         Certificate[]
   complaints         Complaint[]
   complaintResponses ComplaintResponse[]
   specialtyListings  ShopperProfileListing[]
@@ -548,9 +551,85 @@ model AssociationSettings {
   verificationSlaHours        Int      @map("verification_sla_hours")
   autoPublishApprovedListings Boolean  @default(false) @map("auto_publish_approved_listings")
   requireIdVerification       Boolean  @default(true) @map("require_id_verification")
+  practicalPassThreshold      Int      @default(70) @map("practical_pass_threshold")
   updatedAt                   DateTime @updatedAt @map("updated_at")
 
   @@map("association_settings")
+}
+
+enum PracticalTrack {
+  fashion_personal_styling
+  grocery_food_shopping
+  household_essentials
+}
+
+enum PracticalAssetKind {
+  tutorial_video
+  assignment_brief
+  assessor_guide
+}
+
+enum PracticalAssessmentStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  SUBMITTED
+  UNDER_REVIEW
+  NEEDS_RESUBMISSION
+  PASSED
+  NOT_PASSED
+}
+
+model PracticalAssessmentAsset {
+  id           String             @id @default(cuid())
+  kind         PracticalAssetKind
+  version      Int
+  title        String
+  fileName     String             @map("file_name")
+  mimeType     String             @map("mime_type")
+  sizeBytes    Int                @map("size_bytes")
+  storagePath  String             @map("storage_path")
+  isActive     Boolean            @default(false) @map("is_active")
+  isDefault    Boolean            @default(false) @map("is_default")
+  uploadedById String?            @map("uploaded_by_id")
+  uploadedBy   User?              @relation("PracticalAssetUploader", fields: [uploadedById], references: [id])
+  createdAt    DateTime           @default(now()) @map("created_at")
+
+  @@unique([kind, version])
+  @@index([kind, isActive])
+  @@map("practical_assessment_assets")
+}
+
+model PracticalAssessmentSubmission {
+  id                     String                    @id @default(cuid())
+  memberProfileId        String                    @map("member_profile_id")
+  member                 MemberProfile             @relation(fields: [memberProfileId], references: [id], onDelete: Cascade)
+  tutorialVersion        Int                       @default(1) @map("tutorial_version")
+  assignmentVersion      Int                       @default(1) @map("assignment_version")
+  tutorialWatched        Boolean                   @default(false) @map("tutorial_watched")
+  tutorialWatchedAt      DateTime?                 @map("tutorial_watched_at")
+  tutorialWatchedSeconds Int                       @default(0) @map("tutorial_watched_seconds")
+  status                 PracticalAssessmentStatus @default(NOT_STARTED)
+  serviceTrack           PracticalTrack?           @map("service_track")
+  answers                Json?
+  evidenceFileName       String?                   @map("evidence_file_name")
+  evidenceMimeType       String?                   @map("evidence_mime_type")
+  evidenceSizeBytes      Int?                      @map("evidence_size_bytes")
+  evidenceStoragePath    String?                   @map("evidence_storage_path")
+  idempotencyKey         String?                   @unique @map("idempotency_key")
+  submittedAt            DateTime?                 @map("submitted_at")
+  reviewerId             String?                   @map("reviewer_id")
+  reviewer               User?                     @relation("PracticalSubmissionReviewer", fields: [reviewerId], references: [id])
+  reviewedAt             DateTime?                 @map("reviewed_at")
+  rubricScores           Json?                     @map("rubric_scores")
+  totalScore             Int?                      @map("total_score")
+  passThresholdUsed      Int?                      @map("pass_threshold_used")
+  reviewerFeedback       String?                   @map("reviewer_feedback")
+  createdAt              DateTime                  @default(now()) @map("created_at")
+  updatedAt              DateTime                  @updatedAt @map("updated_at")
+
+  @@index([memberProfileId, createdAt])
+  @@index([status, submittedAt])
+  @@map("practical_assessment_submissions")
 }
 
 /** Admin inbox items for the dashboard notification panel. */
