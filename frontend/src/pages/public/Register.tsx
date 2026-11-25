@@ -17,8 +17,10 @@ const formatDate = (value: string) => new Date(value).toLocaleDateString("en-ZA"
 export default function Register() {
   const [params, setParams] = useSearchParams();
   const q = params.get("q") ?? "";
+  const scope = params.get("scope") ?? "";
+  const city = params.get("city") ?? "";
   const page = Math.max(1, Number(params.get("page")) || 1);
-  const key = `${q}|${page}`;
+  const key = `${q}|${scope}|${city}|${page}`;
 
   const [result, setResult] = useState<Result | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -26,19 +28,23 @@ export default function Register() {
 
   useEffect(() => {
     const controller = new AbortController();
-    searchRegister(q, { page, pageSize: PAGE_SIZE, signal: controller.signal })
+    searchRegister(q, { scope, city, page, pageSize: PAGE_SIZE, signal: controller.signal })
       .then((data) => setResult({ key, data }))
       .catch((err) => {
         if ((err as Error).name !== "AbortError") setResult({ key, error: errorMessage(err) });
       });
     return () => controller.abort();
-  }, [q, page, key, attempt]);
+  }, [q, scope, city, page, key, attempt]);
 
-  const goTo = (next: { q?: string; page?: number }) => {
+  const goTo = (next: { q?: string; scope?: string; city?: string; page?: number }) => {
     const nextQ = next.q ?? q;
+    const nextScope = next.scope ?? scope;
+    const nextCity = next.city ?? city;
     const nextPage = next.page ?? 1;
     const search: Record<string, string> = {};
     if (nextQ) search.q = nextQ;
+    if (nextScope) search.scope = nextScope;
+    if (nextCity) search.city = nextCity;
     if (nextPage > 1) search.page = String(nextPage);
     setParams(search);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -56,7 +62,13 @@ export default function Register() {
               Search the live register before you pay. Use the person's name, their trading name or the certificate number
               they shared with you.
             </p>
-            <SearchForm key={q} initial={q} onSearch={(value) => goTo({ q: value })} />
+            <SearchForm
+              key={`${q}|${scope}|${city}`}
+              initialQ={q}
+              initialScope={scope}
+              initialCity={city}
+              onSearch={(values) => goTo({ ...values, page: 1 })}
+            />
           </div>
         </section>
 
@@ -85,32 +97,66 @@ export default function Register() {
   );
 }
 
-function SearchForm({ initial, onSearch }: { initial: string; onSearch: (value: string) => void }) {
-  const [value, setValue] = useState(initial);
+function SearchForm({
+  initialQ,
+  initialScope,
+  initialCity,
+  onSearch,
+}: {
+  initialQ: string;
+  initialScope: string;
+  initialCity: string;
+  onSearch: (values: { q: string; scope: string; city: string }) => void;
+}) {
+  const [value, setValue] = useState(initialQ);
+  const [scope, setScope] = useState(initialScope);
+  const [city, setCity] = useState(initialCity);
   function submit(e: FormEvent) {
     e.preventDefault();
-    onSearch(value.trim());
+    onSearch({ q: value.trim(), scope: scope.trim(), city: city.trim() });
   }
   return (
-    <form onSubmit={submit} role="search" className="mt-8 flex flex-col gap-3 sm:flex-row">
-      <label htmlFor="register-q" className="sr-only">
-        Name, trading name or certificate number
-      </label>
-      <div className="flex flex-1 items-center gap-3 rounded-xl bg-white px-4 text-ink focus-within:ring-2 focus-within:ring-green">
-        <span className="text-muted"><Icon name="search" /></span>
+    <form onSubmit={submit} role="search" className="mt-8 space-y-3">
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <label htmlFor="register-q" className="sr-only">
+          Name, trading name or certificate number
+        </label>
+        <div className="flex flex-1 items-center gap-3 rounded-xl bg-white px-4 text-ink focus-within:ring-2 focus-within:ring-green">
+          <span className="text-muted"><Icon name="search" /></span>
+          <input
+            id="register-q"
+            type="search"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="e.g. Lerato or PSASA-2026-004821"
+            maxLength={100}
+            className="w-full bg-transparent py-3.5 text-base outline-none"
+          />
+        </div>
+        <button type="submit" className="flex items-center justify-center gap-2 rounded-xl bg-green px-6 py-3.5 font-semibold text-white transition hover:bg-green-dark">
+          Search register <Icon name="arrow" size={18} />
+        </button>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
         <input
-          id="register-q"
-          type="search"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="e.g. Lerato or PSSA-2026-004821"
-          maxLength={100}
-          className="w-full bg-transparent py-3.5 text-base outline-none"
+          type="text"
+          value={scope}
+          onChange={(e) => setScope(e.target.value)}
+          placeholder="Filter by category / scope (e.g. Clothing, Homeware)"
+          aria-label="Filter by category or scope"
+          maxLength={80}
+          className="rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm text-white placeholder:text-white/55 focus:border-green focus:bg-white/15 focus:outline-none"
+        />
+        <input
+          type="text"
+          value={city}
+          onChange={(e) => setCity(e.target.value)}
+          placeholder="Filter by city (e.g. Johannesburg, Cape Town)"
+          aria-label="Filter by city"
+          maxLength={80}
+          className="rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm text-white placeholder:text-white/55 focus:border-green focus:bg-white/15 focus:outline-none"
         />
       </div>
-      <button type="submit" className="flex items-center justify-center gap-2 rounded-xl bg-green px-6 py-3.5 font-semibold text-white hover:bg-green-dark">
-        Search register <Icon name="arrow" size={18} />
-      </button>
     </form>
   );
 }

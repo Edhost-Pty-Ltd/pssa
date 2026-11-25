@@ -48,3 +48,11 @@ export function RequireMember() {
 
   return <Outlet />;
 }
+
+export function RequireApprovedMember() {
+  const { user } = useAuth();
+  if (!user?.memberProfile?.memberStatus) {
+    return <Navigate to="/member" replace />;
+  }
+  return <Outlet />;
+}

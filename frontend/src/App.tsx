@@ -1,6 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { MemberLayout } from "./components/member/MemberLayout";
-import { RequireMember } from "./components/member/RequireMember";
+import { RequireApprovedMember, RequireMember } from "./components/member/RequireMember";
 import { AuthProvider } from "./context/AuthProvider";
 import ComingSoon from "./pages/ComingSoon";
 import ComponentsPreview from "./pages/dev/ComponentsPreview";
@@ -39,14 +39,16 @@ export default function App() {
           <Route path="/member" element={<RequireMember />}>
             <Route element={<MemberLayout />}>
               <Route index element={<Dashboard />} />
-              <Route path="profile" element={<Profile />} />
-              <Route path="verification" element={<Verification />} />
-              <Route path="tutorials" element={<Tutorials />} />
-              <Route path="assessment" element={<Assessment />} />
-              <Route path="certificate" element={<Certificate />} />
-              <Route path="complaints" element={<MemberComplaints />} />
-              <Route path="renewal" element={<Renewal />} />
-              <Route path="renewal/refresher" element={<ExamPage type="refresher" />} />
+              <Route element={<RequireApprovedMember />}>
+                <Route path="profile" element={<Profile />} />
+                <Route path="verification" element={<Verification />} />
+                <Route path="tutorials" element={<Tutorials />} />
+                <Route path="assessment" element={<Assessment />} />
+                <Route path="certificate" element={<Certificate />} />
+                <Route path="complaints" element={<MemberComplaints />} />
+                <Route path="renewal" element={<Renewal />} />
+                <Route path="renewal/refresher" element={<ExamPage type="refresher" />} />
+              </Route>
               <Route path="*" element={<Navigate to="/member" replace />} />
             </Route>
           </Route>
