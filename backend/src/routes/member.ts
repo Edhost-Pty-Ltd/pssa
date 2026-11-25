@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import type { DocumentType } from "@prisma/client";
 import { z } from "zod";
+import { config } from "../config.js";
 import { notifyAdminApplicationSubmitted } from "../lib/adminNotifications.js";
 import { certificatePdfDiskPath, ensureCertificatePdf } from "../lib/certificatePdf.js";
 import {
@@ -14,6 +15,8 @@ import { serializePublicComplaint } from "../lib/complaints.js";
 import { hasPassedEntranceExam, tutorialCompletion } from "../lib/examReviewQueries.js";
 import { badRequest, conflict, forbidden, notFound } from "../lib/http.js";
 import { isValidIdentityNumber, maskIdNumber, nextApplicationNumber } from "../lib/members.js";
+import { notifySafely } from "../lib/notifications.js";
+import { generateOtp, hashOtp, OTP_SETTINGS, otpMatches } from "../lib/otp.js";
 import { prisma } from "../lib/prisma.js";
 import { applyPrivateFileHeaders, logPrivateFileAccess } from "../lib/privateFiles.js";
 import { retainUntilForDocument } from "../lib/retentionQueries.js";
@@ -206,7 +209,7 @@ function latestDocsByType(documents: LoadedMember["documents"]) {
 
 function documentsComplete(
   documents: LoadedMember["documents"],
-  channels: NonNullable<LoadedMember["memberProfile"]>["channels"],
+  _channels: NonNullable<LoadedMember["memberProfile"]>["channels"],
 ) {
   const latest = latestDocsByType(documents);
   const usable = (type: DocumentType) => {
@@ -216,9 +219,7 @@ function documentsComplete(
   const hasId = usable("id_document");
   const hasAddressOrBiz = usable("proof_of_residence") || usable("business_registration");
   const hasBank = usable("bank_evidence");
-  const hasChannel =
-    channels.some((channel: { status: string }) => channel.status === "confirmed") || usable("channel_evidence");
-  return hasId && hasAddressOrBiz && hasBank && hasChannel;
+  return hasId && hasAddressOrBiz && hasBank;
 }
 
 function documentActions(documents: LoadedMember["documents"]): ProgressAction[] {
@@ -491,6 +492,9 @@ memberRouter.patch("/profile", async (req, res) => {
 
 memberRouter.get("/certificate", async (req, res) => {
   const member = await loadMember(req.user!.id);
+  if (!member.memberProfile!.memberStatus) {
+    throw forbidden("Your application must be approved before accessing your certificate.");
+  }
   const certificate = await findCertificateForMember(member.memberProfile!.id);
   if (!certificate) {
     res.json({ certificate: null, reason: "No certificate has been issued yet." });
@@ -507,6 +511,9 @@ memberRouter.get("/certificate", async (req, res) => {
 memberRouter.get("/certificate/pdf", async (req, res) => {
   const member = await loadMember(req.user!.id);
   const profile = member.memberProfile!;
+  if (!profile.memberStatus) {
+    throw forbidden("Your application must be approved before accessing your certificate.");
+  }
   let certificate = await findCertificateForMember(profile.id);
   if (!certificate) throw notFound("No certificate has been issued yet.");
 
@@ -749,7 +756,30 @@ memberRouter.post("/channels", async (req, res) => {
         select: channelSelect,
       });
 
-  res.status(existing ? 200 : 201).json({ channel });
+  const code = generateOtp();
+  const expiresAt = new Date(Date.now() + OTP_SETTINGS.expiresInMinutes * 60_000);
+  const channelKey = `channel:${channel.id}`;
+  await prisma.$transaction([
+    prisma.otpCode.deleteMany({ where: { email: channelKey, channel: "email", consumedAt: null } }),
+    prisma.otpCode.create({
+      data: { email: channelKey, channel: "email", codeHash: await hashOtp(code), expiresAt },
+    }),
+  ]);
+
+  const mailResult = await notifySafely(
+    req.user!.email,
+    {
+      subject: `Confirm your ${channel.kind} trading channel — ${code}`,
+      text: `Use this 6-digit code to confirm your ${channel.kind} channel (${channel.value}): ${code}\n\nIt expires in ${OTP_SETTINGS.expiresInMinutes} minutes.`,
+      html: `<p>Use this 6-digit code to confirm your <strong>${channel.kind}</strong> channel (${channel.value}):</p><p style="font-size:24px;font-weight:700;letter-spacing:4px">${code}</p><p>It expires in ${OTP_SETTINGS.expiresInMinutes} minutes.</p>`,
+    },
+    { action: "channel.otp_sent", entityType: "channel", entityId: channel.id },
+  );
+
+  res.status(existing ? 200 : 201).json({
+    channel,
+    ...(!config.isProd && !mailResult.sent ? { devCode: code } : {}),
+  });
 });
 
 const channelConfirmSchema = z.object({
@@ -757,7 +787,7 @@ const channelConfirmSchema = z.object({
 });
 
 memberRouter.post("/channels/:id/confirm", async (req, res) => {
-  channelConfirmSchema.parse(req.body ?? {});
+  const { code } = channelConfirmSchema.parse(req.body ?? {});
   const member = await loadMember(req.user!.id);
   const existing = await prisma.channel.findFirst({
     where: { id: String(req.params.id), memberProfileId: member.memberProfile!.id },
@@ -765,13 +795,34 @@ memberRouter.post("/channels/:id/confirm", async (req, res) => {
   });
   if (!existing) throw notFound("Channel not found.");
 
-  // TODO(V5): send a real channel verification code (SMS/DM) and match it here before launch.
-  // Any well-formed 6-digit code confirms for local/UI testing only.
-  const channel = await prisma.channel.update({
-    where: { id: existing.id },
-    data: { status: "confirmed" },
-    select: channelSelect,
+  const channelKey = `channel:${existing.id}`;
+  const record = await prisma.otpCode.findFirst({
+    where: { email: channelKey, channel: "email", consumedAt: null },
+    orderBy: { createdAt: "desc" },
   });
+  if (!record || record.expiresAt < new Date()) {
+    throw badRequest("That confirmation code has expired. Re-save the channel to request a new code.", {
+      fields: { code: "has expired" },
+    });
+  }
+  if (record.attempts >= OTP_SETTINGS.maxAttempts) {
+    throw badRequest("Too many incorrect attempts. Re-save the channel to request a new code.", {
+      fields: { code: "has had too many attempts" },
+    });
+  }
+  if (!(await otpMatches(code, record.codeHash))) {
+    await prisma.otpCode.update({ where: { id: record.id }, data: { attempts: { increment: 1 } } });
+    throw badRequest("That confirmation code is incorrect.", { fields: { code: "is incorrect" } });
+  }
+
+  const [, channel] = await prisma.$transaction([
+    prisma.otpCode.update({ where: { id: record.id }, data: { consumedAt: new Date() } }),
+    prisma.channel.update({
+      where: { id: existing.id },
+      data: { status: "confirmed" },
+      select: channelSelect,
+    }),
+  ]);
   res.json({ channel });
 });
 
@@ -802,6 +853,9 @@ const publicComplaintSelect = {
 /** Cases naming this member (public-safe shape). Drafts are omitted. Newest first. */
 memberRouter.get("/complaints", async (req, res) => {
   const member = await loadMember(req.user!.id);
+  if (!member.memberProfile!.memberStatus) {
+    throw forbidden("Your application must be approved before accessing member concerns.");
+  }
   const rows = await prisma.complaint.findMany({
     where: { memberProfileId: member.memberProfile!.id, isDraft: false },
     orderBy: { createdAt: "desc" },
@@ -825,6 +879,9 @@ memberRouter.post("/complaints/:id/response", (req, res, next) => {
   const body = memberComplaintResponseSchema.parse(req.body ?? {});
   const files = (req.files as Express.Multer.File[] | undefined) ?? [];
   const member = await loadMember(req.user!.id);
+  if (!member.memberProfile!.memberStatus) {
+    throw forbidden("Your application must be approved before responding to member concerns.");
+  }
   const profileId = member.memberProfile!.id;
   const raw = String(req.params.id ?? "").trim();
 

@@ -11,13 +11,15 @@ export const publicMembersRouter = Router();
 
 const searchSchema = z.object({
   q: z.string().trim().optional(),
+  scope: z.string().trim().optional(),
+  city: z.string().trim().optional(),
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(50).default(20),
 });
 
 publicMembersRouter.get("/members", async (req, res) => {
-  const { q, page, pageSize } = searchSchema.parse(req.query);
-  res.json(await searchPublicMembers({ q, page, pageSize }));
+  const { q, scope, city, page, pageSize } = searchSchema.parse(req.query);
+  res.json(await searchPublicMembers({ q, scope, city, page, pageSize }));
 });
 
 publicMembersRouter.get("/members/:id", async (req, res) => {

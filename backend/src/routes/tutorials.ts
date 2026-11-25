@@ -39,6 +39,8 @@ tutorialsRouter.get("/active", requireRole("MEMBER", "ADMIN"), async (req, res) 
     select: {
       id: true,
       title: true,
+      description: true,
+      version: true,
       durationSeconds: true,
       createdAt: true,
     },
@@ -84,6 +86,8 @@ tutorialsRouter.get("/active", requireRole("MEMBER", "ADMIN"), async (req, res) 
     return {
       id: video.id,
       title: video.title,
+      description: video.description,
+      version: video.version,
       durationSeconds: video.durationSeconds,
       createdAt: video.createdAt,
       completed: progress?.completed === true,
@@ -228,18 +232,28 @@ tutorialsRouter.post("/:id/progress", requireRole("MEMBER"), async (req, res) =>
 
 tutorialsRouter.use(requireRole("ADMIN"));
 
+async function recordTutorialAudit(actorId: string, action: string, entityId: string, reason: string) {
+  await prisma.auditLog.create({
+    data: { actorId, action, entityType: "tutorial_video", entityId, reason, conflictDeclared: true },
+  });
+}
+
+const adminTutorialSelect = {
+  id: true,
+  title: true,
+  description: true,
+  version: true,
+  durationSeconds: true,
+  isActive: true,
+  storagePath: true,
+  uploadedById: true,
+  createdAt: true,
+} as const;
+
 tutorialsRouter.get("/", async (_req, res) => {
   const tutorials = await prisma.tutorialVideo.findMany({
     orderBy: { createdAt: "asc" },
-    select: {
-      id: true,
-      title: true,
-      durationSeconds: true,
-      isActive: true,
-      storagePath: true,
-      uploadedById: true,
-      createdAt: true,
-    },
+    select: adminTutorialSelect,
   });
   const count = tutorials.length;
   res.json({
@@ -252,6 +266,12 @@ tutorialsRouter.get("/", async (_req, res) => {
 
 tutorialsRouter.post("/", videoUpload.single("file"), async (req, res) => {
   const title = z.string().trim().min(1, "is required").max(200).parse(req.body?.title ?? "");
+  const description = req.body?.description
+    ? z.string().trim().max(1000).parse(req.body.description)
+    : null;
+  const version = req.body?.version
+    ? z.coerce.number().int().positive().parse(req.body.version)
+    : 1;
   const durationSeconds = req.body?.durationSeconds
     ? z.coerce.number().int().positive().parse(req.body.durationSeconds)
     : undefined;
@@ -270,22 +290,17 @@ tutorialsRouter.post("/", videoUpload.single("file"), async (req, res) => {
     const tutorial = await prisma.tutorialVideo.create({
       data: {
         title,
+        description,
+        version,
         storagePath: req.file.filename,
         durationSeconds: durationSeconds ?? null,
         isActive: false,
         uploadedById: req.user!.id,
       },
-      select: {
-        id: true,
-        title: true,
-        durationSeconds: true,
-        isActive: true,
-        storagePath: true,
-        uploadedById: true,
-        createdAt: true,
-      },
+      select: adminTutorialSelect,
     });
     const count = existingCount + 1;
+    await recordTutorialAudit(req.user!.id, "tutorial.upload", tutorial.id, `Uploaded tutorial video "${tutorial.title}"`);
     res.status(201).json({
       tutorial,
       limit: MAX_OFFICIAL_TUTORIALS,
@@ -301,6 +316,8 @@ tutorialsRouter.post("/", videoUpload.single("file"), async (req, res) => {
 const patchSchema = z
   .object({
     title: z.string().trim().min(1).max(200).optional(),
+    description: z.union([z.string().trim().max(1000), z.null()]).optional(),
+    version: z.coerce.number().int().positive().optional(),
     durationSeconds: z.union([z.coerce.number().int().positive(), z.null()]).optional(),
     isActive: z.boolean().optional(),
   })
@@ -315,19 +332,14 @@ tutorialsRouter.patch("/:id", async (req, res) => {
     where: { id: existing.id },
     data: {
       ...(body.title !== undefined ? { title: body.title } : {}),
+      ...(body.description !== undefined ? { description: body.description } : {}),
+      ...(body.version !== undefined ? { version: body.version } : {}),
       ...(body.durationSeconds !== undefined ? { durationSeconds: body.durationSeconds } : {}),
       ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
     },
-    select: {
-      id: true,
-      title: true,
-      durationSeconds: true,
-      isActive: true,
-      storagePath: true,
-      uploadedById: true,
-      createdAt: true,
-    },
+    select: adminTutorialSelect,
   });
+  await recordTutorialAudit(req.user!.id, "tutorial.update", tutorial.id, `Updated tutorial "${tutorial.title}"`);
   res.json({ tutorial });
 });
 
@@ -348,6 +360,7 @@ tutorialsRouter.post("/:id/activate", async (req, res) => {
       createdAt: true,
     },
   });
+  await recordTutorialAudit(req.user!.id, "tutorial.update", tutorial.id, `Updated tutorial "${tutorial.title}"`);
   res.json({ tutorial });
 });
 
@@ -355,12 +368,13 @@ tutorialsRouter.post("/:id/activate", async (req, res) => {
 tutorialsRouter.delete("/:id", async (req, res) => {
   const existing = await prisma.tutorialVideo.findUnique({
     where: { id: String(req.params.id) },
-    select: { id: true, storagePath: true },
+    select: { id: true, title: true, storagePath: true },
   });
   if (!existing) throw notFound("Tutorial not found.");
 
   await prisma.tutorialVideo.delete({ where: { id: existing.id } });
   await removePrivateFile(existing.storagePath).catch(() => {});
+  await recordTutorialAudit(req.user!.id, "tutorial.delete", existing.id, `Deleted tutorial "${existing.title}"`);
 
   const count = await prisma.tutorialVideo.count();
   res.json({

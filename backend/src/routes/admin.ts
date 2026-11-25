@@ -153,6 +153,9 @@ adminRouter.post("/applications/:id/decision", async (req, res) => {
   const body = decisionSchema.parse(req.body ?? {});
   const application = await loadDecisionContext(String(req.params.id));
   if (!application) throw notFound("Application not found.");
+  if (application.userId === req.user!.id) {
+    throw conflict("You cannot review your own application.");
+  }
   if (application.status === "approved" || application.status === "rejected") {
     throw conflict("A final decision has already been recorded for this application.");
   }
@@ -421,6 +424,18 @@ adminRouter.patch("/documents/:id", async (req, res) => {
       reviewedAt: true,
       createdAt: true,
       updatedAt: true,
+    },
+  });
+  await prisma.auditLog.create({
+    data: {
+      actorId: req.user!.id,
+      action: "document.review",
+      entityType: "document",
+      entityId: document.id,
+      reason: body.reviewerNote
+        ? `Document ${document.type} set to ${document.status}: ${body.reviewerNote}`
+        : `Document ${document.type} set to ${document.status}`,
+      conflictDeclared: true,
     },
   });
   res.json({ document });

@@ -129,6 +129,7 @@ export async function createMember(
   input: MemberRegistration,
   options?: { emailVerifiedAt?: Date | null; lastLoginAt?: Date | null },
 ) {
+export async function createMember(input: MemberRegistration) {
   await assertEmailFree(input.email);
   if (input.idNumber && (await prisma.memberProfile.findUnique({ where: { idNumber: input.idNumber }, select: { id: true } }))) {
     throw conflict("A member with this ID number is already registered.", { fields: { idNumber: "is already registered" } });
