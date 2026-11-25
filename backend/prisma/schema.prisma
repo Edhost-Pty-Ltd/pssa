@@ -315,6 +315,8 @@ model AuditLog {
 model TutorialVideo {
   id              String   @id @default(cuid())
   title           String
+  description     String?
+  version         Int      @default(1)
   storagePath     String   @map("storage_path")
   durationSeconds Int?     @map("duration_seconds")
   isActive        Boolean  @default(false) @map("is_active")

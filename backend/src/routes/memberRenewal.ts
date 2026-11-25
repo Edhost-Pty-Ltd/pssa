@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { conflict, notFound } from "../lib/http.js";
+import { conflict, forbidden, notFound } from "../lib/http.js";
 import { prisma } from "../lib/prisma.js";
 import {
   canStartRenewal,
@@ -32,6 +32,9 @@ async function loadRenewalMember(userId: string) {
     },
   });
   if (!user?.memberProfile) throw notFound("Member profile not found.");
+  if (!user.memberProfile.memberStatus) {
+    throw forbidden("Your application must be approved before accessing membership renewals.");
+  }
   return user;
 }
 
