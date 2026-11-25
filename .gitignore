@@ -6,3 +6,7 @@ uploads/
 
 # Uploaded private files (ID documents, bank evidence). Never commit these.
 backend/storage/
+
+# Unused source/doc/prompt files in practical-assessment (keep only runtime assets).
+backend/assets/practical-assessment/*.docx
+backend/assets/practical-assessment/*.txt
