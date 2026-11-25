@@ -6,3 +6,6 @@ uploads/
 
 # Uploaded private files (ID documents, bank evidence). Never commit these.
 backend/storage/
+
+# Practical assessment media/document assets. Keep codebase-only in PRs.
+backend/assets/
