@@ -7,5 +7,6 @@ uploads/
 # Uploaded private files (ID documents, bank evidence). Never commit these.
 backend/storage/
 
-# Practical assessment media/document assets. Keep codebase-only in PRs.
-backend/assets/
+# Unused source/doc/prompt files in practical-assessment (keep only runtime assets).
+backend/assets/practical-assessment/*.docx
+backend/assets/practical-assessment/*.txt
