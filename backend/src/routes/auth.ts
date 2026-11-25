@@ -8,30 +8,20 @@ import { verifyPasswordOrDummy } from "../lib/password.js";
 import { prisma } from "../lib/prisma.js";
 import { authLimiter } from "../lib/rateLimit.js";
 import {
-  createCustomer,
   createMember,
-  customerRegistrationSchema,
   findOrCreatePasswordlessMember,
   memberRegistrationSchema,
   serializeUser,
-  signUpRoleSchema,
   userSelect,
 } from "../lib/members.js";
 import { clearSession, issueSession } from "../middleware/auth.js";
 
 export const authRouter = Router();
 
-/**
- * POST /api/auth/register — public sign-up. `role` is "MEMBER" (default) or "CUSTOMER";
- * admin accounts can't be created here. Signs the new user in.
- * Member portal sign-in should use passwordless OTP instead of this route.
- */
 authRouter.post("/register", authLimiter, async (req, res) => {
-  const { role } = signUpRoleSchema.parse(req.body ?? {});
-  const user =
-    role === "CUSTOMER" ? await createCustomer(customerRegistrationSchema.parse(req.body)) : await createMember(memberRegistrationSchema.parse(req.body));
+  const user = await createMember(memberRegistrationSchema.parse(req.body));
   issueSession(res, user);
-  res.status(201).json({ message: role === "CUSTOMER" ? "Customer registered successfully" : "Member registered successfully", user: serializeUser(user) });
+  res.status(201).json({ message: "Member registered successfully", user: serializeUser(user) });
 });
 
 const loginSchema = z.object({
