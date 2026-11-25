@@ -4,11 +4,13 @@ import { prisma } from "./prisma.js";
 
 export type PublicRegisterQuery = {
   q?: string;
+  scope?: string;
+  city?: string;
   page?: number;
   pageSize?: number;
 };
 
-/** Anyone with a stored membership status can appear; live status is derived (never fake Active). */
+/** Live-check statuses; directory search only lists active verified members. */
 const PUBLIC_STATUSES: MemberStatus[] = ["active", "suspended", "expired", "revoked", "resigned"];
 
 function normalizeCertificateNumber(value: string) {
@@ -22,9 +24,26 @@ function publicVisibilityWhere(): Prisma.MemberProfileWhereInput {
   };
 }
 
-function searchWhere(q?: string): Prisma.MemberProfileWhereInput {
-  const term = q?.trim();
-  if (!term) return publicVisibilityWhere();
+function searchWhere(query: Pick<PublicRegisterQuery, "q" | "scope" | "city">): Prisma.MemberProfileWhereInput {
+  const term = query.q?.trim();
+  const scope = query.scope?.trim();
+  const city = query.city?.trim();
+  const now = new Date();
+
+  const filters: Prisma.MemberProfileWhereInput[] = [
+    {
+      memberStatus: "active",
+      certificates: { some: { status: "active" } },
+      OR: [{ validUntil: null }, { validUntil: { gte: now } }],
+    },
+  ];
+  if (scope) {
+    filters.push({ scope: { contains: scope, mode: "insensitive" } });
+  }
+  if (city) {
+    filters.push({ city: { contains: city, mode: "insensitive" } });
+  }
+  if (!term) return { AND: filters };
 
   const cert = normalizeCertificateNumber(term);
   const parts = term.split(/\s+/).filter(Boolean);
@@ -48,7 +67,7 @@ function searchWhere(q?: string): Prisma.MemberProfileWhereInput {
 
   return {
     AND: [
-      publicVisibilityWhere(),
+      ...filters,
       {
         OR: [
           { firstName: { contains: term, mode: "insensitive" } },
@@ -121,7 +140,7 @@ function toListItem(row: ListRow, now = new Date()) {
 export async function searchPublicMembers(query: PublicRegisterQuery) {
   const page = Math.max(1, query.page ?? 1);
   const pageSize = Math.min(50, Math.max(1, query.pageSize ?? 20));
-  const where = searchWhere(query.q);
+  const where = searchWhere(query);
   const now = new Date();
 
   const [total, rows] = await prisma.$transaction([

@@ -36,19 +36,17 @@ function latestByType(documents: GateInput["documents"]) {
   return latest;
 }
 
-function verificationPassed(documents: GateInput["documents"], channels: GateInput["channels"]) {
+function verificationPassed(documents: GateInput["documents"], _channels: GateInput["channels"]) {
   const latest = latestByType(documents);
   const accepted = (type: string) => latest.get(type)?.status === "accepted";
   const hasId = accepted("id_document");
   const hasAddressOrBiz = accepted("proof_of_residence") || accepted("business_registration");
   const hasBank = accepted("bank_evidence");
-  const hasChannel =
-    channels.some((channel) => channel.status === "confirmed") || accepted("channel_evidence");
   return {
-    passed: hasId && hasAddressOrBiz && hasBank && hasChannel,
-    detail: hasId && hasAddressOrBiz && hasBank && hasChannel
-      ? "Required documents accepted and a trading channel confirmed"
-      : "ID, address/registration, bank evidence and a confirmed channel (or channel evidence) must be accepted",
+    passed: hasId && hasAddressOrBiz && hasBank,
+    detail: hasId && hasAddressOrBiz && hasBank
+      ? "Required verification documents accepted"
+      : "ID, address/registration, and bank evidence must be accepted",
   };
 }
 
