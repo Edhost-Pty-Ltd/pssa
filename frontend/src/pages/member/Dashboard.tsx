@@ -9,20 +9,14 @@ import {
   type DocumentType,
 } from "../../api/documents";
 import {
-  deletePracticalEvidence,
   getPracticalState,
   reportPracticalTutorial,
-  savePracticalDraft,
-  submitPracticalAssessment,
-  uploadPracticalEvidence,
-  type PracticalAnswers,
-  type PracticalOptionItem,
   type PracticalState,
-  type PracticalTrack,
 } from "../../api/practicalAssessment";
 import {
   getApplication,
   getProfile,
+  reapplyApplication,
   submitApplication,
   updateProfile,
   type ApplicationOverview,
@@ -31,6 +25,7 @@ import {
   type StepKey,
 } from "../../api/member";
 import { Icon, type IconName } from "../../components/Icon";
+import { EntranceAutomatedTest } from "./Assessment";
 import { useAuth } from "../../context/auth-context";
 import { api, errorMessage } from "../../lib/api";
 
@@ -189,56 +184,317 @@ function AlbumApplication({
   const nextLocked = currentIdx + 1 > highestUnlocked;
 
   const isApproved = application.status === "approved" || profile?.memberProfile?.memberStatus === "active";
+  const isRejected = !isApproved && application.status === "rejected";
   const isUnderReview = !isApproved && (application.status === "submitted" || application.status === "under_review");
 
-  if (isUnderReview) {
+  const [showSteps, setShowSteps] = useState(false);
+  const [showRejectionReason, setShowRejectionReason] = useState(true);
+  const [reapplying, setReapplying] = useState(false);
+  const [reapplyError, setReapplyError] = useState<string | null>(null);
+
+  async function handleReapply() {
+    setReapplying(true);
+    setReapplyError(null);
+    try {
+      await reapplyApplication();
+      setShowSteps(true);
+      onReload(0);
+    } catch (err) {
+      setReapplyError(errorMessage(err));
+    } finally {
+      setReapplying(false);
+    }
+  }
+
+  if (isApproved && !showSteps) {
+    const mp = profile?.memberProfile;
+    const fullName = [mp?.firstName, mp?.lastName].filter(Boolean).join(" ") || "Verified Personal Shopper";
     return (
-      <div className="mx-auto max-w-3xl space-y-6">
-        <div className="rounded-[32px] border border-white/15 bg-white/[0.07] p-8 shadow-[0_30px_90px_-24px_rgba(0,0,0,0.65)] backdrop-blur-2xl sm:p-10">
-          <div className="inline-flex items-center gap-2 rounded-full border border-green/40 bg-green/15 px-3.5 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-green">
-            <span className="size-1.5 rounded-full bg-green" />
-            {justSubmitted ? "Review Submitted" : "Application review in progress"}
+      <div className="mx-auto max-w-4xl space-y-6">
+        <motion.div
+          initial={{ opacity: 0, y: 18, scale: 0.985 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.45, ease: EASE }}
+          className="relative overflow-hidden rounded-[32px] border border-green/35 bg-white/[0.08] p-8 shadow-[0_30px_90px_-24px_rgba(0,0,0,0.65)] backdrop-blur-2xl sm:p-10"
+        >
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full opacity-30 blur-3xl"
+            style={{ background: "radial-gradient(circle, #18a269 0%, transparent 70%)" }}
+          />
+          <div className="relative z-10 flex flex-wrap items-center justify-between gap-3">
+            <div className="inline-flex items-center gap-2 rounded-full border border-green/45 bg-green/20 px-3.5 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-green">
+              <span className="size-2 rounded-full bg-green" />
+              Approved · Active Personal Shopper
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowSteps(true)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/[0.08] px-3.5 py-1.5 text-xs font-semibold text-white/90 backdrop-blur-md transition hover:border-green/50 hover:bg-white/15 hover:text-white"
+            >
+              <Icon name="eye" size={13} />
+              Application status
+            </button>
           </div>
 
-          <h1 className="mt-4 font-display text-3xl font-semibold text-white sm:text-4xl">
-            {justSubmitted ? "Review Submitted" : "Application review in progress"}
+          <h1 className="relative z-10 mt-5 font-display text-3xl font-semibold text-white sm:text-4xl">
+            {fullName}
           </h1>
-
-          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/75 sm:text-base">
-            {justSubmitted
-              ? "Your entire application, verification documents, and practical assessment have been submitted for review. You can now wait for your PSASA certificate — we will update your account as soon as an officer approves your file."
-              : "Your application, verification documents, and practical assessment are currently being reviewed by a PSASA verification officer. Your certificate will unlock here automatically once approved."}
+          <p className="relative z-10 mt-2 text-sm text-white/75 sm:text-base">
+            {mp?.tradingName ? `${mp.tradingName} · ` : ""}
+            {mp?.scope || "Accredited Personal Shopper"}
+            {mp?.city ? ` · ${mp.city}` : ""}
           </p>
 
-          <div className="mt-7 grid gap-3 sm:grid-cols-3">
+          <div className="relative z-10 mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              { to: "/member/certificate", title: "Certificate & QR", desc: "Download PDF & public verification link", icon: "badge" as const },
+              { to: "/member/renewal", title: "Annual Renewal", desc: "View validity & renewal status", icon: "clock" as const },
+              { to: "/member/profile", title: "Shopper Profile", desc: "Manage your public register details", icon: "user" as const },
+              { to: "/member/complaints", title: "Complaints & Appeals", desc: "View notices or respond to cases", icon: "shield" as const },
+            ].map((item, idx) => (
+              <motion.div
+                key={item.to}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.35, delay: 0.08 + idx * 0.05, ease: EASE }}
+              >
+                <Link
+                  to={item.to}
+                  className="group flex h-full flex-col justify-between rounded-2xl border border-white/15 bg-white/[0.05] p-4 transition hover:-translate-y-0.5 hover:border-green/50 hover:bg-white/[0.1]"
+                >
+                  <div>
+                    <div className="flex size-9 items-center justify-center rounded-xl bg-green/20 text-green">
+                      <Icon name={item.icon} size={16} />
+                    </div>
+                    <p className="mt-3 text-sm font-semibold text-white">{item.title}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-white/65">{item.desc}</p>
+                  </div>
+                  <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-green transition group-hover:translate-x-0.5">
+                    Open <Icon name="arrow" size={12} />
+                  </span>
+                </Link>
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if ((isUnderReview || isRejected) && !showSteps) {
+    const latestReview = application.latestReview ?? null;
+    const statusLabel = isRejected
+      ? "Rejected"
+      : application.status === "under_review"
+        ? "Pending · Under review"
+        : justSubmitted
+          ? "Review Submitted"
+          : "Pending · Application review in progress";
+
+    return (
+      <div className="mx-auto max-w-3xl space-y-6">
+        <motion.div
+          initial={{ opacity: 0, y: 18, scale: 0.985 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.45, ease: EASE }}
+          className="relative overflow-hidden rounded-[32px] border border-white/15 bg-white/[0.07] p-8 shadow-[0_30px_90px_-24px_rgba(0,0,0,0.65)] backdrop-blur-2xl sm:p-10"
+        >
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full opacity-25 blur-3xl"
+            style={{
+              background: isRejected
+                ? "radial-gradient(circle, #ef4444 0%, transparent 70%)"
+                : "radial-gradient(circle, #18a269 0%, transparent 70%)",
+            }}
+          />
+
+          <div className="relative z-10 flex flex-wrap items-center justify-between gap-3">
+            <div
+              className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1 text-[11px] font-bold uppercase tracking-[0.18em] ${
+                isRejected
+                  ? "border-red-400/40 bg-red-500/15 text-red-200"
+                  : "border-green/40 bg-green/15 text-green"
+              }`}
+            >
+              <span
+                className={`size-2 rounded-full ${
+                  isRejected ? "bg-red-400" : "animate-pulse bg-green"
+                }`}
+              />
+              {statusLabel}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowSteps(true)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/[0.08] px-3.5 py-1.5 text-xs font-semibold text-white/90 backdrop-blur-md transition hover:border-green/50 hover:bg-white/15 hover:text-white"
+            >
+              <Icon name="eye" size={13} />
+              Application status
+            </button>
+          </div>
+
+          <h1 className="relative z-10 mt-5 font-display text-3xl font-semibold text-white sm:text-4xl">
+            {isRejected
+              ? "Application not approved"
+              : justSubmitted
+                ? "Review Submitted"
+                : "Application review in progress"}
+          </h1>
+
+          <p className="relative z-10 mt-3 max-w-2xl text-sm leading-relaxed text-white/75 sm:text-base">
+            {isRejected
+              ? "Your application was reviewed by a PSASA officer and was not approved at this time. Review the feedback below and apply again whenever you're ready."
+              : justSubmitted
+                ? "Your entire application, verification documents, and practical assessment have been submitted for review. You can now wait for your PSASA certificate — we will update your account as soon as an officer completes your review."
+                : "Your application, verification documents, and practical assessment are currently being reviewed by a PSASA verification officer. Your certificate will unlock here automatically once approved."}
+          </p>
+
+          {/* 3-State Review Outcome Bar */}
+          <div className="relative z-10 mt-6 grid grid-cols-3 gap-2.5">
+            {[
+              { key: "pending", label: "Pending", active: isUnderReview, tone: "green", icon: "clock" as const },
+              { key: "approved", label: "Approved", active: false, tone: "green", icon: "check" as const },
+              { key: "rejected", label: "Rejected", active: isRejected, tone: "red", icon: "flag" as const },
+            ].map((item) => (
+              <div
+                key={item.key}
+                className={`flex items-center justify-center gap-2 rounded-2xl border px-3.5 py-2.5 text-center text-xs font-semibold transition ${
+                  item.active
+                    ? item.tone === "red"
+                      ? "border-red-400/50 bg-red-500/20 text-red-100 shadow-sm"
+                      : "border-green/50 bg-green/20 text-white shadow-sm"
+                    : "border-white/10 bg-white/[0.03] text-white/45"
+                }`}
+              >
+                <Icon name={item.icon} size={13} />
+                {item.label}
+              </div>
+            ))}
+          </div>
+
+          {!isRejected && (
+            <div className="relative z-10 mt-5 space-y-1.5">
+              <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.16em] text-white/65">
+                <span>Submission progress</span>
+                <span className="text-green">{pct}%</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-white/15">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${pct}%` }}
+                  transition={{ duration: 0.75, ease: EASE }}
+                  className="h-full rounded-full bg-gradient-to-r from-green to-[#6ee7b7]"
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="relative z-10 mt-6 grid gap-3 sm:grid-cols-3">
             <div className="rounded-2xl border border-white/12 bg-white/[0.05] p-4">
               <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/55">Application</p>
               <p className="mt-1 font-mono text-sm font-semibold text-white">{application.number ?? "Submitted"}</p>
             </div>
             <div className="rounded-2xl border border-white/12 bg-white/[0.05] p-4">
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/55">Submitted</p>
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/55">
+                {isRejected ? "Reviewed" : "Progress"}
+              </p>
               <p className="mt-1 text-sm font-semibold text-white">
-                {application.submittedAt
-                  ? new Date(application.submittedAt).toLocaleDateString("en-ZA", {
-                      day: "numeric",
-                      month: "short",
-                      year: "numeric",
-                    })
-                  : "Recently"}
+                {isRejected
+                  ? latestReview?.createdAt
+                    ? new Date(latestReview.createdAt).toLocaleDateString("en-ZA", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })
+                    : "Completed"
+                  : `${pct}% Complete`}
               </p>
             </div>
             <div className="rounded-2xl border border-white/12 bg-white/[0.05] p-4">
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/55">Next milestone</p>
-              <p className="mt-1 text-sm font-semibold text-green">PSASA Certificate</p>
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/55">
+                {isRejected ? "Outcome" : "Next milestone"}
+              </p>
+              <p className={`mt-1 text-sm font-semibold ${isRejected ? "text-red-300" : "text-green"}`}>
+                {isRejected ? "Action available" : "PSASA Certificate"}
+              </p>
             </div>
           </div>
-        </div>
+
+          {isRejected && (
+            <div className="relative z-10 mt-6 space-y-4">
+              {reapplyError && (
+                <div className="rounded-2xl border border-red-400/40 bg-red-950/50 p-4 text-sm text-red-100">
+                  {reapplyError}
+                </div>
+              )}
+
+              <AnimatePresence initial={false}>
+                {showRejectionReason && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden rounded-2xl border border-red-400/30 bg-red-950/35 p-5"
+                  >
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-red-200">
+                      Reviewer reason
+                    </p>
+                    <p className="mt-2 text-sm leading-relaxed text-white/90">
+                      {latestReview?.reason ||
+                        "No detailed reason was recorded. Please review your verification documents and practical assessment before applying again."}
+                    </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  disabled={reapplying}
+                  onClick={() => void handleReapply()}
+                  className="inline-flex items-center gap-2 rounded-full bg-green px-6 py-3 text-sm font-semibold text-white shadow-[0_14px_34px_-10px_rgba(24,162,105,0.75)] transition hover:bg-green-dark disabled:opacity-60"
+                >
+                  {reapplying ? "Preparing new application…" : "Apply again"}
+                  {!reapplying && <Icon name="arrow" size={16} />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowRejectionReason((v) => !v)}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/[0.06] px-5 py-3 text-sm font-semibold text-white/90 transition hover:bg-white/12"
+                >
+                  {showRejectionReason ? "Hide rejection reason" : "Review why it was rejected"}
+                </button>
+              </div>
+            </div>
+          )}
+        </motion.div>
       </div>
     );
   }
 
   return (
     <div className="space-y-8">
+      {(isApproved || isUnderReview || isRejected) && (
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-2.5 backdrop-blur-xl">
+          <span className="text-xs font-medium text-white/80">
+            {isApproved
+              ? "Your PSASA Personal Shopper Account is active."
+              : isRejected
+                ? "Application not approved — review feedback or apply again."
+                : "Your application review is in progress."}
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowSteps(false)}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-green px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-green-dark"
+          >
+            ← {isApproved ? "Back to shopper account" : "Back to review status"}
+          </button>
+        </div>
+      )}
       <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.26em] text-green">
@@ -400,6 +656,7 @@ function AlbumApplication({
                 {currentStep.key === "assessment" && (
                   <SessionAssessment
                     stepComplete={currentStep.state === "complete"}
+                    onSubmitted={() => onReload(4)}
                     onContinue={() => onReload(4)}
                   />
                 )}
@@ -849,77 +1106,23 @@ function SessionTutorials({ stepComplete, onContinue }: { stepComplete: boolean;
 
 /* ---------------- Session 04: Inline Practical Assessment ---------------- */
 
-const EMPTY_PRACTICAL_OPTION = (): PracticalOptionItem => ({
-  name: "",
-  retailer: "",
-  url: "",
-  price: "",
-  suitability: "",
-});
-
-function initPracticalAnswers(existing: Partial<PracticalAnswers> | null | undefined): PracticalAnswers {
-  const opts = Array.isArray(existing?.options) ? existing.options : [];
-  const normalized =
-    opts.length >= 3
-      ? opts.map((o) => ({
-          name: o?.name ?? "",
-          retailer: o?.retailer ?? "",
-          url: o?.url ?? "",
-          price: o?.price ?? "",
-          suitability: o?.suitability ?? "",
-        }))
-      : [
-          ...opts.map((o) => ({
-            name: o?.name ?? "",
-            retailer: o?.retailer ?? "",
-            url: o?.url ?? "",
-            price: o?.price ?? "",
-            suitability: o?.suitability ?? "",
-          })),
-          ...Array.from({ length: Math.max(0, 3 - opts.length) }, EMPTY_PRACTICAL_OPTION),
-        ];
-
-  return {
-    briefSummary: existing?.briefSummary ?? "",
-    options: normalized,
-    budget: {
-      estimatedTotal: existing?.budget?.estimatedTotal ?? "",
-      additionalCosts: existing?.budget?.additionalCosts ?? "",
-      remainingOrOver: existing?.budget?.remainingOrOver ?? "",
-      assumptions: existing?.budget?.assumptions ?? "",
-      priceCheckedDate: existing?.budget?.priceCheckedDate ?? new Date().toISOString().slice(0, 10),
-    },
-    recommendation: {
-      preferredPlan: existing?.recommendation?.preferredPlan ?? "",
-      backupOption: existing?.recommendation?.backupOption ?? "",
-    },
-    customerMessage: existing?.customerMessage ?? "",
-    responsibility: {
-      priceChanges: existing?.responsibility?.priceChanges ?? "",
-      commissionDisclosure: existing?.responsibility?.commissionDisclosure ?? "",
-      privacyProtection: existing?.responsibility?.privacyProtection ?? "",
-    },
-  };
-}
-
-function SessionAssessment({ stepComplete, onContinue }: { stepComplete: boolean; onContinue: () => void }) {
+function SessionAssessment({
+  stepComplete,
+  onSubmitted,
+  onContinue,
+}: {
+  stepComplete: boolean;
+  onSubmitted: () => void;
+  onContinue: () => void;
+}) {
   const [state, setState] = useState<PracticalState | null>(null);
-  const [serviceTrack, setServiceTrack] = useState<PracticalTrack | null>(null);
-  const [answers, setAnswers] = useState<PracticalAnswers>(() => initPracticalAnswers(null));
-  const [busy, setBusy] = useState(false);
-  const [savingDraft, setSavingDraft] = useState(false);
-  const [uploadingFile, setUploadingFile] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const idempotencyKeyRef = useRef(crypto.randomUUID());
 
   useEffect(() => {
     const controller = new AbortController();
     getPracticalState(controller.signal)
       .then((res) => {
         setState(res);
-        setServiceTrack(res.submission.serviceTrack ?? res.suggestedTrack ?? null);
-        setAnswers(initPracticalAnswers(res.submission.answers));
         setError(null);
       })
       .catch((err) => {
@@ -934,364 +1137,42 @@ function SessionAssessment({ stepComplete, onContinue }: { stepComplete: boolean
     submission?.status === "SUBMITTED" ||
     submission?.status === "UNDER_REVIEW" ||
     submission?.status === "PASSED";
-  const editable = !submittedOrPassed;
-
-  async function handleSaveDraft() {
-    setSavingDraft(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const res = await savePracticalDraft(serviceTrack, answers);
-      setState((prev) => (prev ? { ...prev, submission: res.submission } : prev));
-      setNotice("Draft saved. Your answers are preserved if you refresh or sign out.");
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setSavingDraft(false);
-    }
-  }
-
-  async function handleSubmit() {
-    if (!editable || busy) return;
-    setError(null);
-    setNotice(null);
-    if (!serviceTrack) {
-      setError("Please select the service track that matches your category.");
-      return;
-    }
-    setBusy(true);
-    try {
-      const res = await submitPracticalAssessment({
-        serviceTrack,
-        ...answers,
-        idempotencyKey: idempotencyKeyRef.current,
-      });
-      setState((prev) => (prev ? { ...prev, submission: res.submission } : prev));
-      setNotice("Practical assessment submitted! You can now continue to 05 while PSSA reviews your submission.");
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  }
 
   return (
     <div className="space-y-5">
+      <EntranceAutomatedTest tone="glass" onCompleted={onSubmitted} />
       {error && <div className="rounded-2xl border border-red-400/40 bg-red-950/50 p-4 text-sm text-red-100">{error}</div>}
-      {notice && <div className="rounded-2xl border border-green/40 bg-green/15 p-4 text-sm text-white">{notice}</div>}
 
       {state && (
-        <>
-          <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-white">
-                Assignment Brief (v{state.assignment.version})
-              </p>
-              <div className="flex gap-3">
-                <a
-                  href={state.assignment.downloadUrl}
-                  download={state.assignment.fileName}
-                  className="text-xs font-semibold text-green underline"
-                >
-                  Download PDF
-                </a>
-                <Link to="/member/assessment" className="text-xs font-semibold text-white/80 underline">
-                  Full-screen view
-                </Link>
-              </div>
+        <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-white">
+              Assignment Brief (v{state.assignment.version})
+            </p>
+            <div className="flex gap-3">
+              <a
+                href={state.assignment.downloadUrl}
+                download={state.assignment.fileName}
+                className="text-xs font-semibold text-green underline"
+              >
+                Download PDF
+              </a>
+              <Link to="/member/assessment" className="text-xs font-semibold text-white/80 underline">
+                Full-screen view
+              </Link>
             </div>
-            <iframe
-              title="PSSA Practical Assignment Brief"
-              src={state.assignment.inlineUrl}
-              className="h-64 w-full rounded-xl border border-white/10 bg-white"
-            />
           </div>
-
-          {submittedOrPassed ? (
-            <div className="rounded-2xl border border-green/40 bg-green/15 p-5 text-sm text-white space-y-2">
-              <p className="font-semibold">
-                {submission?.status === "PASSED"
-                  ? `Practical assessment passed${submission.totalScore !== null ? ` (${submission.totalScore}/100)` : ""}.`
-                  : "Practical assessment submitted — awaiting PSSA review."}
-              </p>
-              <p className="text-xs text-white/80">
-                Submitting the practical assessment does not automatically approve membership. You may continue to Step 05 while PSSA reviews your submission.
-              </p>
-            </div>
-          ) : (
-            <div className="max-h-[520px] space-y-4 overflow-y-auto pr-1">
-              <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-green">1. Service Track *</p>
-                {state.tracks.map((t) => (
-                  <label
-                    key={t.id}
-                    className={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 text-xs ${
-                      serviceTrack === t.id ? "border-green bg-green/20 text-white" : "border-white/15 bg-white/[0.03] text-white/80"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="dashTrack"
-                      checked={serviceTrack === t.id}
-                      onChange={() => setServiceTrack(t.id)}
-                      className="mt-0.5"
-                    />
-                    <div>
-                      <div className="font-semibold">
-                        Track {t.code}: {t.label} (Max R{t.budgetZar.toLocaleString("en-ZA")})
-                      </div>
-                      <div className="mt-0.5 opacity-80">{t.summary}</div>
-                    </div>
-                  </label>
-                ))}
-              </div>
-
-              <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-2">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-green">
-                  2. Customer Brief Summary *
-                </label>
-                <textarea
-                  rows={3}
-                  value={answers.briefSummary}
-                  onChange={(e) => setAnswers({ ...answers, briefSummary: e.target.value })}
-                  placeholder="Restate the fictional customer's needs, budget, preferences, and constraints..."
-                  className="w-full rounded-xl border border-white/20 bg-navy/70 p-2.5 text-xs text-white outline-none focus:border-green"
-                />
-              </div>
-
-              <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-green">
-                    3. Research Options (min 3) *
-                  </span>
-                  {answers.options.length < 10 && (
-                    <button
-                      type="button"
-                      onClick={() => setAnswers({ ...answers, options: [...answers.options, EMPTY_PRACTICAL_OPTION()] })}
-                      className="text-xs font-semibold text-green underline"
-                    >
-                      + Add option
-                    </button>
-                  )}
-                </div>
-                {answers.options.map((opt, idx) => (
-                  <div key={idx} className="space-y-2 rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <input
-                        placeholder={`Option ${idx + 1} name`}
-                        value={opt.name}
-                        onChange={(e) => {
-                          const next = [...answers.options];
-                          next[idx] = { ...opt, name: e.target.value };
-                          setAnswers({ ...answers, options: next });
-                        }}
-                        className="rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
-                      />
-                      <input
-                        placeholder="Retailer / source"
-                        value={opt.retailer}
-                        onChange={(e) => {
-                          const next = [...answers.options];
-                          next[idx] = { ...opt, retailer: e.target.value };
-                          setAnswers({ ...answers, options: next });
-                        }}
-                        className="rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
-                      />
-                      <input
-                        placeholder="Public URL (https://...)"
-                        value={opt.url}
-                        onChange={(e) => {
-                          const next = [...answers.options];
-                          next[idx] = { ...opt, url: e.target.value };
-                          setAnswers({ ...answers, options: next });
-                        }}
-                        className="rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
-                      />
-                      <input
-                        placeholder="Listed price (e.g. R499)"
-                        value={opt.price}
-                        onChange={(e) => {
-                          const next = [...answers.options];
-                          next[idx] = { ...opt, price: e.target.value };
-                          setAnswers({ ...answers, options: next });
-                        }}
-                        className="rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
-                      />
-                    </div>
-                    <input
-                      placeholder="Why this option fits the brief..."
-                      value={opt.suitability}
-                      onChange={(e) => {
-                        const next = [...answers.options];
-                        next[idx] = { ...opt, suitability: e.target.value };
-                        setAnswers({ ...answers, options: next });
-                      }}
-                      className="w-full rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
-                    />
-                  </div>
-                ))}
-              </div>
-
-              <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-green">4. Budget Calculation *</p>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <input
-                    placeholder="Estimated total"
-                    value={answers.budget.estimatedTotal}
-                    onChange={(e) => setAnswers({ ...answers, budget: { ...answers.budget, estimatedTotal: e.target.value } })}
-                    className="rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
-                  />
-                  <input
-                    placeholder="Delivery / travel / extra costs"
-                    value={answers.budget.additionalCosts}
-                    onChange={(e) => setAnswers({ ...answers, budget: { ...answers.budget, additionalCosts: e.target.value } })}
-                    className="rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
-                  />
-                  <input
-                    placeholder="Remaining budget or difference"
-                    value={answers.budget.remainingOrOver}
-                    onChange={(e) => setAnswers({ ...answers, budget: { ...answers.budget, remainingOrOver: e.target.value } })}
-                    className="rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
-                  />
-                  <input
-                    type="date"
-                    value={answers.budget.priceCheckedDate}
-                    onChange={(e) => setAnswers({ ...answers, budget: { ...answers.budget, priceCheckedDate: e.target.value } })}
-                    className="rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
-                  />
-                </div>
-                <textarea
-                  rows={2}
-                  placeholder="Costing assumptions..."
-                  value={answers.budget.assumptions}
-                  onChange={(e) => setAnswers({ ...answers, budget: { ...answers.budget, assumptions: e.target.value } })}
-                  className="w-full rounded-lg border border-white/20 bg-navy/70 p-2 text-xs text-white"
-                />
-              </div>
-
-              <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-green">5. Recommendation &amp; Backup *</p>
-                <textarea
-                  rows={2}
-                  placeholder="Recommended option or combination and why..."
-                  value={answers.recommendation.preferredPlan}
-                  onChange={(e) => setAnswers({ ...answers, recommendation: { ...answers.recommendation, preferredPlan: e.target.value } })}
-                  className="w-full rounded-lg border border-white/20 bg-navy/70 p-2 text-xs text-white"
-                />
-                <textarea
-                  rows={2}
-                  placeholder="At least one realistic backup/substitute option..."
-                  value={answers.recommendation.backupOption}
-                  onChange={(e) => setAnswers({ ...answers, recommendation: { ...answers.recommendation, backupOption: e.target.value } })}
-                  className="w-full rounded-lg border border-white/20 bg-navy/70 p-2 text-xs text-white"
-                />
-              </div>
-
-              <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-green">
-                  6. Sample Customer Approval Message (Draft Only) *
-                </p>
-                <textarea
-                  rows={2}
-                  placeholder="Write a clear, courteous approval request (simulation only; never sends to a real customer)..."
-                  value={answers.customerMessage}
-                  onChange={(e) => setAnswers({ ...answers, customerMessage: e.target.value })}
-                  className="w-full rounded-lg border border-white/20 bg-navy/70 p-2 text-xs text-white"
-                />
-              </div>
-
-              <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-green">7. Responsible Practice *</p>
-                <textarea
-                  rows={2}
-                  placeholder="How you handle price changes before purchase..."
-                  value={answers.responsibility.priceChanges}
-                  onChange={(e) => setAnswers({ ...answers, responsibility: { ...answers.responsibility, priceChanges: e.target.value } })}
-                  className="w-full rounded-lg border border-white/20 bg-navy/70 p-2 text-xs text-white"
-                />
-                <textarea
-                  rows={2}
-                  placeholder="How you disclose commission or commercial relationships..."
-                  value={answers.responsibility.commissionDisclosure}
-                  onChange={(e) => setAnswers({ ...answers, responsibility: { ...answers.responsibility, commissionDisclosure: e.target.value } })}
-                  className="w-full rounded-lg border border-white/20 bg-navy/70 p-2 text-xs text-white"
-                />
-                <textarea
-                  rows={2}
-                  placeholder="How you protect customer personal information..."
-                  value={answers.responsibility.privacyProtection}
-                  onChange={(e) => setAnswers({ ...answers, responsibility: { ...answers.responsibility, privacyProtection: e.target.value } })}
-                  className="w-full rounded-lg border border-white/20 bg-navy/70 p-2 text-xs text-white"
-                />
-              </div>
-
-              <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-white/80">
-                  Optional Supporting Evidence (not required)
-                </p>
-                {submission?.evidence ? (
-                  <div className="flex items-center justify-between text-xs text-white">
-                    <a href={submission.evidence.url} target="_blank" rel="noreferrer" className="underline">
-                      {submission.evidence.fileName}
-                    </a>
-                    <button
-                      type="button"
-                      disabled={uploadingFile}
-                      onClick={() =>
-                        void deletePracticalEvidence().then((res) =>
-                          setState((prev) => (prev ? { ...prev, submission: res.submission } : prev)),
-                        )
-                      }
-                      className="text-red-300 underline"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ) : (
-                  <input
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,.webp"
-                    disabled={uploadingFile}
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (!f) return;
-                      setUploadingFile(true);
-                      void uploadPracticalEvidence(f)
-                        .then((res) => setState((prev) => (prev ? { ...prev, submission: res.submission } : prev)))
-                        .catch((err) => setError(errorMessage(err)))
-                        .finally(() => setUploadingFile(false));
-                    }}
-                    className="text-xs text-white/80"
-                  />
-                )}
-              </div>
-
-              <div className="flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  disabled={savingDraft || busy}
-                  onClick={() => void handleSaveDraft()}
-                  className="rounded-full border border-white/25 px-5 py-2.5 text-xs font-semibold text-white hover:bg-white/10 disabled:opacity-50"
-                >
-                  {savingDraft ? "Saving…" : "Save draft"}
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || savingDraft}
-                  onClick={() => void handleSubmit()}
-                  className="rounded-full bg-green px-6 py-2.5 text-xs font-semibold text-white hover:bg-green-dark disabled:opacity-50"
-                >
-                  {busy ? "Submitting…" : "Submit Practical Assessment"}
-                </button>
-              </div>
-            </div>
-          )}
-        </>
+          <iframe
+            title="PSSA Practical Assignment Brief"
+            src={state.assignment.inlineUrl}
+            className="h-72 w-full rounded-xl border border-white/10 bg-white"
+          />
+        </div>
       )}
 
       <div className="flex items-center justify-between gap-4 pt-2">
         <p className="text-xs text-white/60">
-          {submittedOrPassed ? "Assessment submitted — you can continue to 05." : "Submit your practical assessment to continue to 05."}
+          {submittedOrPassed ? "Assessment submitted — you can continue to 05." : "Submit the automated test to continue to 05."}
         </p>
         <button
           type="button"
@@ -1331,10 +1212,31 @@ function SessionAgreementSubmit({ app, onSubmitted }: { app: ApplicationOverview
   }
 
   const submitted = application.status !== "draft" && application.status !== "needs_info";
+  const incompletePrerequisites = progress.steps.slice(0, 2).filter((s) => s.state !== "complete");
+  const prerequisitesDone = incompletePrerequisites.length === 0;
 
   return (
     <div className="space-y-5">
       {error && <div className="rounded-2xl border border-red-400/40 bg-red-950/50 p-4 text-sm text-red-100">{error}</div>}
+
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        {progress.steps.slice(0, 4).map((step) => {
+          const done = step.state === "complete";
+          return (
+            <div
+              key={step.key}
+              className={`flex items-center gap-2 rounded-2xl border px-3 py-2.5 text-xs font-medium ${
+                done ? "border-green/35 bg-green/15 text-white" : "border-white/12 bg-white/[0.04] text-white/60"
+              }`}
+            >
+              <span className={`flex size-5 shrink-0 items-center justify-center rounded-full ${done ? "bg-green text-white" : "bg-white/10"}`}>
+                <Icon name={done ? "check" : "clock"} size={11} />
+              </span>
+              <span className="truncate">{step.label}</span>
+            </div>
+          );
+        })}
+      </div>
 
       <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-white/15 bg-white/[0.05] p-5">
         <input
@@ -1354,14 +1256,21 @@ function SessionAgreementSubmit({ app, onSubmitted }: { app: ApplicationOverview
           <strong>Application review in progress</strong> ({application.number}). A verification officer is reviewing your application and practical assessment.
         </div>
       ) : (
-        <button
-          type="button"
-          disabled={busy || !accepted || (!progress.canSubmit && !application.agreementAcceptedAt)}
-          onClick={() => void handleSaveAndSubmit()}
-          className="inline-flex items-center gap-2 rounded-full bg-green px-7 py-3 text-sm font-semibold text-white shadow-[0_14px_34px_-10px_rgba(24,162,105,0.8)] transition hover:bg-green-dark disabled:cursor-not-allowed disabled:opacity-45"
-        >
-          {busy ? "Submitting…" : "Save & submit application"} <Icon name="arrow" size={16} />
-        </button>
+        <div className="space-y-3">
+          {!prerequisitesDone && (
+            <p className="text-xs text-amber-200">
+              Complete {incompletePrerequisites.map((s) => s.label).join(" and ")} before submitting your application.
+            </p>
+          )}
+          <button
+            type="button"
+            disabled={busy || !accepted || !prerequisitesDone}
+            onClick={() => void handleSaveAndSubmit()}
+            className="inline-flex items-center gap-2 rounded-full bg-green px-7 py-3 text-sm font-semibold text-white shadow-[0_14px_34px_-10px_rgba(24,162,105,0.8)] transition hover:bg-green-dark disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            {busy ? "Submitting…" : "Save & submit application"} <Icon name="arrow" size={16} />
+          </button>
+        </div>
       )}
     </div>
   );

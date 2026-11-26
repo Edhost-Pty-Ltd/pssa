@@ -59,6 +59,11 @@ const applicationSelect = {
   agreementVersion: true,
   createdAt: true,
   updatedAt: true,
+  reviews: {
+    select: { id: true, decision: true, reason: true, createdAt: true },
+    orderBy: { createdAt: "desc" as const },
+    take: 1,
+  },
 } as const;
 
 const profileSelect = {
@@ -138,6 +143,7 @@ const EMPTY_APPLICATION = {
   submittedAt: null,
   agreementAcceptedAt: null,
   agreementVersion: null,
+  latestReview: null,
 };
 
 const DOCUMENT_TITLES: Record<DocumentType, string> = {
@@ -157,6 +163,7 @@ function serializeApplication(application: LoadedMember["applications"][number] 
     submittedAt: application.submittedAt,
     agreementAcceptedAt: application.agreementAcceptedAt,
     agreementVersion: application.agreementVersion,
+    latestReview: application.reviews?.[0] ?? null,
   };
 }
 
@@ -248,13 +255,18 @@ async function buildProgress(user: LoadedMember) {
   const certified = application?.status === "approved" || user.memberProfile!.memberStatus === "active";
 
   const memberId = user.memberProfile!.id;
-  const [practicalSubmission, examDone] = await Promise.all([
+  const [practicalSubmission, examDone, submittedExam] = await Promise.all([
     prisma.practicalAssessmentSubmission.findFirst({
       where: { memberProfileId: memberId },
       orderBy: { createdAt: "desc" },
       select: { status: true, tutorialWatched: true, submittedAt: true },
     }),
     hasPassedEntranceExam(memberId),
+    prisma.examAttempt.findFirst({
+      where: { memberProfileId: memberId, type: "entrance", submittedAt: { not: null } },
+      orderBy: { submittedAt: "desc" },
+      select: { id: true, passed: true },
+    }),
   ]);
   const tutorialsDone = practicalSubmission?.tutorialWatched === true;
   const practicalStatus = practicalSubmission?.status ?? "NOT_STARTED";
@@ -307,12 +319,12 @@ async function buildProgress(user: LoadedMember) {
     assessmentStep = { key: "assessment", label: "Practical assessment", state: "locked", detail: "Locked" };
   } else if (examDone || practicalStatus === "PASSED") {
     assessmentStep = { key: "assessment", label: "Practical assessment", state: "complete", detail: "Passed" };
-  } else if (practicalStatus === "SUBMITTED" || practicalStatus === "UNDER_REVIEW") {
+  } else if (submittedExam || practicalStatus === "SUBMITTED" || practicalStatus === "UNDER_REVIEW") {
     assessmentStep = {
       key: "assessment",
       label: "Practical assessment",
-      state: "in_progress",
-      detail: practicalStatus === "UNDER_REVIEW" ? "Under review" : "Submitted — awaiting review",
+      state: "complete",
+      detail: practicalStatus === "UNDER_REVIEW" ? "Under review" : "Submitted",
     };
   } else if (practicalStatus === "NEEDS_RESUBMISSION" || practicalStatus === "NOT_PASSED") {
     assessmentStep = {
@@ -329,11 +341,13 @@ async function buildProgress(user: LoadedMember) {
 
   let reviewStep: ProgressStep;
   if (certified || application?.status === "approved") {
-    reviewStep = { key: "review", label: "Review", state: "complete", detail: "Complete" };
+    reviewStep = { key: "review", label: "Review", state: "complete", detail: "Approved" };
+  } else if (application?.status === "rejected") {
+    reviewStep = { key: "review", label: "Review", state: "action_needed", detail: "Rejected" };
   } else if (needsInfo) {
     reviewStep = { key: "review", label: "Review", state: "action_needed", detail: "Action needed" };
   } else if (submitted) {
-    reviewStep = { key: "review", label: "Review", state: "in_progress", detail: "Under review" };
+    reviewStep = { key: "review", label: "Review", state: "in_progress", detail: "Pending review" };
   } else if (profileDone && docsDone) {
     reviewStep = { key: "review", label: "Review", state: "not_started", detail: "Ready to submit" };
   } else {
@@ -345,7 +359,11 @@ async function buildProgress(user: LoadedMember) {
     : { key: "certified", label: "Certified", state: "locked", detail: "Locked" };
 
   const steps = [profileStep, documentsStep, tutorialsStep, assessmentStep, reviewStep, certifiedStep];
-  const percent = Math.round((steps.filter((step) => step.state === "complete").length / steps.length) * 100);
+  const fullApplicationSubmitted =
+    certified || application?.status === "submitted" || application?.status === "under_review" || application?.status === "approved";
+  const percent = fullApplicationSubmitted
+    ? 100
+    : Math.round((steps.filter((step) => step.state === "complete").length / steps.length) * 100);
   const canSubmit =
     profileDone &&
     docsDone &&
@@ -621,6 +639,28 @@ memberRouter.post("/application/submit", async (req, res) => {
   });
 
   res.status(existing ? 200 : 201).json({ application: serializeApplication(updated) });
+});
+
+memberRouter.post("/application/reapply", async (req, res) => {
+  const member = await loadMember(req.user!.id);
+  const existing = member.applications[0] ?? null;
+  if (!existing || existing.status !== "rejected") {
+    throw conflict("You can only apply again after an application has been rejected.");
+  }
+
+  const created = await prisma.$transaction(async (tx) => {
+    const number = await nextApplicationNumber(tx);
+    return tx.application.create({
+      data: { userId: req.user!.id, number, status: "draft" },
+      select: applicationSelect,
+    });
+  });
+
+  const refreshed = await loadMember(req.user!.id);
+  res.status(201).json({
+    application: serializeApplication(created),
+    progress: await buildProgress(refreshed),
+  });
 });
 
 /* ---------------- Documents ---------------- */
