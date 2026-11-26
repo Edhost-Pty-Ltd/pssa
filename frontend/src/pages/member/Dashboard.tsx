@@ -9,16 +9,9 @@ import {
   type DocumentType,
 } from "../../api/documents";
 import {
-  deletePracticalEvidence,
   getPracticalState,
   reportPracticalTutorial,
-  savePracticalDraft,
-  submitPracticalAssessment,
-  uploadPracticalEvidence,
-  type PracticalAnswers,
-  type PracticalOptionItem,
   type PracticalState,
-  type PracticalTrack,
 } from "../../api/practicalAssessment";
 import {
   getApplication,
@@ -1015,59 +1008,6 @@ function SessionTutorials({ stepComplete, onContinue }: { stepComplete: boolean;
 
 /* ---------------- Session 04: Inline Practical Assessment ---------------- */
 
-const EMPTY_PRACTICAL_OPTION = (): PracticalOptionItem => ({
-  name: "",
-  retailer: "",
-  url: "",
-  price: "",
-  suitability: "",
-});
-
-function initPracticalAnswers(existing: Partial<PracticalAnswers> | null | undefined): PracticalAnswers {
-  const opts = Array.isArray(existing?.options) ? existing.options : [];
-  const normalized =
-    opts.length >= 3
-      ? opts.map((o) => ({
-          name: o?.name ?? "",
-          retailer: o?.retailer ?? "",
-          url: o?.url ?? "",
-          price: o?.price ?? "",
-          suitability: o?.suitability ?? "",
-        }))
-      : [
-          ...opts.map((o) => ({
-            name: o?.name ?? "",
-            retailer: o?.retailer ?? "",
-            url: o?.url ?? "",
-            price: o?.price ?? "",
-            suitability: o?.suitability ?? "",
-          })),
-          ...Array.from({ length: Math.max(0, 3 - opts.length) }, EMPTY_PRACTICAL_OPTION),
-        ];
-
-  return {
-    briefSummary: existing?.briefSummary ?? "",
-    options: normalized,
-    budget: {
-      estimatedTotal: existing?.budget?.estimatedTotal ?? "",
-      additionalCosts: existing?.budget?.additionalCosts ?? "",
-      remainingOrOver: existing?.budget?.remainingOrOver ?? "",
-      assumptions: existing?.budget?.assumptions ?? "",
-      priceCheckedDate: existing?.budget?.priceCheckedDate ?? new Date().toISOString().slice(0, 10),
-    },
-    recommendation: {
-      preferredPlan: existing?.recommendation?.preferredPlan ?? "",
-      backupOption: existing?.recommendation?.backupOption ?? "",
-    },
-    customerMessage: existing?.customerMessage ?? "",
-    responsibility: {
-      priceChanges: existing?.responsibility?.priceChanges ?? "",
-      commissionDisclosure: existing?.responsibility?.commissionDisclosure ?? "",
-      privacyProtection: existing?.responsibility?.privacyProtection ?? "",
-    },
-  };
-}
-
 function SessionAssessment({
   stepComplete,
   onSubmitted,
@@ -1078,22 +1018,13 @@ function SessionAssessment({
   onContinue: () => void;
 }) {
   const [state, setState] = useState<PracticalState | null>(null);
-  const [serviceTrack, setServiceTrack] = useState<PracticalTrack | null>(null);
-  const [answers, setAnswers] = useState<PracticalAnswers>(() => initPracticalAnswers(null));
-  const [busy, setBusy] = useState(false);
-  const [savingDraft, setSavingDraft] = useState(false);
-  const [uploadingFile, setUploadingFile] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const idempotencyKeyRef = useRef(crypto.randomUUID());
 
   useEffect(() => {
     const controller = new AbortController();
     getPracticalState(controller.signal)
       .then((res) => {
         setState(res);
-        setServiceTrack(res.submission.serviceTrack ?? res.suggestedTrack ?? null);
-        setAnswers(initPracticalAnswers(res.submission.answers));
         setError(null);
       })
       .catch((err) => {
@@ -1108,366 +1039,42 @@ function SessionAssessment({
     submission?.status === "SUBMITTED" ||
     submission?.status === "UNDER_REVIEW" ||
     submission?.status === "PASSED";
-  const editable = !submittedOrPassed;
-
-  async function handleSaveDraft() {
-    setSavingDraft(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const res = await savePracticalDraft(serviceTrack, answers);
-      setState((prev) => (prev ? { ...prev, submission: res.submission } : prev));
-      setNotice("Draft saved. Your answers are preserved if you refresh or sign out.");
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setSavingDraft(false);
-    }
-  }
-
-  async function handleSubmit() {
-    if (!editable || busy) return;
-    setError(null);
-    setNotice(null);
-    if (!serviceTrack) {
-      setError("Please select the service track that matches your category.");
-      return;
-    }
-    setBusy(true);
-    try {
-      const res = await submitPracticalAssessment({
-        serviceTrack,
-        ...answers,
-        idempotencyKey: idempotencyKeyRef.current,
-      });
-      setState((prev) => (prev ? { ...prev, submission: res.submission } : prev));
-      setNotice("Practical assessment submitted! Progress updated — continue to 05 to submit your full application.");
-      onSubmitted();
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  }
 
   return (
     <div className="space-y-5">
       <EntranceAutomatedTest tone="glass" onCompleted={onSubmitted} />
       {error && <div className="rounded-2xl border border-red-400/40 bg-red-950/50 p-4 text-sm text-red-100">{error}</div>}
-      {notice && <div className="rounded-2xl border border-green/40 bg-green/15 p-4 text-sm text-white">{notice}</div>}
 
       {state && (
-        <>
-          <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-white">
-                Assignment Brief (v{state.assignment.version})
-              </p>
-              <div className="flex gap-3">
-                <a
-                  href={state.assignment.downloadUrl}
-                  download={state.assignment.fileName}
-                  className="text-xs font-semibold text-green underline"
-                >
-                  Download PDF
-                </a>
-                <Link to="/member/assessment" className="text-xs font-semibold text-white/80 underline">
-                  Full-screen view
-                </Link>
-              </div>
+        <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-white">
+              Assignment Brief (v{state.assignment.version})
+            </p>
+            <div className="flex gap-3">
+              <a
+                href={state.assignment.downloadUrl}
+                download={state.assignment.fileName}
+                className="text-xs font-semibold text-green underline"
+              >
+                Download PDF
+              </a>
+              <Link to="/member/assessment" className="text-xs font-semibold text-white/80 underline">
+                Full-screen view
+              </Link>
             </div>
-            <iframe
-              title="PSSA Practical Assignment Brief"
-              src={state.assignment.inlineUrl}
-              className="h-64 w-full rounded-xl border border-white/10 bg-white"
-            />
           </div>
-
-          {submittedOrPassed ? (
-            <div className="rounded-2xl border border-green/40 bg-green/15 p-5 text-sm text-white space-y-2">
-              <p className="font-semibold">
-                {submission?.status === "PASSED"
-                  ? `Practical assessment passed${submission.totalScore !== null ? ` (${submission.totalScore}/100)` : ""}.`
-                  : "Practical assessment submitted — awaiting PSSA review."}
-              </p>
-              <p className="text-xs text-white/80">
-                Submitting the practical assessment does not automatically approve membership. You may continue to Step 05 while PSSA reviews your submission.
-              </p>
-            </div>
-          ) : (
-            <div className="max-h-[520px] space-y-4 overflow-y-auto pr-1">
-              <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-green">1. Service Track *</p>
-                {state.tracks.map((t) => (
-                  <label
-                    key={t.id}
-                    className={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 text-xs ${
-                      serviceTrack === t.id ? "border-green bg-green/20 text-white" : "border-white/15 bg-white/[0.03] text-white/80"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="dashTrack"
-                      checked={serviceTrack === t.id}
-                      onChange={() => setServiceTrack(t.id)}
-                      className="mt-0.5"
-                    />
-                    <div>
-                      <div className="font-semibold">
-                        Track {t.code}: {t.label} (Max R{t.budgetZar.toLocaleString("en-ZA")})
-                      </div>
-                      <div className="mt-0.5 opacity-80">{t.summary}</div>
-                    </div>
-                  </label>
-                ))}
-              </div>
-
-              <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-2">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-green">
-                  2. Customer Brief Summary *
-                </label>
-                <textarea
-                  rows={3}
-                  value={answers.briefSummary}
-                  onChange={(e) => setAnswers({ ...answers, briefSummary: e.target.value })}
-                  placeholder="Restate the fictional customer's needs, budget, preferences, and constraints..."
-                  className="w-full rounded-xl border border-white/20 bg-navy/70 p-2.5 text-xs text-white outline-none focus:border-green"
-                />
-              </div>
-
-              <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-green">
-                    3. Research Options (min 3) *
-                  </span>
-                  {answers.options.length < 10 && (
-                    <button
-                      type="button"
-                      onClick={() => setAnswers({ ...answers, options: [...answers.options, EMPTY_PRACTICAL_OPTION()] })}
-                      className="text-xs font-semibold text-green underline"
-                    >
-                      + Add option
-                    </button>
-                  )}
-                </div>
-                {answers.options.map((opt, idx) => (
-                  <div key={idx} className="space-y-2 rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <input
-                        placeholder={`Option ${idx + 1} name`}
-                        value={opt.name}
-                        onChange={(e) => {
-                          const next = [...answers.options];
-                          next[idx] = { ...opt, name: e.target.value };
-                          setAnswers({ ...answers, options: next });
-                        }}
-                        className="rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
-                      />
-                      <input
-                        placeholder="Retailer / source"
-                        value={opt.retailer}
-                        onChange={(e) => {
-                          const next = [...answers.options];
-                          next[idx] = { ...opt, retailer: e.target.value };
-                          setAnswers({ ...answers, options: next });
-                        }}
-                        className="rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
-                      />
-                      <input
-                        placeholder="Public URL (https://...)"
-                        value={opt.url}
-                        onChange={(e) => {
-                          const next = [...answers.options];
-                          next[idx] = { ...opt, url: e.target.value };
-                          setAnswers({ ...answers, options: next });
-                        }}
-                        className="rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
-                      />
-                      <input
-                        placeholder="Listed price (e.g. R499)"
-                        value={opt.price}
-                        onChange={(e) => {
-                          const next = [...answers.options];
-                          next[idx] = { ...opt, price: e.target.value };
-                          setAnswers({ ...answers, options: next });
-                        }}
-                        className="rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
-                      />
-                    </div>
-                    <input
-                      placeholder="Why this option fits the brief..."
-                      value={opt.suitability}
-                      onChange={(e) => {
-                        const next = [...answers.options];
-                        next[idx] = { ...opt, suitability: e.target.value };
-                        setAnswers({ ...answers, options: next });
-                      }}
-                      className="w-full rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
-                    />
-                  </div>
-                ))}
-              </div>
-
-              <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-green">4. Budget Calculation *</p>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <input
-                    placeholder="Estimated total"
-                    value={answers.budget.estimatedTotal}
-                    onChange={(e) => setAnswers({ ...answers, budget: { ...answers.budget, estimatedTotal: e.target.value } })}
-                    className="rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
-                  />
-                  <input
-                    placeholder="Delivery / travel / extra costs"
-                    value={answers.budget.additionalCosts}
-                    onChange={(e) => setAnswers({ ...answers, budget: { ...answers.budget, additionalCosts: e.target.value } })}
-                    className="rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
-                  />
-                  <input
-                    placeholder="Remaining budget or difference"
-                    value={answers.budget.remainingOrOver}
-                    onChange={(e) => setAnswers({ ...answers, budget: { ...answers.budget, remainingOrOver: e.target.value } })}
-                    className="rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
-                  />
-                  <input
-                    type="date"
-                    value={answers.budget.priceCheckedDate}
-                    onChange={(e) => setAnswers({ ...answers, budget: { ...answers.budget, priceCheckedDate: e.target.value } })}
-                    className="rounded-lg border border-white/20 bg-navy/70 px-2.5 py-1.5 text-xs text-white"
-                  />
-                </div>
-                <textarea
-                  rows={2}
-                  placeholder="Costing assumptions..."
-                  value={answers.budget.assumptions}
-                  onChange={(e) => setAnswers({ ...answers, budget: { ...answers.budget, assumptions: e.target.value } })}
-                  className="w-full rounded-lg border border-white/20 bg-navy/70 p-2 text-xs text-white"
-                />
-              </div>
-
-              <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-green">5. Recommendation &amp; Backup *</p>
-                <textarea
-                  rows={2}
-                  placeholder="Recommended option or combination and why..."
-                  value={answers.recommendation.preferredPlan}
-                  onChange={(e) => setAnswers({ ...answers, recommendation: { ...answers.recommendation, preferredPlan: e.target.value } })}
-                  className="w-full rounded-lg border border-white/20 bg-navy/70 p-2 text-xs text-white"
-                />
-                <textarea
-                  rows={2}
-                  placeholder="At least one realistic backup/substitute option..."
-                  value={answers.recommendation.backupOption}
-                  onChange={(e) => setAnswers({ ...answers, recommendation: { ...answers.recommendation, backupOption: e.target.value } })}
-                  className="w-full rounded-lg border border-white/20 bg-navy/70 p-2 text-xs text-white"
-                />
-              </div>
-
-              <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-green">
-                  6. Sample Customer Approval Message (Draft Only) *
-                </p>
-                <textarea
-                  rows={2}
-                  placeholder="Write a clear, courteous approval request (simulation only; never sends to a real customer)..."
-                  value={answers.customerMessage}
-                  onChange={(e) => setAnswers({ ...answers, customerMessage: e.target.value })}
-                  className="w-full rounded-lg border border-white/20 bg-navy/70 p-2 text-xs text-white"
-                />
-              </div>
-
-              <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-green">7. Responsible Practice *</p>
-                <textarea
-                  rows={2}
-                  placeholder="How you handle price changes before purchase..."
-                  value={answers.responsibility.priceChanges}
-                  onChange={(e) => setAnswers({ ...answers, responsibility: { ...answers.responsibility, priceChanges: e.target.value } })}
-                  className="w-full rounded-lg border border-white/20 bg-navy/70 p-2 text-xs text-white"
-                />
-                <textarea
-                  rows={2}
-                  placeholder="How you disclose commission or commercial relationships..."
-                  value={answers.responsibility.commissionDisclosure}
-                  onChange={(e) => setAnswers({ ...answers, responsibility: { ...answers.responsibility, commissionDisclosure: e.target.value } })}
-                  className="w-full rounded-lg border border-white/20 bg-navy/70 p-2 text-xs text-white"
-                />
-                <textarea
-                  rows={2}
-                  placeholder="How you protect customer personal information..."
-                  value={answers.responsibility.privacyProtection}
-                  onChange={(e) => setAnswers({ ...answers, responsibility: { ...answers.responsibility, privacyProtection: e.target.value } })}
-                  className="w-full rounded-lg border border-white/20 bg-navy/70 p-2 text-xs text-white"
-                />
-              </div>
-
-              <div className="rounded-2xl border border-white/15 bg-white/[0.05] p-4 space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-white/80">
-                  Optional Supporting Evidence (not required)
-                </p>
-                {submission?.evidence ? (
-                  <div className="flex items-center justify-between text-xs text-white">
-                    <a href={submission.evidence.url} target="_blank" rel="noreferrer" className="underline">
-                      {submission.evidence.fileName}
-                    </a>
-                    <button
-                      type="button"
-                      disabled={uploadingFile}
-                      onClick={() =>
-                        void deletePracticalEvidence().then((res) =>
-                          setState((prev) => (prev ? { ...prev, submission: res.submission } : prev)),
-                        )
-                      }
-                      className="text-red-300 underline"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ) : (
-                  <input
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,.webp"
-                    disabled={uploadingFile}
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (!f) return;
-                      setUploadingFile(true);
-                      void uploadPracticalEvidence(f)
-                        .then((res) => setState((prev) => (prev ? { ...prev, submission: res.submission } : prev)))
-                        .catch((err) => setError(errorMessage(err)))
-                        .finally(() => setUploadingFile(false));
-                    }}
-                    className="text-xs text-white/80"
-                  />
-                )}
-              </div>
-
-              <div className="flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  disabled={savingDraft || busy}
-                  onClick={() => void handleSaveDraft()}
-                  className="rounded-full border border-white/25 px-5 py-2.5 text-xs font-semibold text-white hover:bg-white/10 disabled:opacity-50"
-                >
-                  {savingDraft ? "Saving…" : "Save draft"}
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || savingDraft}
-                  onClick={() => void handleSubmit()}
-                  className="rounded-full bg-green px-6 py-2.5 text-xs font-semibold text-white hover:bg-green-dark disabled:opacity-50"
-                >
-                  {busy ? "Submitting…" : "Submit Practical Assessment"}
-                </button>
-              </div>
-            </div>
-          )}
-        </>
+          <iframe
+            title="PSSA Practical Assignment Brief"
+            src={state.assignment.inlineUrl}
+            className="h-72 w-full rounded-xl border border-white/10 bg-white"
+          />
+        </div>
       )}
 
       <div className="flex items-center justify-between gap-4 pt-2">
         <p className="text-xs text-white/60">
-          {submittedOrPassed ? "Assessment submitted — you can continue to 05." : "Submit your practical assessment to continue to 05."}
+          {submittedOrPassed ? "Assessment completed — you can continue to 05." : "Pass the automated test to continue to 05."}
         </p>
         <button
           type="button"
