@@ -1212,6 +1212,8 @@ function SessionAgreementSubmit({ app, onSubmitted }: { app: ApplicationOverview
   }
 
   const submitted = application.status !== "draft" && application.status !== "needs_info";
+  const incompletePrerequisites = progress.steps.slice(0, 2).filter((s) => s.state !== "complete");
+  const prerequisitesDone = incompletePrerequisites.length === 0;
 
   return (
     <div className="space-y-5">
@@ -1254,14 +1256,21 @@ function SessionAgreementSubmit({ app, onSubmitted }: { app: ApplicationOverview
           <strong>Application review in progress</strong> ({application.number}). A verification officer is reviewing your application and practical assessment.
         </div>
       ) : (
-        <button
-          type="button"
-          disabled={busy || !accepted || (!progress.canSubmit && !application.agreementAcceptedAt)}
-          onClick={() => void handleSaveAndSubmit()}
-          className="inline-flex items-center gap-2 rounded-full bg-green px-7 py-3 text-sm font-semibold text-white shadow-[0_14px_34px_-10px_rgba(24,162,105,0.8)] transition hover:bg-green-dark disabled:cursor-not-allowed disabled:opacity-45"
-        >
-          {busy ? "Submitting…" : "Save & submit application"} <Icon name="arrow" size={16} />
-        </button>
+        <div className="space-y-3">
+          {!prerequisitesDone && (
+            <p className="text-xs text-amber-200">
+              Complete {incompletePrerequisites.map((s) => s.label).join(" and ")} before submitting your application.
+            </p>
+          )}
+          <button
+            type="button"
+            disabled={busy || !accepted || !prerequisitesDone}
+            onClick={() => void handleSaveAndSubmit()}
+            className="inline-flex items-center gap-2 rounded-full bg-green px-7 py-3 text-sm font-semibold text-white shadow-[0_14px_34px_-10px_rgba(24,162,105,0.8)] transition hover:bg-green-dark disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            {busy ? "Submitting…" : "Save & submit application"} <Icon name="arrow" size={16} />
+          </button>
+        </div>
       )}
     </div>
   );
