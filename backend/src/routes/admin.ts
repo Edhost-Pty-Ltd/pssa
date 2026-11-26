@@ -492,6 +492,8 @@ adminRouter.get("/applications/:id/tutorial", async (req, res) => {
   res.json({
     tutorial: {
       ...tutorial,
+      // Alias of `complete` for admin clients that read `completed`.
+      completed: tutorial.complete,
       practicalWatched: practical?.tutorialWatched ?? false,
       practicalWatchedAt: practical?.tutorialWatchedAt ?? null,
       practicalTutorialVersion: practical?.tutorialVersion ?? 1,
