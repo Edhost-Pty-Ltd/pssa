@@ -107,7 +107,7 @@ practicalAssessmentRouter.get("/state", async (req, res) => {
       title: tutorial.asset.title,
       fileName: tutorial.asset.fileName,
       isFallback: tutorial.isFallback,
-      streamUrl: "/api/practical-assessment/assets/tutorial/stream",
+      streamUrl: `/api/practical-assessment/assets/tutorial/stream?v=${tutorial.asset.version}`,
     },
     assignment: {
       id: assignment.asset.id,
@@ -115,8 +115,8 @@ practicalAssessmentRouter.get("/state", async (req, res) => {
       title: assignment.asset.title,
       fileName: assignment.asset.fileName,
       isFallback: assignment.isFallback,
-      inlineUrl: "/api/practical-assessment/assets/assignment/file",
-      downloadUrl: "/api/practical-assessment/assets/assignment/file?download=1",
+      inlineUrl: `/api/practical-assessment/assets/assignment/file?v=${assignment.asset.version}`,
+      downloadUrl: `/api/practical-assessment/assets/assignment/file?download=1&v=${assignment.asset.version}`,
     },
     submission: serializeSubmission(submission),
   });
