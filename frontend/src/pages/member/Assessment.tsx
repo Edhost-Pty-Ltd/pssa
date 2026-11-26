@@ -247,19 +247,26 @@ export function EntranceAutomatedTest({
       )}
 
       {status && view.kind === "result" && (
-        <div className={isGlass ? "rounded-xl border border-green/40 bg-green/15 p-4 text-sm text-white space-y-2" : ""}>
+        <div className={isGlass ? "rounded-xl border border-green/40 bg-green/15 p-4 text-sm text-white space-y-2" : ""} style={isGlass ? undefined : { display: "grid", gap: 10 }}>
           <p style={{ margin: 0, fontWeight: 600 }}>
-            {view.attempt.passed ? "Automated test passed!" : "Automated test not passed"}
+            {view.attempt.passed ? "Automated test passed!" : "Automated test submitted"}
           </p>
           <p style={{ margin: "4px 0 0", fontSize: 13 }}>
             Score: {view.attempt.score ?? 0} of {view.total} ({view.attempt.percent ?? 0}%).
             {view.attempt.criticalFailed ? " A critical conduct question was missed." : ""}
           </p>
-          {!view.attempt.passed && status.canStart && (
-            <Button type="button" variant="outline" onClick={() => setView({ kind: "overview" })}>
-              Back to test overview
-            </Button>
-          )}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 4 }}>
+            {!isGlass && (
+              <ButtonLink to="/member" variant="dark" iconRight="arrow">
+                Continue to Step 05: Agreement &amp; Submit
+              </ButtonLink>
+            )}
+            {!view.attempt.passed && status.canStart && (
+              <Button type="button" variant="outline" onClick={() => setView({ kind: "overview" })}>
+                Back to test overview
+              </Button>
+            )}
+          </div>
         </div>
       )}
 
