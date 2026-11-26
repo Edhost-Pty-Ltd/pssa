@@ -255,13 +255,18 @@ async function buildProgress(user: LoadedMember) {
   const certified = application?.status === "approved" || user.memberProfile!.memberStatus === "active";
 
   const memberId = user.memberProfile!.id;
-  const [practicalSubmission, examDone] = await Promise.all([
+  const [practicalSubmission, examDone, submittedExam] = await Promise.all([
     prisma.practicalAssessmentSubmission.findFirst({
       where: { memberProfileId: memberId },
       orderBy: { createdAt: "desc" },
       select: { status: true, tutorialWatched: true, submittedAt: true },
     }),
     hasPassedEntranceExam(memberId),
+    prisma.examAttempt.findFirst({
+      where: { memberProfileId: memberId, type: "entrance", submittedAt: { not: null } },
+      orderBy: { submittedAt: "desc" },
+      select: { id: true, passed: true },
+    }),
   ]);
   const tutorialsDone = practicalSubmission?.tutorialWatched === true;
   const practicalStatus = practicalSubmission?.status ?? "NOT_STARTED";
@@ -314,7 +319,7 @@ async function buildProgress(user: LoadedMember) {
     assessmentStep = { key: "assessment", label: "Practical assessment", state: "locked", detail: "Locked" };
   } else if (examDone || practicalStatus === "PASSED") {
     assessmentStep = { key: "assessment", label: "Practical assessment", state: "complete", detail: "Passed" };
-  } else if (practicalStatus === "SUBMITTED" || practicalStatus === "UNDER_REVIEW") {
+  } else if (submittedExam || practicalStatus === "SUBMITTED" || practicalStatus === "UNDER_REVIEW") {
     assessmentStep = {
       key: "assessment",
       label: "Practical assessment",

@@ -206,6 +206,82 @@ function AlbumApplication({
     }
   }
 
+  if (isApproved && !showSteps) {
+    const mp = profile?.memberProfile;
+    const fullName = [mp?.firstName, mp?.lastName].filter(Boolean).join(" ") || "Verified Personal Shopper";
+    return (
+      <div className="mx-auto max-w-4xl space-y-6">
+        <motion.div
+          initial={{ opacity: 0, y: 18, scale: 0.985 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.45, ease: EASE }}
+          className="relative overflow-hidden rounded-[32px] border border-green/35 bg-white/[0.08] p-8 shadow-[0_30px_90px_-24px_rgba(0,0,0,0.65)] backdrop-blur-2xl sm:p-10"
+        >
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full opacity-30 blur-3xl"
+            style={{ background: "radial-gradient(circle, #18a269 0%, transparent 70%)" }}
+          />
+          <div className="relative z-10 flex flex-wrap items-center justify-between gap-3">
+            <div className="inline-flex items-center gap-2 rounded-full border border-green/45 bg-green/20 px-3.5 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-green">
+              <span className="size-2 rounded-full bg-green" />
+              Approved · Active Personal Shopper
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowSteps(true)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/[0.08] px-3.5 py-1.5 text-xs font-semibold text-white/90 backdrop-blur-md transition hover:border-green/50 hover:bg-white/15 hover:text-white"
+            >
+              <Icon name="eye" size={13} />
+              Application status
+            </button>
+          </div>
+
+          <h1 className="relative z-10 mt-5 font-display text-3xl font-semibold text-white sm:text-4xl">
+            {fullName}
+          </h1>
+          <p className="relative z-10 mt-2 text-sm text-white/75 sm:text-base">
+            {mp?.tradingName ? `${mp.tradingName} · ` : ""}
+            {mp?.scope || "Accredited Personal Shopper"}
+            {mp?.city ? ` · ${mp.city}` : ""}
+          </p>
+
+          <div className="relative z-10 mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              { to: "/member/certificate", title: "Certificate & QR", desc: "Download PDF & public verification link", icon: "badge" as const },
+              { to: "/member/renewal", title: "Annual Renewal", desc: "View validity & renewal status", icon: "clock" as const },
+              { to: "/member/profile", title: "Shopper Profile", desc: "Manage your public register details", icon: "user" as const },
+              { to: "/member/complaints", title: "Complaints & Appeals", desc: "View notices or respond to cases", icon: "shield" as const },
+            ].map((item, idx) => (
+              <motion.div
+                key={item.to}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.35, delay: 0.08 + idx * 0.05, ease: EASE }}
+              >
+                <Link
+                  to={item.to}
+                  className="group flex h-full flex-col justify-between rounded-2xl border border-white/15 bg-white/[0.05] p-4 transition hover:-translate-y-0.5 hover:border-green/50 hover:bg-white/[0.1]"
+                >
+                  <div>
+                    <div className="flex size-9 items-center justify-center rounded-xl bg-green/20 text-green">
+                      <Icon name={item.icon} size={16} />
+                    </div>
+                    <p className="mt-3 text-sm font-semibold text-white">{item.title}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-white/65">{item.desc}</p>
+                  </div>
+                  <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-green transition group-hover:translate-x-0.5">
+                    Open <Icon name="arrow" size={12} />
+                  </span>
+                </Link>
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
   if ((isUnderReview || isRejected) && !showSteps) {
     const latestReview = application.latestReview ?? null;
     const statusLabel = isRejected
@@ -383,17 +459,21 @@ function AlbumApplication({
 
   return (
     <div className="space-y-8">
-      {(isUnderReview || isRejected) && (
+      {(isApproved || isUnderReview || isRejected) && (
         <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-2.5 backdrop-blur-xl">
           <span className="text-xs font-medium text-white/80">
-            {isRejected ? "Application not approved — review feedback or apply again." : "Your application review is in progress."}
+            {isApproved
+              ? "Your PSASA Personal Shopper Account is active."
+              : isRejected
+                ? "Application not approved — review feedback or apply again."
+                : "Your application review is in progress."}
           </span>
           <button
             type="button"
             onClick={() => setShowSteps(false)}
             className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-green px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-green-dark"
           >
-            ← Back to review status
+            ← {isApproved ? "Back to shopper account" : "Back to review status"}
           </button>
         </div>
       )}
@@ -558,7 +638,7 @@ function AlbumApplication({
                 {currentStep.key === "assessment" && (
                   <SessionAssessment
                     stepComplete={currentStep.state === "complete"}
-                    onSubmitted={() => onReload()}
+                    onSubmitted={() => onReload(4)}
                     onContinue={() => onReload(4)}
                   />
                 )}
@@ -1074,7 +1154,7 @@ function SessionAssessment({
 
       <div className="flex items-center justify-between gap-4 pt-2">
         <p className="text-xs text-white/60">
-          {submittedOrPassed ? "Assessment completed — you can continue to 05." : "Pass the automated test to continue to 05."}
+          {submittedOrPassed ? "Assessment submitted — you can continue to 05." : "Submit the automated test to continue to 05."}
         </p>
         <button
           type="button"
