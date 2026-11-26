@@ -222,26 +222,62 @@ export function EntranceAutomatedTest({
                   )}
                 </div>
                 <div style={{ display: "grid", gap: 6 }}>
-                  {q.options.map((opt) => (
-                    <label key={opt.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer", fontSize: 13 }}>
-                      <input
-                        type="radio"
-                        name={`entrance-${q.id}`}
-                        checked={answers[q.id] === opt.id}
-                        onChange={() => setAnswers((prev) => ({ ...prev, [q.id]: opt.id }))}
-                        style={{ marginTop: 3 }}
-                      />
-                      <span>{opt.text}</span>
-                    </label>
-                  ))}
+                  {q.options.map((opt) => {
+                    const selected = answers[q.id] === opt.id;
+                    return (
+                      <label
+                        key={opt.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: 8,
+                          cursor: "pointer",
+                          fontSize: 13,
+                          padding: "8px 10px",
+                          borderRadius: 10,
+                          border: selected
+                            ? "1px solid #18a269"
+                            : isGlass
+                              ? "1px solid rgba(255,255,255,0.1)"
+                              : "1px solid #e2e8f0",
+                          background: selected
+                            ? isGlass
+                              ? "rgba(24,162,105,0.2)"
+                              : "#f1fbf6"
+                            : "transparent",
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name={`entrance-${q.id}`}
+                          checked={selected}
+                          onChange={() => setAnswers((prev) => ({ ...prev, [q.id]: opt.id }))}
+                          className="accent-green"
+                          style={{ marginTop: 3 }}
+                        />
+                        <span>{opt.text}</span>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
             ))}
           </div>
           <div>
-            <Button type="button" variant={isGlass ? "outline" : "dark"} disabled={submitting} onClick={() => void handleSubmitTest(view.sitting)}>
-              {submitting ? "Submitting test..." : "Submit automated test"}
-            </Button>
+            {isGlass ? (
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={() => void handleSubmitTest(view.sitting)}
+                className="inline-flex items-center gap-2 rounded-full bg-green px-6 py-2.5 text-xs font-semibold text-white shadow-[0_12px_28px_-10px_rgba(24,162,105,0.8)] transition hover:bg-green-dark disabled:opacity-50"
+              >
+                {submitting ? "Submitting test..." : "Submit automated test"}
+              </button>
+            ) : (
+              <Button type="button" variant="dark" disabled={submitting} onClick={() => void handleSubmitTest(view.sitting)}>
+                {submitting ? "Submitting test..." : "Submit automated test"}
+              </Button>
+            )}
           </div>
         </div>
       )}
@@ -286,9 +322,20 @@ export function EntranceAutomatedTest({
               <p style={{ margin: 0, fontSize: 13, opacity: 0.85 }}>
                 Complete the automated assessment questions ({EXAM_RULES.passPercent}% pass mark).
               </p>
-              <Button type="button" variant={isGlass ? "outline" : "dark"} disabled={starting} onClick={() => void begin()}>
-                {starting ? "Loading questions..." : hasOpenAttempt ? "Resume automated test" : "Start automated test"}
-              </Button>
+              {isGlass ? (
+                <button
+                  type="button"
+                  disabled={starting}
+                  onClick={() => void begin()}
+                  className="inline-flex items-center gap-2 rounded-full bg-green px-5 py-2 text-xs font-semibold text-white shadow-[0_10px_24px_-8px_rgba(24,162,105,0.8)] transition hover:bg-green-dark disabled:opacity-50"
+                >
+                  {starting ? "Loading questions..." : hasOpenAttempt ? "Resume automated test" : "Start automated test"}
+                </button>
+              ) : (
+                <Button type="button" variant="dark" disabled={starting} onClick={() => void begin()}>
+                  {starting ? "Loading questions..." : hasOpenAttempt ? "Resume automated test" : "Start automated test"}
+                </Button>
+              )}
             </div>
           ) : (
             <p style={{ margin: 0, fontSize: 13, opacity: 0.8 }}>

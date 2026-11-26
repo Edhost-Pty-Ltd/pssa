@@ -355,13 +355,13 @@ function AlbumApplication({
           {/* 3-State Review Outcome Bar */}
           <div className="relative z-10 mt-6 grid grid-cols-3 gap-2.5">
             {[
-              { key: "pending", label: "Pending", active: isUnderReview, tone: "green" },
-              { key: "approved", label: "Approved", active: false, tone: "green" },
-              { key: "rejected", label: "Rejected", active: isRejected, tone: "red" },
+              { key: "pending", label: "Pending", active: isUnderReview, tone: "green", icon: "clock" as const },
+              { key: "approved", label: "Approved", active: false, tone: "green", icon: "check" as const },
+              { key: "rejected", label: "Rejected", active: isRejected, tone: "red", icon: "flag" as const },
             ].map((item) => (
               <div
                 key={item.key}
-                className={`rounded-2xl border px-3.5 py-2.5 text-center text-xs font-semibold transition ${
+                className={`flex items-center justify-center gap-2 rounded-2xl border px-3.5 py-2.5 text-center text-xs font-semibold transition ${
                   item.active
                     ? item.tone === "red"
                       ? "border-red-400/50 bg-red-500/20 text-red-100 shadow-sm"
@@ -369,10 +369,28 @@ function AlbumApplication({
                     : "border-white/10 bg-white/[0.03] text-white/45"
                 }`}
               >
+                <Icon name={item.icon} size={13} />
                 {item.label}
               </div>
             ))}
           </div>
+
+          {!isRejected && (
+            <div className="relative z-10 mt-5 space-y-1.5">
+              <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.16em] text-white/65">
+                <span>Submission progress</span>
+                <span className="text-green">{pct}%</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-white/15">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${pct}%` }}
+                  transition={{ duration: 0.75, ease: EASE }}
+                  className="h-full rounded-full bg-gradient-to-r from-green to-[#6ee7b7]"
+                />
+              </div>
+            </div>
+          )}
 
           <div className="relative z-10 mt-6 grid gap-3 sm:grid-cols-3">
             <div className="rounded-2xl border border-white/12 bg-white/[0.05] p-4">
@@ -1198,6 +1216,25 @@ function SessionAgreementSubmit({ app, onSubmitted }: { app: ApplicationOverview
   return (
     <div className="space-y-5">
       {error && <div className="rounded-2xl border border-red-400/40 bg-red-950/50 p-4 text-sm text-red-100">{error}</div>}
+
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        {progress.steps.slice(0, 4).map((step) => {
+          const done = step.state === "complete";
+          return (
+            <div
+              key={step.key}
+              className={`flex items-center gap-2 rounded-2xl border px-3 py-2.5 text-xs font-medium ${
+                done ? "border-green/35 bg-green/15 text-white" : "border-white/12 bg-white/[0.04] text-white/60"
+              }`}
+            >
+              <span className={`flex size-5 shrink-0 items-center justify-center rounded-full ${done ? "bg-green text-white" : "bg-white/10"}`}>
+                <Icon name={done ? "check" : "clock"} size={11} />
+              </span>
+              <span className="truncate">{step.label}</span>
+            </div>
+          );
+        })}
+      </div>
 
       <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-white/15 bg-white/[0.05] p-5">
         <input
