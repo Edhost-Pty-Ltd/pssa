@@ -35,15 +35,19 @@ async function requireMemberProfileId(userId: string) {
 }
 
 async function canStartEntrance(memberProfileId: string) {
-  const [passed, window, tutorials, activeQuestions] = await Promise.all([
+  const [passed, window, tutorials, practicalTutorial, activeQuestions] = await Promise.all([
     hasPassedEntranceExam(memberProfileId),
     retakeWindow(memberProfileId, new Date(), "entrance"),
     tutorialCompletion(memberProfileId),
+    prisma.practicalAssessmentSubmission.findFirst({
+      where: { memberProfileId, tutorialWatched: true },
+      select: { id: true },
+    }),
     prisma.examQuestion.count({ where: { isActive: true } }),
   ]);
 
   if (passed) return { ok: false as const, reason: "Entrance assessment already passed." };
-  if (!tutorials.complete) {
+  if (!tutorials.complete && !practicalTutorial) {
     return {
       ok: false as const,
       reason:

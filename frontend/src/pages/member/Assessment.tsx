@@ -506,6 +506,11 @@ export default function Assessment() {
         </Notice>
       )}
 
+      {/* Automated Entrance Test (Admin-managed MCQ questions) */}
+      <div style={{ marginBottom: 20 }}>
+        <EntranceAutomatedTest />
+      </div>
+
       {/* Assignment Brief Inline + Download */}
       <Panel
         title={`Assignment Brief (v${assignment.version})`}
@@ -877,6 +882,224 @@ export default function Assessment() {
         )}
       </form>
     </>
+  );
+}
+
+export function EntranceAutomatedTest({
+  tone = "light",
+  onCompleted,
+}: {
+  tone?: "light" | "glass";
+  onCompleted?: () => void;
+}) {
+  const { user } = useAuth();
+  const [status, setStatus] = useState<ExamStatus | null>(null);
+  const [attempts, setAttempts] = useState<ExamAttempt[]>([]);
+  const [hasOpenAttempt, setHasOpenAttempt] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
+  const [view, setView] = useState<View>({ kind: "overview" });
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    Promise.all([getExamStatus(controller.signal, "entrance"), getExamAttempts(controller.signal)])
+      .then(([s, a]) => {
+        const mine = a.attempts.filter((x) => x.type === "entrance");
+        const loadedAt = Date.now();
+        setStatus(s);
+        setAttempts(mine);
+        setHasOpenAttempt(mine.some((x) => !x.submittedAt && new Date(x.expiresAt).getTime() > loadedAt));
+        setError(null);
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted) setError(errorMessage(err));
+      });
+    return () => controller.abort();
+  }, [reload]);
+
+  const begin = async () => {
+    setStarting(true);
+    setStartError(null);
+    setAnswers({});
+    setSubmitError(null);
+    try {
+      const sitting = await startExam("entrance");
+      setView({ kind: "taking", sitting });
+    } catch (err) {
+      setStartError(errorMessage(err));
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const handleSubmitTest = async (sitting: Sitting) => {
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const res = await submitExam(sitting.attempt.id, answers);
+      setView({ kind: "result", attempt: res.attempt, total: sitting.questions.length });
+      setReload((n) => n + 1);
+      onCompleted?.();
+    } catch (err) {
+      setSubmitError(errorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const isGlass = tone === "glass";
+  const cardClass = isGlass
+    ? "rounded-2xl border border-white/15 bg-white/[0.06] p-5 text-white space-y-4"
+    : undefined;
+
+  const content = (
+    <>
+      {error && (
+        <div className={isGlass ? "rounded-xl border border-red-400/40 bg-red-950/50 p-3 text-xs text-red-100" : ""}>
+          {isGlass ? error : <Notice tone="red" title="Could not load automated test">{error}</Notice>}
+        </div>
+      )}
+
+      {!status && !error && (
+        <p className={isGlass ? "text-xs text-white/70" : ""} style={isGlass ? undefined : { fontSize: 13, color: "var(--muted, #647386)", margin: 0 }}>
+          Loading automated assessment questions…
+        </p>
+      )}
+
+      {status && view.kind === "taking" && (
+        <div style={{ display: "grid", gap: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+            <strong style={{ fontSize: 14 }}>
+              Automated Assessment ({Object.keys(answers).length}/{view.sitting.questions.length} answered)
+            </strong>
+            <span style={{ fontSize: 12, opacity: 0.75 }}>
+              {user?.email} · {EXAM_RULES.passPercent}% pass mark
+            </span>
+          </div>
+          {submitError && (
+            <div className={isGlass ? "rounded-xl border border-red-400/40 bg-red-950/50 p-3 text-xs text-red-100" : ""}>
+              {isGlass ? submitError : <Notice tone="red" title="Submission failed">{submitError}</Notice>}
+            </div>
+          )}
+          <div style={{ display: "grid", gap: 12 }}>
+            {view.sitting.questions.map((q, idx) => (
+              <div
+                key={q.id}
+                style={{
+                  padding: 14,
+                  borderRadius: 12,
+                  border: isGlass ? "1px solid rgba(255,255,255,0.14)" : "1px solid #d9e1e8",
+                  background: isGlass ? "rgba(255,255,255,0.04)" : "#fbfcfd",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontWeight: 600, fontSize: 14 }}>
+                    {idx + 1}. {q.prompt}
+                  </span>
+                  {q.topic && (
+                    <span style={{ fontSize: 11, opacity: 0.7, whiteSpace: "nowrap" }}>{q.topic}</span>
+                  )}
+                </div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  {q.options.map((opt) => (
+                    <label key={opt.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer", fontSize: 13 }}>
+                      <input
+                        type="radio"
+                        name={`entrance-${q.id}`}
+                        checked={answers[q.id] === opt.id}
+                        onChange={() => setAnswers((prev) => ({ ...prev, [q.id]: opt.id }))}
+                        style={{ marginTop: 3 }}
+                      />
+                      <span>{opt.text}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div>
+            <Button type="button" variant={isGlass ? "outline" : "dark"} disabled={submitting} onClick={() => void handleSubmitTest(view.sitting)}>
+              {submitting ? "Submitting test..." : "Submit automated test"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {status && view.kind === "result" && (
+        <div className={isGlass ? "rounded-xl border border-green/40 bg-green/15 p-4 text-sm text-white space-y-2" : ""}>
+          <p style={{ margin: 0, fontWeight: 600 }}>
+            {view.attempt.passed ? "Automated test passed!" : "Automated test not passed"}
+          </p>
+          <p style={{ margin: "4px 0 0", fontSize: 13 }}>
+            Score: {view.attempt.score ?? 0} of {view.total} ({view.attempt.percent ?? 0}%).
+            {view.attempt.criticalFailed ? " A critical conduct question was missed." : ""}
+          </p>
+          {!view.attempt.passed && status.canStart && (
+            <Button type="button" variant="outline" onClick={() => setView({ kind: "overview" })}>
+              Back to test overview
+            </Button>
+          )}
+        </div>
+      )}
+
+      {status && view.kind === "overview" && (
+        <div style={{ display: "grid", gap: 10 }}>
+          {startError && (
+            <div className={isGlass ? "rounded-xl border border-red-400/40 bg-red-950/50 p-3 text-xs text-red-100" : ""}>
+              {isGlass ? startError : <Notice tone="red" title="Could not start test">{startError}</Notice>}
+            </div>
+          )}
+          {status.passed ? (
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: isGlass ? "#6ee7b7" : "#0f764b" }}>
+              Automated entrance test passed{attempts[0]?.percent != null ? ` (${attempts[0].percent}%)` : ""}.
+            </p>
+          ) : status.canStart || hasOpenAttempt ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+              <p style={{ margin: 0, fontSize: 13, opacity: 0.85 }}>
+                Complete the automated assessment questions ({EXAM_RULES.passPercent}% pass mark).
+              </p>
+              <Button type="button" variant={isGlass ? "outline" : "dark"} disabled={starting} onClick={() => void begin()}>
+                {starting ? "Loading questions..." : hasOpenAttempt ? "Resume automated test" : "Start automated test"}
+              </Button>
+            </div>
+          ) : (
+            <p style={{ margin: 0, fontSize: 13, opacity: 0.8 }}>
+              {status.reason ?? "Automated test is not available yet."}
+            </p>
+          )}
+          {attempts.length > 0 && !status.passed && (
+            <p style={{ margin: 0, fontSize: 12, opacity: 0.75 }}>
+              Latest attempt: {attempts[0].submittedAt ? formatDate(attempts[0].submittedAt) : "In progress"} — {attempts[0].percent ?? 0}%
+            </p>
+          )}
+        </div>
+      )}
+    </>
+  );
+
+  if (isGlass) {
+    return (
+      <div className={cardClass}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-white">Automated Entrance Test (MCQ)</p>
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-green">
+            {EXAM_RULES.passPercent}% pass
+          </span>
+        </div>
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <Panel title="Automated Entrance Test (MCQ)" action={<span style={{ fontSize: 12, color: "var(--muted, #647386)" }}>{EXAM_RULES.passPercent}% pass mark</span>}>
+      {content}
+    </Panel>
   );
 }
 

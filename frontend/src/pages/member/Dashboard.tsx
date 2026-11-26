@@ -32,6 +32,7 @@ import {
   type StepKey,
 } from "../../api/member";
 import { Icon, type IconName } from "../../components/Icon";
+import { EntranceAutomatedTest } from "./Assessment";
 import { useAuth } from "../../context/auth-context";
 import { api, errorMessage } from "../../lib/api";
 
@@ -1151,6 +1152,7 @@ function SessionAssessment({
 
   return (
     <div className="space-y-5">
+      <EntranceAutomatedTest tone="glass" onCompleted={onSubmitted} />
       {error && <div className="rounded-2xl border border-red-400/40 bg-red-950/50 p-4 text-sm text-red-100">{error}</div>}
       {notice && <div className="rounded-2xl border border-green/40 bg-green/15 p-4 text-sm text-white">{notice}</div>}
 
