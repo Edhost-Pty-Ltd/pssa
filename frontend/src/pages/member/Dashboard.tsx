@@ -23,6 +23,7 @@ import {
 import {
   getApplication,
   getProfile,
+  reapplyApplication,
   submitApplication,
   updateProfile,
   type ApplicationOverview,
@@ -189,56 +190,219 @@ function AlbumApplication({
   const nextLocked = currentIdx + 1 > highestUnlocked;
 
   const isApproved = application.status === "approved" || profile?.memberProfile?.memberStatus === "active";
+  const isRejected = !isApproved && application.status === "rejected";
   const isUnderReview = !isApproved && (application.status === "submitted" || application.status === "under_review");
 
-  if (isUnderReview) {
+  const [showSteps, setShowSteps] = useState(false);
+  const [showRejectionReason, setShowRejectionReason] = useState(true);
+  const [reapplying, setReapplying] = useState(false);
+  const [reapplyError, setReapplyError] = useState<string | null>(null);
+
+  async function handleReapply() {
+    setReapplying(true);
+    setReapplyError(null);
+    try {
+      await reapplyApplication();
+      setShowSteps(true);
+      onReload(0);
+    } catch (err) {
+      setReapplyError(errorMessage(err));
+    } finally {
+      setReapplying(false);
+    }
+  }
+
+  if ((isUnderReview || isRejected) && !showSteps) {
+    const latestReview = application.latestReview ?? null;
+    const statusLabel = isRejected
+      ? "Rejected"
+      : application.status === "under_review"
+        ? "Pending · Under review"
+        : justSubmitted
+          ? "Review Submitted"
+          : "Pending · Application review in progress";
+
     return (
       <div className="mx-auto max-w-3xl space-y-6">
-        <div className="rounded-[32px] border border-white/15 bg-white/[0.07] p-8 shadow-[0_30px_90px_-24px_rgba(0,0,0,0.65)] backdrop-blur-2xl sm:p-10">
-          <div className="inline-flex items-center gap-2 rounded-full border border-green/40 bg-green/15 px-3.5 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-green">
-            <span className="size-1.5 rounded-full bg-green" />
-            {justSubmitted ? "Review Submitted" : "Application review in progress"}
+        <motion.div
+          initial={{ opacity: 0, y: 18, scale: 0.985 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.45, ease: EASE }}
+          className="relative overflow-hidden rounded-[32px] border border-white/15 bg-white/[0.07] p-8 shadow-[0_30px_90px_-24px_rgba(0,0,0,0.65)] backdrop-blur-2xl sm:p-10"
+        >
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full opacity-25 blur-3xl"
+            style={{
+              background: isRejected
+                ? "radial-gradient(circle, #ef4444 0%, transparent 70%)"
+                : "radial-gradient(circle, #18a269 0%, transparent 70%)",
+            }}
+          />
+
+          <div className="relative z-10 flex flex-wrap items-center justify-between gap-3">
+            <div
+              className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1 text-[11px] font-bold uppercase tracking-[0.18em] ${
+                isRejected
+                  ? "border-red-400/40 bg-red-500/15 text-red-200"
+                  : "border-green/40 bg-green/15 text-green"
+              }`}
+            >
+              <span
+                className={`size-2 rounded-full ${
+                  isRejected ? "bg-red-400" : "animate-pulse bg-green"
+                }`}
+              />
+              {statusLabel}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowSteps(true)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/[0.08] px-3.5 py-1.5 text-xs font-semibold text-white/90 backdrop-blur-md transition hover:border-green/50 hover:bg-white/15 hover:text-white"
+            >
+              <Icon name="eye" size={13} />
+              Application status
+            </button>
           </div>
 
-          <h1 className="mt-4 font-display text-3xl font-semibold text-white sm:text-4xl">
-            {justSubmitted ? "Review Submitted" : "Application review in progress"}
+          <h1 className="relative z-10 mt-5 font-display text-3xl font-semibold text-white sm:text-4xl">
+            {isRejected
+              ? "Application not approved"
+              : justSubmitted
+                ? "Review Submitted"
+                : "Application review in progress"}
           </h1>
 
-          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/75 sm:text-base">
-            {justSubmitted
-              ? "Your entire application, verification documents, and practical assessment have been submitted for review. You can now wait for your PSASA certificate — we will update your account as soon as an officer approves your file."
-              : "Your application, verification documents, and practical assessment are currently being reviewed by a PSASA verification officer. Your certificate will unlock here automatically once approved."}
+          <p className="relative z-10 mt-3 max-w-2xl text-sm leading-relaxed text-white/75 sm:text-base">
+            {isRejected
+              ? "Your application was reviewed by a PSASA officer and was not approved at this time. Review the feedback below and apply again whenever you're ready."
+              : justSubmitted
+                ? "Your entire application, verification documents, and practical assessment have been submitted for review. You can now wait for your PSASA certificate — we will update your account as soon as an officer completes your review."
+                : "Your application, verification documents, and practical assessment are currently being reviewed by a PSASA verification officer. Your certificate will unlock here automatically once approved."}
           </p>
 
-          <div className="mt-7 grid gap-3 sm:grid-cols-3">
+          {/* 3-State Review Outcome Bar */}
+          <div className="relative z-10 mt-6 grid grid-cols-3 gap-2.5">
+            {[
+              { key: "pending", label: "Pending", active: isUnderReview, tone: "green" },
+              { key: "approved", label: "Approved", active: false, tone: "green" },
+              { key: "rejected", label: "Rejected", active: isRejected, tone: "red" },
+            ].map((item) => (
+              <div
+                key={item.key}
+                className={`rounded-2xl border px-3.5 py-2.5 text-center text-xs font-semibold transition ${
+                  item.active
+                    ? item.tone === "red"
+                      ? "border-red-400/50 bg-red-500/20 text-red-100 shadow-sm"
+                      : "border-green/50 bg-green/20 text-white shadow-sm"
+                    : "border-white/10 bg-white/[0.03] text-white/45"
+                }`}
+              >
+                {item.label}
+              </div>
+            ))}
+          </div>
+
+          <div className="relative z-10 mt-6 grid gap-3 sm:grid-cols-3">
             <div className="rounded-2xl border border-white/12 bg-white/[0.05] p-4">
               <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/55">Application</p>
               <p className="mt-1 font-mono text-sm font-semibold text-white">{application.number ?? "Submitted"}</p>
             </div>
             <div className="rounded-2xl border border-white/12 bg-white/[0.05] p-4">
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/55">Submitted</p>
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/55">
+                {isRejected ? "Reviewed" : "Progress"}
+              </p>
               <p className="mt-1 text-sm font-semibold text-white">
-                {application.submittedAt
-                  ? new Date(application.submittedAt).toLocaleDateString("en-ZA", {
-                      day: "numeric",
-                      month: "short",
-                      year: "numeric",
-                    })
-                  : "Recently"}
+                {isRejected
+                  ? latestReview?.createdAt
+                    ? new Date(latestReview.createdAt).toLocaleDateString("en-ZA", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })
+                    : "Completed"
+                  : `${pct}% Complete`}
               </p>
             </div>
             <div className="rounded-2xl border border-white/12 bg-white/[0.05] p-4">
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/55">Next milestone</p>
-              <p className="mt-1 text-sm font-semibold text-green">PSASA Certificate</p>
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/55">
+                {isRejected ? "Outcome" : "Next milestone"}
+              </p>
+              <p className={`mt-1 text-sm font-semibold ${isRejected ? "text-red-300" : "text-green"}`}>
+                {isRejected ? "Action available" : "PSASA Certificate"}
+              </p>
             </div>
           </div>
-        </div>
+
+          {isRejected && (
+            <div className="relative z-10 mt-6 space-y-4">
+              {reapplyError && (
+                <div className="rounded-2xl border border-red-400/40 bg-red-950/50 p-4 text-sm text-red-100">
+                  {reapplyError}
+                </div>
+              )}
+
+              <AnimatePresence initial={false}>
+                {showRejectionReason && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden rounded-2xl border border-red-400/30 bg-red-950/35 p-5"
+                  >
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-red-200">
+                      Reviewer reason
+                    </p>
+                    <p className="mt-2 text-sm leading-relaxed text-white/90">
+                      {latestReview?.reason ||
+                        "No detailed reason was recorded. Please review your verification documents and practical assessment before applying again."}
+                    </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  disabled={reapplying}
+                  onClick={() => void handleReapply()}
+                  className="inline-flex items-center gap-2 rounded-full bg-green px-6 py-3 text-sm font-semibold text-white shadow-[0_14px_34px_-10px_rgba(24,162,105,0.75)] transition hover:bg-green-dark disabled:opacity-60"
+                >
+                  {reapplying ? "Preparing new application…" : "Apply again"}
+                  {!reapplying && <Icon name="arrow" size={16} />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowRejectionReason((v) => !v)}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/[0.06] px-5 py-3 text-sm font-semibold text-white/90 transition hover:bg-white/12"
+                >
+                  {showRejectionReason ? "Hide rejection reason" : "Review why it was rejected"}
+                </button>
+              </div>
+            </div>
+          )}
+        </motion.div>
       </div>
     );
   }
 
   return (
     <div className="space-y-8">
+      {(isUnderReview || isRejected) && (
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-2.5 backdrop-blur-xl">
+          <span className="text-xs font-medium text-white/80">
+            {isRejected ? "Application not approved — review feedback or apply again." : "Your application review is in progress."}
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowSteps(false)}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-green px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-green-dark"
+          >
+            ← Back to review status
+          </button>
+        </div>
+      )}
       <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.26em] text-green">
@@ -400,6 +564,7 @@ function AlbumApplication({
                 {currentStep.key === "assessment" && (
                   <SessionAssessment
                     stepComplete={currentStep.state === "complete"}
+                    onSubmitted={() => onReload()}
                     onContinue={() => onReload(4)}
                   />
                 )}
@@ -902,7 +1067,15 @@ function initPracticalAnswers(existing: Partial<PracticalAnswers> | null | undef
   };
 }
 
-function SessionAssessment({ stepComplete, onContinue }: { stepComplete: boolean; onContinue: () => void }) {
+function SessionAssessment({
+  stepComplete,
+  onSubmitted,
+  onContinue,
+}: {
+  stepComplete: boolean;
+  onSubmitted: () => void;
+  onContinue: () => void;
+}) {
   const [state, setState] = useState<PracticalState | null>(null);
   const [serviceTrack, setServiceTrack] = useState<PracticalTrack | null>(null);
   const [answers, setAnswers] = useState<PracticalAnswers>(() => initPracticalAnswers(null));
@@ -967,7 +1140,8 @@ function SessionAssessment({ stepComplete, onContinue }: { stepComplete: boolean
         idempotencyKey: idempotencyKeyRef.current,
       });
       setState((prev) => (prev ? { ...prev, submission: res.submission } : prev));
-      setNotice("Practical assessment submitted! You can now continue to 05 while PSSA reviews your submission.");
+      setNotice("Practical assessment submitted! Progress updated — continue to 05 to submit your full application.");
+      onSubmitted();
     } catch (err) {
       setError(errorMessage(err));
     } finally {

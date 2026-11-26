@@ -161,6 +161,7 @@ export default function Assessment() {
           try {
             localStorage.removeItem(draftStorageKey);
           } catch {
+            void 0;
           }
         } else {
           try {
@@ -176,6 +177,7 @@ export default function Assessment() {
               }
             }
           } catch {
+            void 0;
           }
         }
 
@@ -231,6 +233,7 @@ export default function Assessment() {
       };
       localStorage.setItem(draftStorageKey, JSON.stringify(payload));
     } catch {
+      void 0;
     }
 
     const timer = setTimeout(() => {
@@ -388,6 +391,7 @@ export default function Assessment() {
       try {
         localStorage.removeItem(draftStorageKey);
       } catch {
+        void 0;
       }
       setSaveStatus("saved");
       setState((prev) => (prev ? { ...prev, submission: res.submission } : prev));

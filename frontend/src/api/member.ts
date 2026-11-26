@@ -80,6 +80,13 @@ export interface ActionItem {
   status: string;
 }
 
+export interface ApplicationReviewSummary {
+  id: string;
+  decision: "approved" | "rejected" | "needs_info" | string;
+  reason: string;
+  createdAt: string;
+}
+
 export interface ApplicationOverview {
   application: {
     id: string | null;
@@ -88,6 +95,7 @@ export interface ApplicationOverview {
     submittedAt: string | null;
     agreementAcceptedAt: string | null;
     agreementVersion: string | null;
+    latestReview?: ApplicationReviewSummary | null;
   };
   progress: {
     percent: number;
@@ -98,5 +106,7 @@ export interface ApplicationOverview {
 }
 
 export const getApplication = (signal?: AbortSignal) => api<ApplicationOverview>("/member/application", { signal });
+
+export const reapplyApplication = () => api<ApplicationOverview>("/member/application/reapply", { method: "POST" });
 
 export const submitApplication = () => api<{ application: ApplicationOverview["application"] }>("/member/application/submit", { body: { confirm: true } });
