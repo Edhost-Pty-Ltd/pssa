@@ -248,7 +248,7 @@ The official exam is **30 questions in 45 minutes**, a pass mark of **at least 8
 | PATCH | `/api/exam/questions/:id` | Admin | **In:** any subset of create fields (including `isActive` toggle). **Out:** `200 { question }`. Same option/`correctOptionId` rules when those fields are sent. `404` if unknown. | Exists |
 | DELETE | `/api/exam/questions/:id` | Admin | **In:** path id. **Out:** `200 { ok: true }`. Hard-deletes the bank row (past attempts keep scored results by question id). `404` if unknown. | Exists |
 | POST | `/api/exam/attempts/:id/allow-retake` | Admin | **In:** `{ reason, conflictDeclared: true }`. **Out:** `200 { attempt, retake }`. Used after two failed attempts; records an audit unlock for one further attempt. | Exists |
-| GET | `/api/admin/applications/:id/tutorial` | Admin | **In:** path id. **Out:** `{ tutorial }` with completedCount / total / lessons. | Exists |
+| GET | `/api/admin/applications/:id/tutorial` | Admin | **In:** path id. **Out:** `{ tutorial }` with `complete`, `completed` (same value as `complete`), `completedCount` / `total` / `lessons`, plus `practicalWatched` when a practical submission exists. | Exists |
 | GET | `/api/admin/applications/:id/exam` | Admin | **In:** path id. **Out:** `{ exam }` with passed, attemptCount, latest score/time, and attempt history. | Exists |
 
 ### 6.5 Admin applications
