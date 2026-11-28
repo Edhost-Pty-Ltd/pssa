@@ -1,6 +1,8 @@
 import express from "express";
+import cors from "cors";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
+import { config } from "./config.js";
 import { prisma } from "./lib/prisma.js";
 import { loadUser } from "./middleware/auth.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
@@ -28,6 +30,10 @@ export function createApp() {
   app.set("trust proxy", 1);
   app.disable("x-powered-by");
   app.use(helmet());
+  app.use(cors({
+    origin: config.clientOrigins,
+    credentials: true,
+  }));
   app.use(express.json({ limit: "100kb" }));
   app.use(cookieParser());
   app.use(loadUser);

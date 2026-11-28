@@ -5,7 +5,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(5000),
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
-  CLIENT_ORIGIN: z.string().default("http://localhost:5174"),
+  CLIENT_ORIGIN: z.string().default("http://localhost:5174,http://localhost:5173"),
   JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
   JWT_EXPIRES_IN_DAYS: z.coerce.number().int().positive().default(7),
   SMTP_HOST: z.string().trim().optional(),
@@ -31,7 +31,7 @@ export const config = {
   env: env.NODE_ENV,
   isProd: env.NODE_ENV === "production",
   port: env.PORT,
-  clientOrigin: env.CLIENT_ORIGIN,
+  clientOrigins: env.CLIENT_ORIGIN.split(",").map((o) => o.trim()),
   jwtSecret: env.JWT_SECRET,
   jwtExpiresInDays: env.JWT_EXPIRES_IN_DAYS,
   mail: {
