@@ -268,7 +268,7 @@ The official exam is **30 questions in 45 minutes**, a pass mark of **at least 8
 
 ### 6.6 Certificates and live verification
 
-A certificate is issued only after the gates and a recorded human approval have passed. The number is `PSSA-YYYY-XXXXXX` and must be unique. On activation the API writes a PDF (with QR) under private storage and sets `pdfPath`. The QR encodes `{CLIENT_ORIGIN}/verify/PSSA-YYYY-XXXXXX` (frontend live-check). Screenshots and old PDFs do not prove current status — only the live endpoint does.
+A certificate is issued only after the gates and a recorded human approval have passed. The number is `PSSA-YYYY-XXXXXX` and must be unique. On activation the API writes a PDF (with QR) under private storage and sets `pdfPath`. The QR encodes `{CLIENT_ORIGIN}/verify/PSSA-YYYY-XXXXXX` (frontend live-check). When `CLIENT_ORIGIN` is comma-separated for CORS, the **first** origin is used for that link. Screenshots and old PDFs do not prove current status — only the live endpoint does.
 
 | Method | Path | Who | In / Out | Status |
 | --- | --- | --- | --- | --- |

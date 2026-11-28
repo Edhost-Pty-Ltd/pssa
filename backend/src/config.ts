@@ -27,11 +27,18 @@ if (!parsed.success) {
 
 const env = parsed.data;
 
+/** Comma-separated CLIENT_ORIGIN values (CORS allow-list). */
+const clientOrigins = env.CLIENT_ORIGIN.split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 export const config = {
   env: env.NODE_ENV,
   isProd: env.NODE_ENV === "production",
   port: env.PORT,
-  clientOrigins: env.CLIENT_ORIGIN.split(",").map((o) => o.trim()),
+  clientOrigins,
+  /** First CLIENT_ORIGIN entry — certificate QR / verify page links. */
+  clientOrigin: clientOrigins[0] ?? "http://localhost:5174",
   jwtSecret: env.JWT_SECRET,
   jwtExpiresInDays: env.JWT_EXPIRES_IN_DAYS,
   mail: {
